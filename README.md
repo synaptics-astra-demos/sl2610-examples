@@ -14,8 +14,18 @@ The examples in this repository are designed to work with Astra SL2610 processor
 For instructions on how to set up Astra Machina board , see the  [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)  guide.
 
 
+## Torq Compiler & Runtime
+
+The Torq compiler is based on the MLIR framework and IREE runtime. The examples use the Torq compiler to optimize models to run efficiently on the Torq NPU. See Torq documentation for details.  
+    
+- [Torq Documentation](https://synaptics-torq.github.io/torq-compiler/v/latest)
+
+
 ## 🔧 Installation
  
+### Connect to the SL2610 
+
+Power up the Astra Machina SL2610 board and open a terminal. 
 
 ### Clone the Repository
 
@@ -27,7 +37,7 @@ git clone https://github.com/synaptics-astra-demos/sl2610-examples
 Navigate to the Repository Directory:
 
 ```bash
-cd examples
+cd sl2610-examples
 ```
 
 ### Setup Python Environment
@@ -42,8 +52,11 @@ pip install --upgrade pip
 
 ## Object Detection
 
+Follow the steps in /Object_detection/standalone/README.md to see how to perform object detection using YoloV8 on a single image. 
 
-
+Follow the steps in /Object_detection/pipeline/README.md to see how to perform object detection using YoloV8 on incoming video using Gstreamer. 
 
 ## Image Classification
+
+Follow the steps in /Image_Classification/standalone_class/README.md to see how to perform image classification using MobileNetV2 on a single image. 
 
