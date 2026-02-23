@@ -1,0 +1,20 @@
+{
+ "graph": [
+  {
+   "inputs": [
+    {
+     "subgraph": -1,
+     "out": 0
+    }
+   ],
+   "model": "0/subgraph_0.vmfb",
+   "meta": "0/subgraph_0.json"
+  }
+ ],
+ "outputs": [
+  {
+   "subgraph": 0,
+   "out": 0
+  }
+ ]
+}

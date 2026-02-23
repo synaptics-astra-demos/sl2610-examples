@@ -1,0 +1,46 @@
+{
+    "Inputs": {
+        "images": {
+            "name": "serving_default_images:0",
+            "shape": [
+                1,
+                320,
+                320,
+                3
+            ],
+            "format": "nhwc",
+            "quantizer": "asymmetric_affine",
+            "quantize": {
+              "qtype": "i8",
+              "scale": 0.003921568859368563,
+              "zero_point": -128
+            },
+            "data_format": "",
+            "scale" : 255,
+            "mean" : [0]
+        }
+    },
+    "Outputs": {
+        "output_0": {
+            "name": "PartitionedCall:0",
+            "shape": [
+                1,
+                84,
+                2100
+            ],
+            "format": "nhwc",
+	    "quantizer": "asymmetric_affine",
+	    "quantize": {
+		    "qtype": "i8",
+		    "scale": 0.004194467328488827,
+		    "zero_point": -128,
+		    "min_value": -0.5368928160365649,
+		    "max_value": 0.5327103517120861
+	    },
+	    "data_format": "yolov8 bb_normalized=1"
+        }
+    },
+    "Recurrent_connections": {},
+    "secure": false,
+    "delegate": "torq npu=1"
+}

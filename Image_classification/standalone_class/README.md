@@ -7,8 +7,7 @@ This guide describes how to run the standalone MobileNetV2 image classification 
 ### 1. Board Requirements
 Ensure your board has the following installed:
 
-**Use OOBE Image**: Download and flash the SL2619 OOBE image from:
-- [SL2619 OOBE Image](http://iotmmswfileserver.synaptics.com:8000/sandal/LinuxSDK-Serpens/202601/20260120/202601201405/sl2619_oobe_scarthgap/Rel_Build/)
+**Use OOBE Image**: Download and flash the SL2619 Astra SDK OOBE Image
 - **Python 3**
 - **Python Libraries**: `numpy`, `pillow` (PIL)
 - **Runtime**: `iree-run-module` binary (must be in system `$PATH`)
