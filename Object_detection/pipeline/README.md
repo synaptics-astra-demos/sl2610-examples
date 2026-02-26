@@ -2,6 +2,8 @@
 
 Create a simple vison AI application using Gstreamer. Compile the model with Torq. Wrap in SyNAP format to use the GStreamer plugin to integrate into the Vision Application pipeline.
 
+## Option 1 - Compile the Model and Run
+
 Step 1: Download Quantized Model 
 
 Example: YOLOv8n model, Integer, 320x320 from https://huggingface.co/Synaptics/yolo/tree/main 
@@ -57,6 +59,8 @@ exit
 
 Step 7: Copy model.synap to RDK
 
+Place at `/home/root/`
+
 
 Step 8: Set Environment Variables for Wayland
 
@@ -71,6 +75,9 @@ export QT_QPA_PLATFORM=wayland
 
 Step 9: Check your video device number
 
+```
+v4l2-ctl --list-devices
+```
 
 Step 10: Use this GStreamer pipeline
 
@@ -79,3 +86,27 @@ root@sl2619:~# gst-launch-1.0 v4l2src device=/dev/video0 ! video/x-raw,framerate
 ```
 
 You should see a window with the camera video and bounding boxes over detected objects. 
+
+
+## Option 2 - Run pre-compiled model
+
+Step 1 - Connect to the SL2610 and clone this repository
+
+```
+cd /home/root/
+git clone https://github.com/synaptics-astra-demos/sl2610-examples
+```
+
+Step 2 - Get into the Object detection pipeline folder
+
+```
+cd sl2610-vision-examples/Object_detection/pipeline/
+```
+
+Step 3 - Run the model using the run script
+
+```
+source ./run.sh
+```
+
+The video should display on the screen with bounding boxes around detected objects. 

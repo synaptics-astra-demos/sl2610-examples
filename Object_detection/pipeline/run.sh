@@ -36,6 +36,6 @@ else
 fi
 
 
-gst-launch-1.0 v4l2src device=$CAMERA_DEV ! video/x-raw,framerate=30/1, format=YUY2, width=640, height=480 ! tee name=t_data t_data. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! synavideoconvertscale ! video/x-raw,width=320,height=320,format=RGB ! synapinfer model=/home/root/model.synap mode=detector frameinterval=3 ! overlay.inference_sink t_data. ! queue ! synavideoconvertscale ! synapoverlay name=overlay label=/usr/share/synap/models/object_detection/coco/info.json ! waylandsink
+gst-launch-1.0 v4l2src device=$CAMERA_DEV ! video/x-raw,framerate=30/1, format=YUY2, width=640, height=480 ! tee name=t_data t_data. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! synavideoconvertscale ! video/x-raw,width=320,height=320,format=RGB ! synapinfer model=./model.synap mode=detector frameinterval=3 ! overlay.inference_sink t_data. ! queue ! synavideoconvertscale ! synapoverlay name=overlay label=/usr/share/synap/models/object_detection/coco/info.json ! waylandsink
 
 
