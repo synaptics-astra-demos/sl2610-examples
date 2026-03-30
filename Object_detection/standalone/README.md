@@ -1,87 +1,107 @@
 # YOLOv8 On-Device Object Detection Guide
 
-This guide describes how to run the standalone YOLOv8n object detection workflow directly on the target board.
+This guide describes how to run the standalone YOLOv8n object detection on the **Synaptics Astra SL26xx series** using the Torq/Iree Python runtime. 
+
+## Setting up Astra Machina Board
+For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
 
 ## Prerequisites
-
-### 1. Board Requirements
 Ensure your board has the following installed:
 
-**Use OOBE Image**: Download and flash the SL2619 OOBE image from:
-- [SL2619 OOBE Image](http://iotmmswfileserver.synaptics.com:8000/sandal/LinuxSDK-Serpens/202601/20260120/202601201405/sl2619_oobe_scarthgap/Rel_Build/)
-- **Python 3**
-- **Python Libraries**: `numpy`, `pillow` (PIL)
-- **Runtime**: `iree-run-module` binary (must be in system `$PATH`)
+**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from:
+- [SL2619 OOBE Image](https://github.com/synaptics-astra/sdk/releases)
+- The image includes important software components such as `git` and `python3`
 
-### 2. Required Files
-You need to have the following files ready on your host machine:
+## 🔧 Installation
+ 
+### Clone the Repository
 
-
-| File                      | Description                                                    |
-|---------------------------|----------------------------------------------------------------|
-| `object_detection.py`     | The standalone Python YOLO inference script.                   |
-| `requirements_board.txt`  | List of Python dependencies.                                   |
-| `yolov8_od.vmfb`          | The compiled model binary (VMFB).                              |
-| `labels.json`             | JSON file containing class labels (converted from YAML).       |
-| `image.jpg`               | The input image to detect objects in (e.g., dog_bike_car.jpg). |
-
-
----
-
-## Step 1: Transfer Files to Board
-
-Use `scp` to copy all artifacts to a directory on the board (e.g., `/home/root/standalone`).
-
-> **Note**: Replace `<BOARD_IP>` with your actual board IP address.
+Clone the repository using the following command:
 
 ```bash
-# 1. Create a directory on the board
-ssh root@<BOARD_IP> "mkdir -p /home/root/standalone"
+git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
+```
+Navigate to the Repository Directory:
 
-# 2. Copy the inference script and requirements
-scp object_detection.py root@<BOARD_IP>:/home/root/standalone/
-scp requirements_board.txt root@<BOARD_IP>:/home/root/standalone/
-
-# 3. Copy the model and assets
-scp yolov8_od.vmfb root@<BOARD_IP>:/home/root/standalone/
-scp labels.json root@<BOARD_IP>:/home/root/standalone/
-scp image.jpg root@<BOARD_IP>:/home/root/standalone/
+```bash
+cd sl2610-examples
 ```
 
-## Step 2: Install Dependencies (On Board)
+### Setup Python Environment
 
-If the libraries are not already installed on your board image, you can install them using pip:
+To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
 
 ```bash
-pip3 install -r requirements_board.txt
+python3 -m venv .venv --system-site-packages
+source .venv/bin/activate
 ```
 
----
+Install dependencies
 
-## Step 3: Run Inference
+If online
+```bash
+pip install -r requirements.txt
+```
 
-Login to the board and execute the script. The script applies YOLO-specific preprocessing (letterbox resizing), quantization, inference, and complex post-processing (dequantization, NMS, bounding box scaling).
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
+This will also install the python runtime included as a .whl file in the wheelhouse folder.
+
+
+## 🖼️ Running Object Detection Example
+
+The script applies YOLO-specific preprocessing (letterbox resizing), quantization, inference, and complex post-processing (dequantization, NMS, bounding box scaling).
+
+Optionally Set up display environment (Required for visual output).
 
 ```bash
-# 1. SSH into the board
-ssh root@<BOARD_IP>
-
-# 2. Go to the directory
-cd /home/root/standalone
-
-# 3. Set up display environment (Required for visual output)
 export XDG_RUNTIME_DIR=/var/run/user/0
 export WAYLAND_DISPLAY=wayland-1
+```
 
-# 4. Run the object detection job
+### Run the object detection job on an image file
+
+**Note:** The Python runtime is compatible with newer compiler and runtime settings. Use a model that was compiled recently, including the provided model yolov8n_od.vmfb.  
+
+```bash
+cd Object_detection/standalone/
 python3 object_detection.py \
-  --model yolov8_od.vmfb \
-  --image image.jpg \
+  --model yolov8n_od.vmfb \
+  --image dog_bike_car.jpg \
   --labels labels.json \
   --device torq
 ```
 
----
+### Model information
+The provided model is a quantized version of Yolo v8 Nano from Ultralytics with 320 x 320 input resolution and 80 output classes. The model has been compiled with the [Torq compiler](https://synaptics-torq.github.io/torq-compiler/v/latest/) for optimal performance on the Synaptics Torq and Coral NPU. 
+
+Model Conversion
+```
+iree-import-tflite yolov8n_full_integer_quant_320_od.tflite -o yolov8n_full_integer_quant_320_od.tosa
+```
+
+Model Compilation
+```
+torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quant_320_od.tosa --torq-convert-dtypes --torq-disable-slicing --torq-enable-torq-hl-tiling --torq-enable-transpose-optimization --torq-convert-io-dtype --torq-hw=SL2610
+```
+
+## Testing YOLOv8s alternative
+
+  Also provided is a compiled model for YOLOv8 Small. This is a better performing model at the expense of approximately 2x inference time.
+  
+  To test, switch the model to `yolov8s_od.vmfb` and update the output quantization parameters in `object_detection.py` to the following.
+
+
+```python
+    out_scale = 0.0051302798092365265
+    out_zp = -108
+
+```
+
+
 
 ## Expected Output
 
@@ -91,17 +111,12 @@ You should see output similar to the following, confirming the model successfull
 [1/4] Preprocessing...
 
 [2/4] Inference...
-Command: iree-run-module --device=torq --module=yolov8_od.vmfb ...
-EXEC @main
-Time: 0.6516s
+Time: 0.0359s
 
 [3/4] Processing...
 
 [4/4] Detections:
-  dog             Conf: 0.9186  Box: [133 219 177 315]
-  car             Conf: 0.5663  Box: [468  79 254  86]
-  bicycle         Conf: 0.5663  Box: [151 137 412 280]
+  dog             Conf: 0.8934  Box: [133 216 177 322]
+  bicycle         Conf: 0.7886  Box: [138 150 425 267]
+  car             Conf: 0.6292  Box: [465  76 260  93]
 ```
-
-- **Conf**: Confidence score (0.0 to 1.0)
-- **Box**: Bounding box coordinates `[x, y, width, height]` in original image pixels.
