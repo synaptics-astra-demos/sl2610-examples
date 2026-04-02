@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone Board Object Detection Script (YOLOv8)
-Usage: python3 board_job_yolo.py --model model.vmfb --image image.jpg [--labels labels.json]
+Usage: python3 object_detection.py --model model.vmfb --image image.jpg [--labels labels.json]
 """
 import argparse
 import json
@@ -12,6 +12,7 @@ import time
 import sys
 import shutil
 from PIL import Image, ImageDraw, ImageFont
+import torq.runtime as torq_rt
 
 # ==========================================
 # Helpers (Ported from helpers/yolo.py)
@@ -56,7 +57,7 @@ def preprocess_image(image_path, target_size=(320, 320)):
     
     # === QUANTIZE INPUT (Float32 -> Int8) ===
 
-    
+    # Must match the models quantization parameters
     in_scale = 0.003921568859368563
     in_zp = -128
     
@@ -178,18 +179,19 @@ def postprocess(outputs, orig_shape, pad_info, labels=None):
         
     return results
 
-def run_inference(model_path, input_npy_path, output_bin_path, device="torq"):
-    executable = "iree-run-module"
-    cmd = [
-        executable,
-        f"--device={device}",
-        f"--module={model_path}",
-        "--function=main",
-        f"--input=@{input_npy_path}",
-        f"--output=@{output_bin_path}"
-    ]
-    print(f"Command: {' '.join(cmd)}")
-    subprocess.check_call(cmd)
+def run_inference_torq(runner, input_data):
+    outputs = runner.infer([input_data])  # <-- wrap in list
+    if isinstance(outputs, (list, tuple)):
+        if len(outputs) == 1:
+            return outputs[0]
+        raise RuntimeError(
+            f"Expected a single output tensor from the model, but got {len(outputs)} "
+            "outputs. This script currently supports only single-output models. "
+            "Please update the code to select the desired output tensor."
+        )
+    # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
+    return outputs
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -197,46 +199,39 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--labels")
     parser.add_argument("--device", default="torq")
+    parser.add_argument("--save-image", action="store_true", help="If set, output annotated image")
     args = parser.parse_args()
-    
+
+    # 0. Load the model with Torq Runtime
+    runner = torq_rt.VMFBInferenceRunner(
+        args.model,
+        device_uri=args.device,
+        function="main",
+        load_model_to_mem=True
+    )
+
     # 1. Preprocess
     print("\n[1/4] Preprocessing...")
     input_data, pad_info, orig_shape = preprocess_image(args.image)
-    input_file = "input_board.npy"
-    np.save(input_file, input_data)
-    
+
     # 2. Inference
     print("\n[2/4] Inference...")
-    output_file = "output_board.bin"
-    if os.path.exists(output_file): os.remove(output_file)
-    
-    start = time.time()
     try:
-        run_inference(args.model, input_file, output_file, args.device)
+        raw_out = run_inference_torq(runner, input_data)
     except Exception as e:
         print(f"Inference failed: {e}")
         sys.exit(1)
-    
-    print(f"Time: {time.time() - start:.4f}s")
+    print(f"Time: {runner.infer_time_ms:.3f}ms")
     
     # 3. Load Output
-
-    
     print("\n[3/4] Processing...")
-    raw_out = np.fromfile(output_file, dtype=np.int8) # Assuming int8 model
+    # raw_out is already a numpy array, shape (1, 84, 2100) or similar, dtype=int8
+    if raw_out.shape != (1, 84, 2100):
+        print(f"Warning: Output shape {raw_out.shape} doesn't match expected (1, 84, 2100). Metadata might be needed.")
     
-    # Reshape
-
-    expected_elems = 1 * 84 * 2100
-    if raw_out.size == expected_elems:
-        raw_out = raw_out.reshape((1, 84, 2100))
-    else:
-        print(f"Warning: Output size {raw_out.size} doesn't match expected (1, 84, 2100). Metadata might be needed.")
-
- 
+    # Must match the models quantization parameters
     out_scale = 0.004194467328488827
     out_zp = -128
-    
     outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
     
     # 4. Postprocess
@@ -244,7 +239,6 @@ def main():
     if args.labels:
         with open(args.labels) as f:
             data = json.load(f)
-            # Handle {names: {0: "person", ...}} format from YAML->JSON check
             if "names" in data:
                 labels = {str(k): v for k, v in data["names"].items()}
             else:
@@ -259,8 +253,8 @@ def main():
     for label, conf, box in results:
         print(f"  {label:<15} Conf: {conf:.4f}  Box: {box.astype(int)}")
 
-    # 5. Save Annotated Image
-    if results:
+    # 5. Save Annotated Image (only if --save-image is set)
+    if args.save_image and results:
         print("\n[5/5] Saving result image...")
         try:
             img = Image.open(args.image)

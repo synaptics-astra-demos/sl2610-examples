@@ -1,2 +1,6 @@
-numpy
+# Local wheel file path
+./wheelhouse/torq_runtime-0.dev0+20260328t193647z.g0b9d557-cp312-cp312-linux_aarch64.whl
+
+# Other standard dependencies from PyPI
+numpy<2.0
 Pillow
