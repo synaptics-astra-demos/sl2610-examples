@@ -62,15 +62,60 @@ export XDG_RUNTIME_DIR=/var/run/user/0
 export WAYLAND_DISPLAY=wayland-1
 ```
 
-### Run the object detection job on an image file
+### Change to the Object Detection directory
+```bash
+cd Object_detection/standalone/
+```
+
+### Run the object detection on an image file
 
 **Note:** The Python runtime is compatible with newer compiler and runtime settings. Use a model that was compiled recently, including the provided model yolov8n_od.vmfb.  
 
+
 ```bash
-cd Object_detection/standalone/
 python3 object_detection.py \
   --model yolov8n_od.vmfb \
   --image dog_bike_car.jpg \
+  --labels labels.json \
+  --device torq
+```
+
+### Run the object detection on USB camera input or video file
+
+**Note:** A second Python script is provided for working with camera or video file input called `object_detection_video.py`.
+
+This script supports both video file and USB camera input, live display for USB, and JSON results output.
+
+#### Run with USB camera input
+
+To check available cameras, run the command `v4l2-ctl --list-devices` 
+
+For `--camera-device`, select a video device such as `/dev/video0`, or `auto`.
+
+```bash
+python3 object_detection_video.py \
+  --model yolov8n_od.vmfb \
+  --camera-device auto \
+  --labels labels.json \
+  --device torq
+```
+
+Optionally you can also set the following configurations:
+- `--output`, Output video file
+- `--json-results`, Output JSON file for detections
+- `--camera-width`, USB camera width
+- `--camera-height`, USB camera height
+- `--camera-fps`, USB camera frame rate
+- `--display`, Display annotated frames live
+- `--display-sink`, GStreamer video sink for live display
+
+
+#### Run with video file input (filesrc)
+
+```bash
+python3 object_detection_video.py \
+  --model yolov8n_od.vmfb \
+  --video <your_video>.mp4 \
   --labels labels.json \
   --device torq
 ```
