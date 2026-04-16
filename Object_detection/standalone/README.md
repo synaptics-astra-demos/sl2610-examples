@@ -120,6 +120,28 @@ python3 object_detection_video.py \
   --device torq
 ```
 
+#### Run with RTSP stream input
+
+To stream from an RTSP source (e.g., IP camera, network stream):
+
+```bash
+python3 object_detection_video.py \
+  --model yolov8n_od.vmfb \
+  --rtsp-url rtsp://<camera_ip>:<port>/<stream_path> \
+  --labels labels.json \
+  --device torq
+```
+
+Example with a common IP camera:
+```bash
+python3 object_detection_video.py \
+  --model yolov8n_od.vmfb \
+  --rtsp-url rtsp://admin:123456@10.46.130.109:8554/stream0 \
+  --labels labels.json \
+  --device torq \
+  --display
+```
+
 ### Model information
 The provided model is a quantized version of Yolo v8 Nano from Ultralytics with 320 x 320 input resolution and 80 output classes. The model has been compiled with the [Torq compiler](https://synaptics-torq.github.io/torq-compiler/v/latest/) for optimal performance on the Synaptics Torq and Coral NPU. 
 
