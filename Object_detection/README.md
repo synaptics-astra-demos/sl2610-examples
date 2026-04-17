@@ -1,6 +1,6 @@
 # YOLOv8 On-Device Object Detection Guide
 
-This guide describes how to run the standalone YOLOv8n object detection on the **Synaptics Astra SL26xx series** using the Torq/Iree Python runtime. 
+This guide describes how to run the YOLOv8n object detection on the **Synaptics Astra SL26xx series** using the Torq/Iree Python runtime. 
 
 ## Setting up Astra Machina Board
 For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
@@ -48,8 +48,6 @@ If offline
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
-This will also install the python runtime included as a .whl file in the wheelhouse folder.
-
 
 ## 🖼️ Running Object Detection Example
 
@@ -64,7 +62,7 @@ export WAYLAND_DISPLAY=wayland-1
 
 ### Change to the Object Detection directory
 ```bash
-cd Object_detection/standalone/
+cd object_detection/
 ```
 
 ### Run the object detection on an image file
@@ -74,8 +72,8 @@ cd Object_detection/standalone/
 
 ```bash
 python3 object_detection.py \
-  --model yolov8n_od.vmfb \
-  --image dog_bike_car.jpg \
+  --model ../models/yolov8n_od.vmfb \
+  --image ../samples/dog_bike_car.jpg \
   --labels labels.json \
   --device torq
 ```
@@ -94,7 +92,7 @@ For `--camera-device`, select a video device such as `/dev/video0`, or `auto`.
 
 ```bash
 python3 object_detection_video.py \
-  --model yolov8n_od.vmfb \
+  --model ../models/yolov8n_od.vmfb \
   --camera-device auto \
   --labels labels.json \
   --device torq
@@ -114,7 +112,7 @@ Optionally you can also set the following configurations:
 
 ```bash
 python3 object_detection_video.py \
-  --model yolov8n_od.vmfb \
+  --model ../models/yolov8n_od.vmfb \
   --video <your_video>.mp4 \
   --labels labels.json \
   --device torq
@@ -126,7 +124,7 @@ To stream from an RTSP source (e.g., IP camera, network stream):
 
 ```bash
 python3 object_detection_video.py \
-  --model yolov8n_od.vmfb \
+  --model ../models/yolov8n_od.vmfb \
   --rtsp-url rtsp://<camera_ip>:<port>/<stream_path> \
   --labels labels.json \
   --device torq
@@ -135,7 +133,7 @@ python3 object_detection_video.py \
 Example with a common IP camera:
 ```bash
 python3 object_detection_video.py \
-  --model yolov8n_od.vmfb \
+  --model ../models/yolov8n_od.vmfb \
   --rtsp-url rtsp://admin:123456@10.46.130.109:8554/stream0 \
   --labels labels.json \
   --device torq \
