@@ -412,7 +412,7 @@ def run_with_opencv(args, runner, labels):
         out_writer = cv2.VideoWriter(args.output, fourcc, out_fps, (width, height))
 
     all_detections = deque(maxlen=MAX_DETECTIONS_TO_KEEP)
-    last_detections = []
+    last_detection_labels = []
     json_writer = RotatingJsonArrayWriter(args.json_results, MAX_DETECTIONS_TO_KEEP)
 
     # Start background grabber for camera sources so slow inference never
@@ -450,13 +450,25 @@ def run_with_opencv(args, runner, labels):
             out_zp = -128
             outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
             detections = postprocess(outputs, orig_shape, pad_info, labels)
+            
+            detection_labels = [d[0] for d in detections]
 
-            for label, conf, _ in detections:
-                if label not in [d[0] for d in last_detections]:
-                    print(f"\n{frame_count} {label} {conf:.2f}", flush=True)
-                else:
-                    print("\r" + " " * 40 + "\r" + f"{frame_count} {label} {conf:.2f}", end="", flush=True)
-            last_detections = detections
+            objects_changed = False
+            if set(detection_labels) != set(last_detection_labels):
+                objects_changed = True
+
+            if objects_changed:
+                # jump to new line
+                print(f"\n", end="", flush=True)
+            else:        
+                # clear existing line
+                print("\r" + " " * 50 + "\r", end="", flush=True)
+            # print frame count
+            print(f"{frame_count} ", end="", flush=True)
+            # print objects
+            for label, conf, box in detections:
+                print(f" {label} {conf:.2f}", end="", flush=True)
+            last_detection_labels = detection_labels
 
             # -- draw (OpenCV) ------------------------------------------------
             annotated = bgr_frame.copy()
