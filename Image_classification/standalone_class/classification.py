@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone Board Inference Script
-Usage: python3 board_job.py --model model.vmfb --image image.jpg [--labels labels.json]
+Usage: python3 classification.py --model model.vmfb --image image.jpg [--labels labels.json]
 """
 import argparse
 import json
@@ -12,9 +12,10 @@ import time
 import sys
 import shutil
 from PIL import Image, ImageDraw, ImageFont
+import torq.runtime as torq_rt
 
 # ==========================================
-# Copied from helpers/mobilenet.py
+# Ported from helpers/mobilenet.py
 # ==========================================
 def preprocess_image(image_path, input_dtype=np.int8):
     # Load image
@@ -25,7 +26,6 @@ def preprocess_image(image_path, input_dtype=np.int8):
         sys.exit(1)
 
     orig_image = image.copy()
-
 
     width, height = image.size
     if width > height:
@@ -65,33 +65,18 @@ def dequantize_output(output_data, output_bias, output_scale):
 # ==========================================
 # Main Logic
 # ==========================================
-def run_inference(model_path, input_npy_path, output_bin_path, device="torq"):
-    print(f"Running inference on device '{device}'...")
-    
-    # Check if iree-run-module is available
-    # Assuming it's in PATH or current dir
-    executable = "iree-run-module"
-    
-    cmd = [
-        executable,
-        f"--device={device}",
-        f"--module={model_path}",
-        "--function=main",
-        f"--input=@{input_npy_path}",
-        f"--output=@{output_bin_path}"
-    ]
-    
-    # Print command for verify
-    print(f"Command: {' '.join(cmd)}")
-    
-    try:
-        subprocess.check_call(cmd)
-    except FileNotFoundError:
-        print(f"Error: '{executable}' not found in PATH.")
-        sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running inference: {e}")
-        sys.exit(1)
+def run_inference_torq(runner, input_data):
+    outputs = runner.infer([input_data])  # <-- wrap in list
+    if isinstance(outputs, (list, tuple)):
+        if len(outputs) == 1:
+            return outputs[0]
+        raise RuntimeError(
+            f"Expected a single output tensor from the model, but got {len(outputs)} "
+            "outputs. This script currently supports only single-output models. "
+            "Please update the code to select the desired output tensor."
+        )
+    # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
+    return outputs
 
 def main():
     parser = argparse.ArgumentParser(description="Run complete inference workflow on board")
@@ -109,48 +94,47 @@ def main():
         print(f"Image file not found: {args.image}")
         sys.exit(1)
 
+    # 0. Load the model with Torq Runtime
+    runner = torq_rt.VMFBInferenceRunner(
+        args.model,
+        device_uri=args.device,
+        function="main",
+        load_model_to_mem=True
+    )
+
     # 1. Preprocess
     print("\n[1/4] Preprocessing image...")
     # MobileNetV2 usually expects int8 input
     try:
         input_data = preprocess_image(args.image, np.int8)
-        input_npy = "input_board.npy"
-        np.save(input_npy, input_data)
-        print(f"Saved input to {input_npy} (shape {input_data.shape})")
     except Exception as e:
         print(f"Preprocessing failed: {e}")
         sys.exit(1)
 
     # 2. Run Inference
     print("\n[2/4] Running model on board...")
-    output_bin = "output_board.bin"
-    if os.path.exists(output_bin):
-        os.remove(output_bin)
-        
-    start_time = time.time()
-    run_inference(args.model, input_npy, output_bin, args.device)
-    duration = time.time() - start_time
-    print(f"Inference completed in {duration:.4f} seconds")
 
-    if not os.path.exists(output_bin):
-        print("Output file not generated!")
+    try:
+        raw_out = run_inference_torq(runner, input_data)
+    except Exception as e:
+        print(f"Inference failed: {e}")
         sys.exit(1)
+    print(f"Time: {runner.infer_time_ms:.3f}ms")
 
     # 3. Postprocess
     print("\n[3/4] Processing output...")
-    # Read raw bytes
-    raw_output = np.fromfile(output_bin, dtype=np.int8)
-    print(f"Raw output size: {raw_output.size} bytes")
+    
+    if raw_out.shape != (1, 10000):
+        print(f"Warning: Output shape {raw_out.shape} doesn't match expected (1, 10000). Metadata might be needed.")
     
     # Scale/Bias from test_run_classification_e2e.py
     OUTPUT_SCALE = 256.0
     OUTPUT_BIAS = -128
     
-    probs = dequantize_output(raw_output, OUTPUT_BIAS, OUTPUT_SCALE)
+    probs = dequantize_output(raw_out, OUTPUT_BIAS, OUTPUT_SCALE)
     
     # 4. Results
     print("\n[4/4] Classification Results:")
-    predicted_idx = np.argmax(probs)
     
     # Load labels if provided
     labels = {}
@@ -172,15 +156,17 @@ def main():
             print(f"Warning: Failed to load labels: {e}")
 
     # Top 5
-    sorted_indices = np.argsort(probs)[::-1]
+    probs = probs.flatten() # Ensure it's 1D
+    predicted_idx = np.argmax(probs)
+    sorted_indices = np.argsort(probs)[::-1] # Descending order
     
     for i in range(min(5, len(probs))):
         idx = sorted_indices[i]
         score = probs[idx]
-        label_str = labels.get(idx, f"Class {idx}")
+        label_str = labels.get(int(idx), f"Class {idx}")
         print(f"  {i+1}. {label_str} : {score:.6f}")
 
-    print(f"\nTop Prediction: {labels.get(predicted_idx, f'Class {predicted_idx}')}")
+    print(f"\nTop Prediction: {labels.get(int(predicted_idx), f'Class {predicted_idx}')}")
 
     # 5. Save Annotated Image
     print("\n[5/5] Saving result image...")
@@ -238,7 +224,7 @@ def main():
             font = ImageFont.load_default()
 
         # Create clear label text (Label only, no score)
-        top_label = labels.get(predicted_idx, f"Class {predicted_idx}")
+        top_label = labels.get(int(predicted_idx), f"Class {predicted_idx}")
         # Cleanup label (remove ", ..." extra names if present)
         top_label = top_label.split(",")[0] 
         text = f"{top_label}"
@@ -279,7 +265,7 @@ def main():
                     "jpegdec", "!",
                     "videoconvert", "!",
                     "imagefreeze", "!",
-                    "waylandsink", "fullscreen=true"
+                    "waylandsink"
                 ]
                 
                 # Run in background
@@ -303,9 +289,6 @@ def main():
     except Exception as e:
         print(f"Failed to save result image: {e}")
 
-    # Cleanup (optional)
-    # os.remove(input_npy)
-    # os.remove(output_bin)
 
 if __name__ == "__main__":
     main()
