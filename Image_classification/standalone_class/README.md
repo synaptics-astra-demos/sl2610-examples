@@ -2,76 +2,73 @@
 
 This guide describes how to run the standalone MobileNetV2 image classification workflow directly on the target board.
 
-## Prerequisites
+## Setting up Astra Machina Board
+For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
 
-### 1. Board Requirements
+## Prerequisites
 Ensure your board has the following installed:
 
-**Use OOBE Image**: Download and flash the SL2619 Astra SDK OOBE Image
-- **Python 3**
-- **Python Libraries**: `numpy`, `pillow` (PIL)
-- **Runtime**: `iree-run-module` binary (must be in system `$PATH`)
-- **Display (Optional)**: `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, `gstreamer1.0-plugins-bad` (specifically `gst-launch-1.0`, `videoscale`, `imagefreeze`, `waylandsink`)
-- **Fonts (Optional)**: `ttf-liberation` or `ttf-dejavu` for readable labels.
+**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from:
+- [SL2619 OOBE Image](https://github.com/synaptics-astra/sdk/releases)
+- The image includes important software components such as `git`, `python3`, and `gstreamer`.
 
-### 2. Required Files
-You need to have the following files ready on your host machine:
+## 🔧 Installation
+ 
+### Clone the Repository
 
-| File                      | Description                                   |
-|---------------------------|-----------------------------------------------|
-| `classification.py`       | The standalone Python inference script.       |
-| `requirements_board.txt`  | List of Python dependencies.                  |
-| `mbv2.vmfb`               | The compiled model binary (VMFB).             |
-| `labels.json`             | JSON file containing class labels.            |
-| `image.jpg`               | The input image to classify (e.g. gold fish). |
-
-
-## Step 1: Transfer Files to Board
-
-Use `scp` to copy all artifacts to a directory on the board (e.g., `/home/root/standalone`).
-
-> **Note**: Replace `<BOARD_IP>` with your actual board IP address.
+Clone the repository using the following command:
 
 ```bash
-# 1. Create a directory on the board
-ssh root@<BOARD_IP> "mkdir -p /home/root/standalone"
-
-# 2. Copy the inference script and requirements
-scp classification.py root@<BOARD_IP>:/home/root/standalone/
-scp requirements_board.txt root@<BOARD_IP>:/home/root/standalone/
-
-# 3. Copy the model and assets
-scp mbv2.vmfb root@<BOARD_IP>:/home/root/standalone/
-scp labels.json root@<BOARD_IP>:/home/root/standalone/
-scp image.jpg root@<BOARD_IP>:/home/root/standalone/
+git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
 ```
-
-## Step 2: Install Dependencies (On Board)
-
-If the libraries are not already installed on your board image, you can install them using pip:
+Navigate to the Repository Directory:
 
 ```bash
-pip3 install -r requirements_board.txt
+cd sl2610-examples
 ```
 
----
+### Setup Python Environment
 
-## Step 3: Run Inference
+To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
+
+```bash
+python3 -m venv .venv --system-site-packages
+source .venv/bin/activate
+```
+
+Install dependencies
+
+If online
+```bash
+pip install -r requirements.txt
+```
+
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
+## Runing the Image Classification Example
 
 Login to the board and execute the script. The script handles preprocessing, inference, and post-processing (label mapping) automatically.
 
+Optionally Set up display environment (Required for visual output).
+
 ```bash
-# 1. SSH into the board
-ssh root@<BOARD_IP>
-
-# 2. Go to the directory
-cd /home/root/standalone
-
-# 3. Set up display environment (Required for visual output)
 export XDG_RUNTIME_DIR=/var/run/user/0
 export WAYLAND_DISPLAY=wayland-1
+```
 
-# 4. Run the classification job
+### Go to the directory
+
+```bash
+cd Image_classification/
+```
+### Run the image classification on an image file
+
+**Note:** The Python runtime is compatible with newer compiler and runtime settings. Use a model that was compiled recently, including the provided model mbv2.vmfb.  
+
+```bash
 python3 classification.py \
   --model mbv2.vmfb \
   --image image.jpg \
@@ -87,23 +84,19 @@ You should see output similar to the following, confirming the model ran success
 
 ```text
 [1/4] Preprocessing image...
-Saved input to input_board.npy (shape (1, 224, 224, 3))
 
 [2/4] Running model on board...
-Running inference on device 'torq'...
-Command: iree-run-module --device=torq --module=mbv2.vmfb --function=main --input=@input_board.npy --output=@output_board.bin
-EXEC @main
-Inference completed in 0.0506 seconds
+Time: 7.248ms
 
 [3/4] Processing output...
-Raw output size: 1000 bytes
+Warning: Output shape (1, 1000) doesn't match expected (1, 10000). Metadata might be needed.
 
 [4/4] Classification Results:
-  1. goldfish, Carassius auratus : 0.921875
-  2. starfish, sea star : 0.675781
-  3. sea slug, nudibranch : 0.617188
-  4. rock beauty, Holocanthus tricolor : 0.613281
-  5. hummingbird : 0.582031
+  1. goldfish, Carassius auratus : 0.593750
+  2. starfish, sea star : 0.019531
+  3. triceratops : 0.015625
+  4. rock beauty, Holocanthus tricolor : 0.011719
+  5. cricket : 0.007812
 
 Top Prediction: goldfish, Carassius auratus
 
