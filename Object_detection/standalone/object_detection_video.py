@@ -10,7 +10,8 @@ import numpy as np
 import os
 import subprocess
 import sys
-from PIL import Image, ImageDraw, ImageFont
+import threading
+import time
 import torq.runtime as torq_rt
 
 MAX_DETECTIONS_TO_KEEP = 60
@@ -19,55 +20,39 @@ MAX_DETECTIONS_TO_KEEP = 60
 # Helpers (Ported from helpers/yolo.py)
 # ==========================================
 
-def preprocess_frame(frame_rgb, target_size=(320, 320)):
+def preprocess_frame_cv(bgr_frame, target_size=(320, 320)):
     """
-    Preprocess frame (numpy array HWC RGB) for inference
+    OpenCV/NumPy version of preprocess_frame — accepts BGR numpy array directly.
+    Avoids PIL and the BGR->RGB conversion, saving ~15-20ms per frame.
     Returns: quantized input (1, 320, 320, 3), pad_info, orig_shape
     """
-    img = Image.fromarray(frame_rgb)
-    w, h = img.size
+    import cv2
     new_w, new_h = target_size
-    
+    h, w = bgr_frame.shape[:2]
+
     # Scale ratio (new / old)
     r = min(new_w / w, new_h / h)
-    
-    # Compute padding
     new_unpad = (int(round(w * r)), int(round(h * r)))
-    dw, dh = (new_w - new_unpad[0]) / 2, (new_h - new_unpad[1]) / 2
 
     # Resize
-    img_resized = img.resize(new_unpad, Image.BILINEAR)
-    
-    # Pad
-    # Create a new image with grey background (114, 114, 114)
-    padded_img = Image.new("RGB", target_size, (114, 114, 114))
-    
-    # Paste resized image at center
-    top, left = int(round(dh - 0.1)), int(round(dw - 0.1))
-    padded_img.paste(img_resized, (left, top))
-    
-    # Preprocessing for Model
-    # Normalize to [0, 1] and add batch dimension
-    input_data = np.array(padded_img, dtype=np.float32)
-    input_data /= 255.0
-    
-    # === QUANTIZE INPUT (Float32 -> Int8) ===
+    resized = cv2.resize(bgr_frame, new_unpad, interpolation=cv2.INTER_LINEAR)
 
-    # Must match the models quantization parameters
+    # Pad with grey (114, 114, 114)
+    padded = np.full((new_h, new_w, 3), 114, dtype=np.uint8)
+    top  = int(round((new_h - new_unpad[1]) / 2 - 0.1))
+    left = int(round((new_w - new_unpad[0]) / 2 - 0.1))
+    padded[top:top + new_unpad[1], left:left + new_unpad[0]] = resized
+
+    # BGR -> RGB, normalize, quantize
+    rgb = padded[:, :, ::-1].astype(np.float32) / 255.0
     in_scale = 0.003921568859368563
-    in_zp = -128
-    
-    # Quantize: (float / scale) + zp
-    input_data = (input_data / in_scale + in_zp)
-    input_data = np.clip(input_data, -128, 127) # Ensure range
-    input_data = input_data.astype(np.int8) 
-    # ========================================
+    in_zp    = -128
+    input_data = np.clip(rgb / in_scale + in_zp, -128, 127).astype(np.int8)
+    input_data = np.expand_dims(input_data, axis=0)  # (1, 320, 320, 3)
 
-    input_data = np.expand_dims(input_data, axis=0) # (1, 320, 320, 3)
-    
-    pad_info = (top / new_h, left / new_w) # (dh_ratio, dw_ratio)
-    
-    return input_data, pad_info, (h, w) # Return original (h, w)
+    pad_info = (top / new_h, left / new_w)
+    return input_data, pad_info, (h, w)
+
 
 def dequantize_out(y, out_scale, out_zp, int8=True):
     if int8:
@@ -231,26 +216,11 @@ def resolve_camera_device(camera_device):
     return camera_device
 
 
-def build_input_pipeline(args):
-    if args.video:
-        return (
-            f"filesrc location={args.video} ! qtdemux name=demux demux.video_0 !  h264parse ! avdec_h264 ! synavideoconvertscale !"
-            "video/x-raw,format=RGB, width=640, height=480 ! appsink name=sink emit-signals=true max-buffers=1"
-        )
-
-    return (
-        f"v4l2src device={args.camera_device} ! "
-        f"video/x-raw,width={args.camera_width},height={args.camera_height},framerate={args.camera_fps}/1 ! "
-        "synavideoconvertscale ! video/x-raw,format=RGB, width=640,height=480 ! "
-        "appsink name=sink emit-signals=true max-buffers=1 drop=true"
-    )
-
-
 def create_display_pipeline(Gst, width, height, fps, sink_name):
     pipeline_str = (
         "appsrc name=display_src format=time is-live=true block=true ! "
-        f"video/x-raw,format=RGB,width={width},height={height},framerate={fps}/1 ! "
-        "videoconvert ! "
+        f"video/x-raw,format=BGRA,width={width},height={height},framerate={fps}/1 ! "
+        "synavideoconvertscale ! "
         f"{sink_name} sync=false"
     )
     pipeline = Gst.parse_launch(pipeline_str)
@@ -324,14 +294,261 @@ class RotatingJsonArrayWriter:
     def close(self):
         self._close_current_file()
 
+class FrameGrabber:
+    """
+    Daemon thread that continuously reads from a VideoCapture and keeps only
+    the most recent frame.  The inference loop calls grabber.read() which
+    returns immediately with the latest frame, so slow inference never
+    accumulates a backlog of stale frames.
+    """
+    def __init__(self, cap):
+        self._cap = cap
+        self._frame = None
+        self._lock = threading.Lock()
+        self._stopped = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stopped:
+            ret, frame = self._cap.read()
+            if not ret:
+                self._stopped = True
+                break
+            with self._lock:
+                self._frame = frame
+
+    def read(self):
+        """Return (ok, frame_copy) — frame_copy is None if no frame yet."""
+        with self._lock:
+            if self._frame is None:
+                return False, None
+            return True, self._frame.copy()
+
+    def stop(self):
+        self._stopped = True
+        self._thread.join(timeout=1.0)
+
+
+def shutdown_display_pipeline(Gst, pipeline, appsrc):
+    if pipeline is None:
+        return
+
+    if appsrc is not None:
+        try:
+            appsrc.emit("end-of-stream")
+        except Exception:
+            pass
+
+    bus = pipeline.get_bus()
+    if bus is not None:
+        bus.timed_pop_filtered(
+            Gst.SECOND,
+            Gst.MessageType.EOS | Gst.MessageType.ERROR,
+        )
+
+    pipeline.set_state(Gst.State.READY)
+    pipeline.get_state(Gst.SECOND)
+    pipeline.set_state(Gst.State.NULL)
+    pipeline.get_state(Gst.SECOND)
+
+
+def run_with_opencv(args, runner, labels):
+    """OpenCV capture + preprocess main loop with optional GStreamer display."""
+    import cv2
+
+    Gst = None
+    display_pipeline = None
+    display_appsrc = None
+    display_fps = 0
+    if args.display:
+        import gi
+        gi.require_version('Gst', '1.0')
+        from gi.repository import Gst as _Gst
+        _Gst.init(None)
+        Gst = _Gst
+
+    if args.display and Gst is None:
+        raise RuntimeError("Failed to initialize GStreamer display")
+
+    # -- open source ----------------------------------------------------------
+    if args.rtsp_url:
+        cap = cv2.VideoCapture(args.rtsp_url)
+        source_desc = args.rtsp_url
+    elif args.video:
+        cap = cv2.VideoCapture(args.video)
+        source_desc = args.video
+    else:
+        # camera_device may be a path ("/dev/video0") or an integer index
+        dev = args.camera_device
+        try:
+            cam_index = int(dev)
+        except (ValueError, TypeError):
+            cam_index = dev
+        # Force V4L2 backend to avoid spurious GStreamer warnings
+        cap = cv2.VideoCapture(cam_index, cv2.CAP_V4L2)
+        if args.camera_width:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.camera_width)
+        if args.camera_height:
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.camera_height)
+        if args.camera_fps:
+            cap.set(cv2.CAP_PROP_FPS, args.camera_fps)
+        source_desc = dev
+
+    if not cap.isOpened():
+        print(f"ERROR: Cannot open source: {source_desc}")
+        sys.exit(1)
+
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or args.camera_fps or 15
+    out_fps = int(src_fps) if src_fps > 0 else 15
+    display_fps = out_fps if out_fps > 0 else 15
+
+    # -- optional output writer ------------------------------------------------
+    out_writer = None
+    if args.output:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out_writer = cv2.VideoWriter(args.output, fourcc, out_fps, (width, height))
+
+    all_detections = deque(maxlen=MAX_DETECTIONS_TO_KEEP)
+    last_detection_labels = []
+    json_writer = RotatingJsonArrayWriter(args.json_results, MAX_DETECTIONS_TO_KEEP)
+
+    # Start background grabber for camera sources so slow inference never
+    # reads stale buffered frames. For video files use cap.read() directly
+    grabber = None
+    if args.camera_device or args.rtsp_url:
+        grabber = FrameGrabber(cap)
+
+    print(f"Processing {source_desc} with Torq Python runtime... Press Ctrl+C to stop.")
+    frame_count = 0
+
+    try:
+        while True:
+            # -- pull frame ---------------------------------------------------
+            if grabber is not None:
+                # Wait until the grabber has at least one frame
+                while True:
+                    ret, bgr_frame = grabber.read()
+                    if ret:
+                        break
+                    time.sleep(0.005)
+            else:
+                ret, bgr_frame = cap.read()
+            if not ret or bgr_frame is None:
+                break
+
+            # -- preprocess ---------------------------------------------------
+            input_data, pad_info, orig_shape = preprocess_frame_cv(bgr_frame)
+
+            # -- inference ----------------------------------------------------
+            raw_out = run_inference_torq(runner, input_data)
+
+            # -- postprocess --------------------------------------------------
+            out_scale = 0.004194467328488827
+            out_zp = -128
+            outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
+            detections = postprocess(outputs, orig_shape, pad_info, labels)
+            
+            detection_labels = [d[0] for d in detections]
+
+            objects_changed = False
+            if set(detection_labels) != set(last_detection_labels):
+                objects_changed = True
+
+            if objects_changed:
+                # jump to new line
+                print(f"\n", end="", flush=True)
+            else:        
+                # clear existing line
+                print("\r" + " " * 50 + "\r", end="", flush=True)
+            # print frame count
+            print(f"{frame_count} ", end="", flush=True)
+            # print objects
+            for label, conf, box in detections:
+                print(f" {label} {conf:.2f}", end="", flush=True)
+            last_detection_labels = detection_labels
+
+            # -- draw (OpenCV) ------------------------------------------------
+            annotated = bgr_frame.copy()
+            frame_detections = []
+            for label, conf, box in detections:
+                x1, y1, w_box, h_box = [float(v) for v in box]
+                x2, y2 = x1 + w_box, y1 + h_box
+                cv2.rectangle(annotated, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+                text = f"{label} {conf:.2f}"
+                text_y = int(y1) - 8 if int(y1) - 8 > 10 else int(y1) + 18
+                cv2.putText(annotated, text, (int(x1), text_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+                frame_detections.append({
+                    "label": label,
+                    "confidence": float(conf),
+                    "bounding_box": {
+                        "origin": {"x": int(round(x1)), "y": int(round(y1))},
+                        "size":   {"x": int(round(w_box)), "y": int(round(h_box))}
+                    }
+                })
+
+            # -- JSON write ---------------------------------------------------
+            frame_result = {"frame": frame_count, "detections": frame_detections}
+            all_detections.append(frame_result)
+            json_writer.append(frame_result)
+
+            # -- display / write ----------------------------------------------
+            if args.display:
+                assert Gst is not None
+                if display_pipeline is None:
+                    display_pipeline, display_appsrc = create_display_pipeline(
+                        Gst,
+                        width,
+                        height,
+                        display_fps,
+                        args.display_sink,
+                    )
+                    display_pipeline.set_state(Gst.State.PLAYING)
+
+                rendered_frame = cv2.cvtColor(annotated, cv2.COLOR_BGR2BGRA)
+                ret = push_display_frame(
+                    Gst,
+                    display_appsrc,
+                    rendered_frame,
+                    frame_count,
+                    display_fps,
+                )
+                if ret != Gst.FlowReturn.OK:
+                    print(f"Warning: failed to display frame: {ret}")
+
+            if out_writer is not None:
+                out_writer.write(annotated)
+
+            frame_count += 1
+
+    except KeyboardInterrupt:
+        print("Interrupted by user.")
+    finally:
+        if grabber is not None:
+            grabber.stop()
+        cap.release()
+        if out_writer is not None:
+            out_writer.release()
+        if args.display:
+            assert Gst is not None
+            shutdown_display_pipeline(Gst, display_pipeline, display_appsrc)
+        json_writer.close()
+        print(f"Done. Processed {frame_count} frames. Output: {args.output if args.output else 'not saved'}")
+        print(
+            f"Detection results saved to: {args.json_results} "
+            f"(previous file: {json_writer.rotated_path if os.path.exists(json_writer.rotated_path) else 'none'})"
+        )
+        print(f"Kept the last {len(all_detections)} detections in memory.")
+
+
 def main():
-    import gi
-    gi.require_version('Gst', '1.0')
-    from gi.repository import Gst
-    Gst.init(None)
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--rtsp-url", help="RTSP stream URL")
     source_group.add_argument("--video", help="Path to video file")
     source_group.add_argument(
         "--camera-device",
@@ -371,146 +588,8 @@ def main():
             else:
                 labels = data
 
-    pipeline_str = build_input_pipeline(args)
-    pipeline = Gst.parse_launch(pipeline_str)
-    appsink = pipeline.get_by_name('sink')
-    display_pipeline = None
-    display_appsrc = None
-
-    cv2 = None
-    fourcc = None
-    out_writer = None
-    if args.output:
-        try:
-            import cv2
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        except ImportError:
-            cv2 = None
-
-    all_detections = deque(maxlen=MAX_DETECTIONS_TO_KEEP)
-    last_detections = []
-    json_writer = RotatingJsonArrayWriter(args.json_results, MAX_DETECTIONS_TO_KEEP)
-
-    source_desc = args.video if args.video else args.camera_device
-    print(f"Processing {source_desc} with Torq Python runtime... Press Ctrl+C to stop.")
-    try:
-        pipeline.set_state(Gst.State.PLAYING)
-        frame_count = 0
-        try:
-            while True:
-                sample = appsink.emit('pull-sample')
-                if sample is None:
-                    break
-                buf = sample.get_buffer()
-                caps = sample.get_caps()
-                structure = caps.get_structure(0)
-                width = structure.get_value('width')
-                height = structure.get_value('height')
-                success, map_info = buf.map(Gst.MapFlags.READ)
-                if not success:
-                    break
-                frame_data = np.frombuffer(map_info.data, dtype=np.uint8)
-                frame_rgb = frame_data.reshape((height, width, 3)).copy()
-                buf.unmap(map_info)
-                # Preprocess and run inference
-                input_data, pad_info, orig_shape = preprocess_frame(frame_rgb)
-                raw_out = run_inference_torq(runner, input_data)
-                out_scale = 0.004194467328488827
-                out_zp = -128
-                outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
-                detections = postprocess(outputs, orig_shape, pad_info, labels)
-                
-                for label, conf, _ in detections:
-                    # compare the object labels with last detections
-                    if label not in [d[0] for d in last_detections]:
-                        # new object: commit it on its own line
-                        print(f"\n{frame_count} {label} {conf:.2f}", flush=True)
-                    else:
-                        # existing object: overwrite the current line
-                        print("\r" + " " * 40 + "\r" + f"{frame_count} {label} {conf:.2f}", end="", flush=True)
-                    
-                last_detections = detections
-
-
-                # Draw detections
-                img = Image.fromarray(frame_rgb)
-                draw = ImageDraw.Draw(img)
-                if frame_count == 0:
-                    try:
-                        label_font = ImageFont.truetype("/usr/share/fonts/ttf/LiberationSans-Regular.ttf", 25)
-                    except OSError:
-                        label_font = ImageFont.load_default()
-                frame_detections = []
-                for label, conf, box in detections:
-                    x1, y1, w_box, h_box = [float(x) for x in box]
-                    x2 = x1 + w_box
-                    y2 = y1 + h_box
-                    draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-                    text = f"{label}"
-                    text_pos = [x1, y1 - 25]
-                    if text_pos[1] < 0: text_pos[1] = y1 + 5
-                    draw.text((text_pos[0], text_pos[1]), text, fill="red", font=label_font)
-                    frame_detections.append({
-                        "label": label,
-                        "confidence": float(conf),
-                        "bounding_box": {
-                            "origin": {"x": int(round(x1)), "y": int(round(y1))},
-                            "size": {"x": int(round(w_box)), "y": int(round(h_box))}
-                        }
-                    })
-                frame_result = {
-                    "frame": frame_count,
-                    "detections": frame_detections
-                }
-                all_detections.append(frame_result)
-                json_writer.append(frame_result)
-                rendered_frame = np.array(img)
-                if args.display:
-                    if display_pipeline is None:
-                        display_fps = args.camera_fps if args.camera_device else 15
-                        display_pipeline, display_appsrc = create_display_pipeline(
-                            Gst,
-                            width,
-                            height,
-                            display_fps,
-                            args.display_sink,
-                        )
-                        display_pipeline.set_state(Gst.State.PLAYING)
-                    ret = push_display_frame(
-                        Gst,
-                        display_appsrc,
-                        rendered_frame,
-                        frame_count,
-                        args.camera_fps if args.camera_device else 15,
-                    )
-                    if ret != Gst.FlowReturn.OK:
-                        print(f"Warning: failed to display frame: {ret}")
-                if args.output and cv2:
-                    if out_writer is None:
-                        out_writer = cv2.VideoWriter(args.output, fourcc, 15, (width, height))
-                    out_writer.write(cv2.cvtColor(rendered_frame, cv2.COLOR_RGB2BGR))
-                frame_count += 1
-        except KeyboardInterrupt:
-            print("Interrupted by user.")
-        finally:
-            pipeline.set_state(Gst.State.NULL)
-            if display_pipeline is not None:
-                if display_appsrc is not None:
-                    display_appsrc.emit("end-of-stream")
-                display_pipeline.set_state(Gst.State.NULL)
-            if out_writer:
-                out_writer.release()
-            json_writer.close()
-            print(f"Done. Processed {frame_count} frames. Output: {args.output if args.output else 'not saved'}")
-            print(
-                f"Detection results saved to: {args.json_results} "
-                f"(previous file: {json_writer.rotated_path if os.path.exists(json_writer.rotated_path) else 'none'})"
-            )
-            print(f"Kept the last {len(all_detections)} detections in memory.")
-    except Exception as e:
-        json_writer.close()
-        print(f"Torq Python runtime inference failed while processing {source_desc}: {e}")
-        sys.exit(2)
+    run_with_opencv(args, runner, labels)
 
 if __name__ == "__main__":
     main()
+
