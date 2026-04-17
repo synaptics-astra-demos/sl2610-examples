@@ -444,6 +444,8 @@ def run_with_opencv(args, runner, labels):
 
             # -- inference ----------------------------------------------------
             raw_out = run_inference_torq(runner, input_data)
+            
+            infer_time = runner.infer_time_ms
 
             # -- postprocess --------------------------------------------------
             out_scale = 0.004194467328488827
@@ -463,8 +465,8 @@ def run_with_opencv(args, runner, labels):
             else:        
                 # clear existing line
                 print("\r" + " " * 50 + "\r", end="", flush=True)
-            # print frame count
-            print(f"{frame_count} ", end="", flush=True)
+            # print frame count, infer time
+            print(f"{frame_count} ({infer_time:.3f} ms)", end="", flush=True)
             # print objects
             for label, conf, box in detections:
                 print(f" {label} {conf:.2f}", end="", flush=True)
