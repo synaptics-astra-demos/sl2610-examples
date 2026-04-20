@@ -1,6 +1,6 @@
 # MobileNetV2 On-Device Classification Guide
 
-This guide describes how to run the standalone MobileNetV2 image classification workflow directly on the target board.
+This guide describes how to run the MobileNetV2 image classification workflow directly on the target board.
 
 ## Setting up Astra Machina Board
 For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
@@ -62,7 +62,7 @@ export WAYLAND_DISPLAY=wayland-1
 ### Go to the directory
 
 ```bash
-cd Image_classification/
+cd image_classification/
 ```
 ### Run the image classification on an image file
 
@@ -70,8 +70,8 @@ cd Image_classification/
 
 ```bash
 python3 classification.py \
-  --model mbv2.vmfb \
-  --image image.jpg \
+  --model ../models/mbv2.vmfb \
+  --image ../samples/cat.jpg \
   --labels labels.json \
   --device torq
 ```

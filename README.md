@@ -47,16 +47,25 @@ To get started, set up your Python environment. This step ensures all required d
 ```bash
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
-pip install --upgrade pip
+```
+
+Install dependencies
+
+If online
+```bash
+pip install -r requirements.txt
+```
+
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
 ## Object Detection
 
-Follow the steps in /Object_detection/standalone/README.md to see how to perform object detection using YoloV8 on a single image. 
-
-Follow the steps in /Object_detection/pipeline/README.md to see how to perform object detection using YoloV8 on incoming video using Gstreamer. 
+Follow the steps in /object_detection/README.md to see how to perform object detection using YoloV8 on a single image. 
 
 ## Image Classification
 
-Follow the steps in /Image_Classification/standalone_class/README.md to see how to perform image classification using MobileNetV2 on a single image. 
+Follow the steps in /image_classification/README.md to see how to perform image classification using MobileNetV2 on a single image. 
 
