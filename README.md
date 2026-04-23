@@ -61,6 +61,11 @@ If offline
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
+[Warning!] Due to a temporary dependency issue, the torq runtime must be installed separately with this command.
+```
+pip install --no-deps ./wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
+```
+
 ## Object Detection
 
 Follow the steps in /object_detection/README.md to see how to perform object detection using YoloV8 on a single image. 
