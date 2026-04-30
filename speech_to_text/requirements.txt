@@ -1,0 +1,10 @@
+tqdm~=4.67.1
+requests
+tokenizers
+torch
+torchaudio
+onnxruntime
+silero_vad
+sounddevice
+soundfile
+ml_dtypes>=0.4.0
