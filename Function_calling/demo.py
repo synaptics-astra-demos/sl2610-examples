@@ -11,14 +11,22 @@ Two modes:
 
 By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
 to drive an Adafruit Mini Sparkle Motion + WS2812B ring over USB-CDC.
+
+The REPL supports slash commands (``/help``, ``/tools``, ``/stats``,
+``/clear``, ``/exit``) and persists prompt history across sessions to
+``~/.coral_demo_history``. Press Ctrl-D or type ``/exit`` to leave;
+empty Enter just re-prompts.
 """
 
 from __future__ import annotations
 
 import argparse
+import atexit
+import readline
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from cpu_governor import ensure_performance_governor
@@ -32,6 +40,9 @@ DEFAULT_MODEL = (
     Path(__file__).resolve().parent.parent
     / "models" / "functiongemma-physical-ai-v6-Q5_K_M.gguf"
 )
+HISTORY_FILE = Path.home() / ".coral_demo_history"
+HISTORY_LIMIT = 1000
+PROMPT = ">>> "
 
 
 _USE_ANSI = sys.stdout.isatty() and sys.stderr.isatty()
@@ -41,6 +52,47 @@ _RESET = "\033[0m" if _USE_ANSI else ""
 
 def _dim(text: str) -> str:
     return f"{_DIM}{text}{_RESET}"
+
+
+_HELP_TEXT = """\
+Slash commands:
+  /?, /help            Show this help
+  /tools               List the tools the model can call
+  /stats               Show session statistics
+  /clear               Clear the screen (model stays loaded)
+  /exit, /bye, /quit   Exit
+Anything else is sent to the model as a prompt."""
+
+_TOOLS_TEXT = """\
+Available tools (v6, 11 functions):
+  turn_on_lights                  Turn all LEDs on (default white)
+  turn_off_lights                 Turn all LEDs off
+  set_led_color <color>           Set RGB color (target / brightness optional)
+  blink_lights [count] [color]    Discrete blink pattern
+  set_neopixel_pattern <pattern>  Animated ring (rainbow, chase, fade, pulse, sparkle, solid)
+  play_buzzer <pattern>           beep, double_beep, chirp, siren, alarm, success, error
+  set_alarm <duration|time>       Schedule alarm (label optional)
+  cancel_alarm [label]            Cancel one or all alarms
+  list_alarms                     List active alarms
+  get_system_status [metric]      CPU / memory / temperature / NPU
+  respond <message>               Natural-language fallback when no tool fits"""
+
+
+@dataclass
+class SessionStats:
+    turns: int = 0
+    tool_calls: int = 0
+    total_latency_ms: float = 0.0
+    last_latency_ms: float = 0.0
+
+    def render(self) -> str:
+        if self.turns == 0:
+            return "Session: 0 turns yet."
+        avg = self.total_latency_ms / self.turns
+        return (
+            f"Session: {self.turns} turn(s), {self.tool_calls} tool call(s), "
+            f"avg {avg:.0f} ms / turn, last {self.last_latency_ms:.0f} ms"
+        )
 
 
 class _Spinner:
@@ -85,7 +137,41 @@ class _Spinner:
             self._stop.wait(0.1)
 
 
-def run_turn(model: FunctionGemmaModel, dispatcher: Dispatcher, prompt: str) -> None:
+def _setup_history() -> None:
+    """Load prompt history from disk and arrange to save it on exit."""
+    try:
+        readline.read_history_file(HISTORY_FILE)
+    except (FileNotFoundError, OSError):
+        pass
+    readline.set_history_length(HISTORY_LIMIT)
+    atexit.register(_save_history)
+
+
+def _save_history() -> None:
+    try:
+        readline.write_history_file(HISTORY_FILE)
+    except OSError:
+        pass
+
+
+def _print_async(msg: str) -> None:
+    """Print a background-thread message without trashing the readline prompt.
+
+    Carriage-returns to the start of the prompt line, clears it, prints
+    the message, then re-emits the prompt with whatever the user had
+    already typed so they can keep editing.
+    """
+    saved = readline.get_line_buffer()
+    sys.stdout.write(f"\r\033[K{msg}\n{PROMPT}{saved}")
+    sys.stdout.flush()
+
+
+def run_turn(
+    model: FunctionGemmaModel,
+    dispatcher: Dispatcher,
+    prompt: str,
+    stats: SessionStats | None = None,
+) -> None:
     with _Spinner("thinking", clear_on_exit=True):
         result = model.generate(prompt)
     for call_result in dispatcher.dispatch_all(result.tool_calls):
@@ -93,6 +179,36 @@ def run_turn(model: FunctionGemmaModel, dispatcher: Dispatcher, prompt: str) -> 
     n = len(result.tool_calls)
     plural = "s" if n != 1 else ""
     print(_dim(f"  ({n} tool call{plural} · {result.latency_ms:.0f} ms)"))
+    print()
+    if stats is not None:
+        stats.turns += 1
+        stats.tool_calls += n
+        stats.total_latency_ms += result.latency_ms
+        stats.last_latency_ms = result.latency_ms
+
+
+def _handle_slash(cmd: str, stats: SessionStats) -> str:
+    """Return "exit" to break the loop, "ok" to re-prompt, "unknown" otherwise."""
+    head = cmd.split(maxsplit=1)[0].lower()
+    if head in ("/exit", "/bye", "/quit"):
+        return "exit"
+    if head in ("/?", "/help"):
+        print(_HELP_TEXT)
+        print()
+        return "ok"
+    if head == "/clear":
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+        return "ok"
+    if head == "/tools":
+        print(_TOOLS_TEXT)
+        print()
+        return "ok"
+    if head == "/stats":
+        print(stats.render())
+        print()
+        return "ok"
+    return "unknown"
 
 
 def main() -> None:
@@ -118,7 +234,8 @@ def main() -> None:
 
     wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud) \
         if args.wled_port else None
-    dispatcher = Dispatcher(HardwareDevice(wled=wled))
+    hardware = HardwareDevice(wled=wled, on_async_event=_print_async)
+    dispatcher = Dispatcher(hardware)
 
     if args.prompt:
         run_turn(model, dispatcher, args.prompt)
@@ -129,16 +246,26 @@ def main() -> None:
     with _Spinner("Warming up (one-time ~50s prefill on the 2-core A55)"):
         model.generate("hello")
 
-    print(_dim("Ready. Ctrl-D or empty line to exit."))
+    _setup_history()
+    stats = SessionStats()
+    print(_dim("Ready. /help for commands, Ctrl-D or /exit to leave."))
     while True:
         try:
-            prompt = input(">>> ").strip()
+            line = input(PROMPT).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
-        if not prompt:
-            break
-        run_turn(model, dispatcher, prompt)
+        if not line:
+            continue
+        if line.startswith("/"):
+            outcome = _handle_slash(line, stats)
+            if outcome == "exit":
+                break
+            if outcome == "unknown":
+                print(_dim(f"unknown command: {line.split()[0]} (try /help)"))
+                print()
+            continue
+        run_turn(model, dispatcher, line, stats=stats)
 
 
 if __name__ == "__main__":

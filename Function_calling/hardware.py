@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from wled import WLEDSerialClient, resolve_color
 
@@ -119,8 +119,13 @@ def _compute_trigger(duration: str | None, time_str: str | None) -> datetime:
 class HardwareDevice:
     """All HAT-side hardware behind one façade. WLED ring is optional."""
 
-    def __init__(self, wled: WLEDSerialClient | None = None) -> None:
+    def __init__(
+        self,
+        wled: WLEDSerialClient | None = None,
+        on_async_event: Callable[[str], None] | None = None,
+    ) -> None:
         self._wled = wled
+        self._on_async_event = on_async_event
         self._alarms: dict[str, _Alarm] = {}
         self._alarm_lock = threading.Lock()
         log.info(
@@ -237,7 +242,10 @@ class HardwareDevice:
         return {"alarms": items}
 
     def _fire_alarm(self, label: str) -> None:
-        log.warning("ALARM FIRED: %s", label)
+        if self._on_async_event is not None:
+            self._on_async_event(f"ALARM FIRED: {label}")
+        else:
+            log.warning("ALARM FIRED: %s", label)
         self.play_buzzer(pattern="alarm")
         self.blink_lights(count=5, color="red", speed="fast")
         with self._alarm_lock:
