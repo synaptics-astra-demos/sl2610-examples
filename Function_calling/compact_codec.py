@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-TOOLS_PATH = Path(__file__).resolve().parent.parent / "tools.json"
+TOOLS_PATH = Path(__file__).resolve().parent / "tools.json"
 
 TOKEN_TO_NAME: dict[str, str | None] = {
     "<tool_0>": "turn_on_lights",
