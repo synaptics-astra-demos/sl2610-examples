@@ -58,7 +58,7 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 ### Download the Fine-Tuned Model
 
-Download the v6 GGUF (260 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
+Download the v6 GGUF (248 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
 
 ```bash
 mkdir -p models && cd models
