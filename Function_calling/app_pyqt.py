@@ -1,11 +1,9 @@
 """PyQt5 launcher for the FunctionGemma physical-AI demo.
 
-Mirrors the entry pattern used by ``astra-2610-assistant-UI-app/src/app_voice_pyqt.py``.
 By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
 to drive an Adafruit Mini Sparkle Motion over USB-CDC.
 
-Run:
-    source ../setup_wayland.sh
+Run (after exporting the wayland env vars listed in README.md):
     python3 app_pyqt.py --wled-port /dev/ttyACM0
 """
 
@@ -19,6 +17,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import QApplication
 
 from chat_window import ChatWindow
+from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
 from hardware import HardwareDevice
 from llamacpp import FunctionGemmaModel
@@ -33,6 +32,7 @@ DEFAULT_MODEL = (
 
 
 def main() -> int:
+    ensure_performance_governor()
     p = argparse.ArgumentParser(
         description="FunctionGemma physical-AI PyQt demo on SL2619",
     )

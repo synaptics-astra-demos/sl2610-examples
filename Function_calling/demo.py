@@ -21,6 +21,7 @@ import threading
 import time
 from pathlib import Path
 
+from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
 from hardware import HardwareDevice
 from llamacpp import FunctionGemmaModel
@@ -95,6 +96,7 @@ def run_turn(model: FunctionGemmaModel, dispatcher: Dispatcher, prompt: str) -> 
 
 
 def main() -> None:
+    ensure_performance_governor()
     p = argparse.ArgumentParser(
         description="FunctionGemma physical-AI demo on SL2619",
     )
