@@ -157,12 +157,14 @@ def _save_history() -> None:
 def _print_async(msg: str) -> None:
     """Print a background-thread message without trashing the readline prompt.
 
-    Carriage-returns to the start of the prompt line, clears it, prints
-    the message, then re-emits the prompt with whatever the user had
-    already typed so they can keep editing.
+    Pushes the existing prompt up with a leading newline, writes the
+    message, then re-emits a fresh ``>>> ``. In-progress typing on the
+    original prompt line is lost (the user must retype) — that's a
+    deliberate trade-off: trying to preserve the buffer via
+    ``readline.get_line_buffer()`` returned stale text on the SL2619's
+    dumb-terminal session and was worse than just losing it.
     """
-    saved = readline.get_line_buffer()
-    sys.stdout.write(f"\r\033[K{msg}\n{PROMPT}{saved}")
+    sys.stdout.write(f"\n{msg}\n{PROMPT}")
     sys.stdout.flush()
 
 
