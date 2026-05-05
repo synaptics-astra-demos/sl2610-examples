@@ -16,7 +16,7 @@ from typing import Any
 
 from compact_codec import ToolCall, parse_compact
 
-TOOLS_PATH = Path(__file__).resolve().parent.parent / "tools.json"
+TOOLS_PATH = Path(__file__).resolve().parent / "tools.json"
 
 
 @dataclass(frozen=True)

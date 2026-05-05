@@ -69,3 +69,7 @@ Follow the steps in /object_detection/README.md to see how to perform object det
 
 Follow the steps in /image_classification/README.md to see how to perform image classification using MobileNetV2 on a single image. 
 
+## Function Calling
+
+Follow the steps in /Function_calling/README.md to see how to run an on-device voice + text function-calling demo using a fine-tuned FunctionGemma 270M LLM that maps natural-language commands to tool calls and dispatches them to real HAT hardware (status LEDs, piezo buzzer, and an optional WLED-driven Neopixel ring).
+

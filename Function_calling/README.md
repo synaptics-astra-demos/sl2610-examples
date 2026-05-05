@@ -1,81 +1,64 @@
-# FunctionGemma Physical-AI Demo for SL2619
+# FunctionGemma On-Device Function-Calling Guide
 
-A fine-tuned FunctionGemma 270M model that turns natural-language commands
+This guide describes how to run the FunctionGemma 270M physical-AI demo
+directly on the target board. The model turns natural-language commands
 into tool calls dispatched to real HAT hardware on the Coral Dev Board:
 status LEDs, piezo buzzer, MIPI camera, and an optional Adafruit Mini
 Sparkle Motion driving a WS2812B Neopixel ring over USB serial.
 
 The model emits compact tool calls (`<tool_N>(args)<end>`) which decode
 ~5x faster on the 2-core A55 CPU than canonical JSON tool calls, putting
-the whole loop comfortably under one second per turn.
+each turn comfortably under one second after the first.
 
-## Project Structure
-
-```
-functiongemma
-├── README.md                   This file
-├── README_pyQt.md              PyQt UI variant
-├── requirements.txt            Pure-Python deps
-├── setup_wayland.sh            Wayland env vars (source before running PyQt)
-├── llama_cpp_python-...whl     Bundled aarch64 wheel for the SL2619
-├── tools.json                  11-tool function schema
-├── models/                     Place the GGUF here (see below)
-└── src/
-    ├── demo.py                 CLI: python3 demo.py --prompt "..."
-    ├── app_pyqt.py             PyQt UI launcher
-    ├── llamacpp.py             llama-cpp wrapper, builds prompt + parses output
-    ├── compact_codec.py        Compact tool-call format decoder
-    ├── hardware.py             Status LEDs + buzzer + camera + alarms
-    ├── wled.py                 WLED JSON-over-USB-CDC serial client
-    ├── dispatcher.py           Routes parsed tool calls to hardware
-    ├── chat_window.py          PyQt main window
-    ├── metrics_panel.py        Top-pane metrics tiles + sparklines
-    ├── command_log.py          Bottom-pane scrolling tool log
-    ├── metrics_provider.py     psutil-backed metrics sampler
-    └── theme.py                Colors + typography
-```
-
-## Setting up the Astra Machina Board
-
-For instructions on how to set up the Coral Dev Board, see the [Setting up
-the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)
-guide.
+## Setting up Astra Machina Board
+For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
 
 ## Prerequisites
-
 Ensure your board has the following installed:
 
-**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from
-the [Synaptics Astra SDK releases](https://github.com/synaptics-astra/sdk/releases).
-The image includes important software components such as `git`, `python3`,
-and `gstreamer`.
+**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from:
+- [SL2619 OOBE Image](https://github.com/synaptics-astra/sdk/releases)
+- The image includes important software components such as `git`, `python3`, `gstreamer`, and `gpiod`.
 
-## Installation
+## 🔧 Installation
 
-Clone the repository:
+### Clone the Repository
+
+Clone the repository using the following command:
 
 ```bash
-git clone https://github.com/BrinqAI/functiongemma-physical-ai.git
-cd functiongemma-physical-ai
+git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
+```
+Navigate to the Repository Directory:
+
+```bash
+cd sl2610-examples
 ```
 
-Set up a Python virtual environment that inherits the system PyQt5 and
-numpy already provided by the OOBE image:
+### Setup Python Environment
+
+To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
 
 ```bash
-python3 -m venv --system-site-packages .venv
+python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 ```
 
-Install the bundled `llama-cpp-python` aarch64 wheel and the rest of the
-dependencies:
+Install dependencies
 
+If online
 ```bash
-pip install ./llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 pip install -r requirements.txt
 ```
 
-Download the fine-tuned GGUF model (260 MB, Q5_K_M, compact format, v6):
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
+### Download the Fine-Tuned Model
+
+Download the v6 GGUF (260 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
 
 ```bash
 mkdir -p models && cd models
@@ -83,47 +66,95 @@ wget https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main/
 cd ..
 ```
 
-(Optional) Plug an Adafruit Mini Sparkle Motion (product 6314) running
-WLED firmware + a WS2812B Neopixel ring (Adafruit 2539) into one of the
-USB-A ports on the board, then verify it enumerates:
+### (Optional) Wire up the Neopixel Ring
+
+Plug an Adafruit Mini Sparkle Motion (product 6314) running WLED firmware + a WS2812B Neopixel ring (Adafruit 2539) into one of the USB-A ports on the board, then verify it enumerates:
 
 ```bash
 ls /dev/ttyACM*
 ```
 
-## Running the example
+## Running the Function-Calling Example
 
-### CLI
+The first model invocation prefills the tool-declaration prompt and takes ~45-50 s on the 2-core A55 CPU. The interactive REPL pays this cost once at start-up so every subsequent turn is sub-second; one-shot mode pays it on every invocation. Default to the REPL.
 
-From the `functiongemma/` directory:
+Optionally set up the display environment (required for the PyQt UI variant):
 
 ```bash
-cd src
+export XDG_RUNTIME_DIR=/var/run/user/0
+export WAYLAND_DISPLAY=wayland-1
+export QT_QPA_PLATFORM=wayland
+export WESTON_DISABLE_GBM_MODIFIERS=true
+```
+
+### Change to the Function Calling directory
+
+```bash
+cd Function_calling/
+```
+
+### Run the interactive CLI demo
+
+```bash
+python3 demo.py
+```
+
+The model warms up once (~50 s, shown by a spinner), then accepts prompts at the `>>>` prompt. Press Ctrl-D or enter an empty line to exit.
+
+With the optional Mini Sparkle Motion ring attached:
+
+```bash
+python3 demo.py --wled-port /dev/ttyACM0
+```
+
+### Run a one-shot prompt
+
+For scripting or smoke tests you can pass a single prompt and exit (note: this still pays the ~50 s prefill on every invocation):
+
+```bash
 python3 demo.py --prompt "Turn the lights red and beep twice"
 ```
 
-With the optional Mini Sparkle Motion attached:
+### Run the PyQt UI
+
+A PyQt5 UI variant is provided for the 7" Wayland panel: top half shows live system metrics with sparklines, bottom half shows a scrolling log of natural-language prompts and the tool calls they produced.
 
 ```bash
-python3 demo.py --prompt "Play rainbow on the ring" --wled-port /dev/ttyACM0
+python3 app_pyqt.py
 ```
 
-### PyQt UI
+With the optional Mini Sparkle Motion ring attached:
 
-See [`README_pyQt.md`](./README_pyQt.md).
-
-## Expected output
-
-```
-[1/3] Loading model from /home/root/functiongemma-physical-ai/models/functiongemma-physical-ai-v6-Q5_K_M.gguf
-[2/3] Running inference on prompt: 'Turn the lights red and beep twice'
-  -> 2 tool call(s) in 612 ms: ['set_led_color', 'play_buzzer']
-[3/3] Dispatching to hardware
-  - set_led_color: color = red
-  - play_buzzer: pattern = double_beep
+```bash
+python3 app_pyqt.py --wled-port /dev/ttyACM0
 ```
 
-## Tool schema (11 functions)
+For full-screen on the 7" panel:
+
+```bash
+python3 app_pyqt.py --fullscreen
+```
+
+Press `Ctrl+P` for a screenshot to `/tmp/`. Press `Esc` to quit.
+
+---
+
+## Expected Output
+
+You should see output similar to the following, confirming the model parsed the natural-language prompt into tool calls and dispatched them to the HAT hardware:
+
+```text
+Loading model from functiongemma-physical-ai-v6-Q5_K_M.gguf done in 4.6s.
+Warming up (one-time ~50s prefill on the 2-core A55) done in 48.3s.
+Ready. Ctrl-D or empty line to exit.
+>>> Turn the lights red and beep twice
+  set_led_color: color = red
+  play_buzzer: pattern = double_beep
+  (2 tool calls · 612 ms)
+>>>
+```
+
+## Tool Schema (11 functions, v6)
 
 | Tool | Args | Effect |
 |---|---|---|
@@ -139,20 +170,14 @@ See [`README_pyQt.md`](./README_pyQt.md).
 | `get_system_status` | metric? | CPU / memory / temperature / NPU |
 | `respond` | message | Natural-language reply when no tool fits |
 
-> Camera + vision tools (`capture_photo`, `describe_scene`) were dropped in v6 — out of scope for this demo. Camera-related prompts are routed to `respond` instead.
-
 The full schema with descriptions lives in `tools.json`.
 
 ## Hardware
 
-- **Coral Dev Board (SL2619)** with the Grinn Coral HAT — RGB status LEDs at
-  `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on
-  `BUZZERn` (binary GPIO).
-- **Optional Adafruit Mini Sparkle Motion (6314)** running WLED firmware,
-  enumerated as `/dev/ttyACM0` over USB-CDC. Drives a 36-pixel WS2812B
-  ring (Adafruit 2539). Pass `--wled-port /dev/ttyACM0` to enable.
+- **Coral Dev Board (SL2619)** with the Grinn Coral HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
+- **Optional Adafruit Mini Sparkle Motion (6314)** running WLED firmware, enumerated as `/dev/ttyACM0` over USB-CDC. Drives a 36-pixel WS2812B ring (Adafruit 2539). Pass `--wled-port /dev/ttyACM0` to enable.
 
-## Model
+## Model Information
 
 `huggingface.co/BrinqAI/functiongemma-270m-physical-ai` —
 `functiongemma-physical-ai-v6-Q5_K_M.gguf`. Base model `google/functiongemma-270m-it`,

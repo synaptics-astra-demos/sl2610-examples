@@ -1,6 +1,10 @@
-# Local wheel file path
+# Local wheel files
 ./wheelhouse/torq_runtime-0.dev0+20260328t193647z.g0b9d557-cp312-cp312-linux_aarch64.whl
+./wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 
 # Other standard dependencies from PyPI
 numpy<2.0
 Pillow
+PyQt5>=5.15
+psutil>=5.9
+pyserial>=3.5
