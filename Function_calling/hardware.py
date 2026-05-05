@@ -66,11 +66,22 @@ def _run(cmd: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[st
     )
 
 
+_HAS_GPIOD = (
+    shutil.which("gpiofind") is not None
+    and shutil.which("gpioset") is not None
+)
+
+
 def _gpio_buzzer(state: bool) -> None:
     """Set the HAT buzzer via gpioset + gpiofind.
 
     ``gpiofind BUZZERn`` prints "<chip> <line>"; gpioset takes that + a value.
+    No-ops silently on systems without libgpiod (a one-time warning is logged
+    from ``HardwareDevice.__init__``); the traceback was cluttering REPL
+    output on dev boards without the HAT wired in.
     """
+    if not _HAS_GPIOD:
+        return
     try:
         find = _run(["gpiofind", "BUZZERn"])
         if find.returncode != 0 or not find.stdout.strip():
@@ -79,8 +90,8 @@ def _gpio_buzzer(state: bool) -> None:
             return
         chip, line = find.stdout.strip().split(maxsplit=1)
         _run(["gpioset", chip, f"{line}={1 if state else 0}"])
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        log.exception("gpioset/gpiofind failed")
+    except subprocess.TimeoutExpired:
+        log.warning("gpioset/gpiofind timed out (state=%s)", state)
 
 
 def _read_cpu_temp_c() -> float | None:
@@ -128,10 +139,13 @@ class HardwareDevice:
         self._on_async_event = on_async_event
         self._alarms: dict[str, _Alarm] = {}
         self._alarm_lock = threading.Lock()
+        if not _HAS_GPIOD:
+            log.warning("libgpiod (gpiofind/gpioset) not in PATH — buzzer is a no-op")
         log.info(
-            "HardwareDevice ready (status_leds=%d, wled=%s)",
+            "HardwareDevice ready (status_leds=%d, wled=%s, gpiod=%s)",
             sum(1 for p in STATUS_LEDS.values() if p.exists()),
             "yes" if wled else "no",
+            "yes" if _HAS_GPIOD else "no",
         )
 
     # ------------------------------------------------------------------ LEDs
