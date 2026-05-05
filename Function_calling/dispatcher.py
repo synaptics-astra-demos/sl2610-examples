@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from compact_codec import ToolCall
 from hardware import HardwareDevice
-
-log = logging.getLogger("functiongemma.dispatcher")
 
 
 @dataclass(frozen=True)
@@ -54,7 +51,6 @@ class Dispatcher:
         try:
             return handler(call.arguments)
         except Exception as exc:  # noqa: BLE001 — dispatcher boundary
-            log.exception("Handler for %s failed", call.name)
             return DispatchResult(tool=call.name, status="error", message=str(exc))
 
     # -------------------------------------------------------------- handlers
