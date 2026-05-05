@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format.",
+  "version": "0.2.0",
+  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. v7: 10 tools (list_alarms removed; out-of-scope alarm-query prompts route via respond()).",
   "tools": [
     {
       "function": {
@@ -144,16 +144,6 @@
               "description": "Label of the alarm to cancel. Omit to cancel all."
             }
           }
-        }
-      }
-    },
-    {
-      "function": {
-        "name": "list_alarms",
-        "description": "List all currently scheduled alarms with their trigger times.",
-        "parameters": {
-          "type": "OBJECT",
-          "properties": {}
         }
       }
     },

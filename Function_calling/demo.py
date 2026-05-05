@@ -38,7 +38,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent.parent
-    / "models" / "functiongemma-physical-ai-v6-Q5_K_M.gguf"
+    / "models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"
 HISTORY_LIMIT = 1000
@@ -64,7 +64,7 @@ Slash commands:
 Anything else is sent to the model as a prompt."""
 
 _TOOLS_TEXT = """\
-Available tools (v6, 11 functions):
+Available tools (v7, 10 functions):
   turn_on_lights                  Turn all LEDs on (default white)
   turn_off_lights                 Turn all LEDs off
   set_led_color <color>           Set RGB color (target / brightness optional)
@@ -73,7 +73,6 @@ Available tools (v6, 11 functions):
   play_buzzer <pattern>           beep, double_beep, chirp, siren, alarm, success, error
   set_alarm <duration|time>       Schedule alarm (label optional)
   cancel_alarm [label]            Cancel one or all alarms
-  list_alarms                     List active alarms
   get_system_status [metric]      CPU / memory / temperature / NPU
   respond <message>               Natural-language fallback when no tool fits"""
 

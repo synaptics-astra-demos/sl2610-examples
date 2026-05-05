@@ -58,11 +58,11 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 ### Download the Fine-Tuned Model
 
-Download the v6 GGUF (248 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
+Download the v7 GGUF (248 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
 
 ```bash
 mkdir -p models && cd models
-wget https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main/functiongemma-physical-ai-v6-Q5_K_M.gguf
+wget https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main/functiongemma-physical-ai-v7-Q5_K_M.gguf
 cd ..
 ```
 
@@ -144,17 +144,17 @@ Press `Ctrl+P` for a screenshot to `/tmp/`. Press `Esc` to quit.
 You should see output similar to the following, confirming the model parsed the natural-language prompt into tool calls and dispatched them to the HAT hardware:
 
 ```text
-Loading model from functiongemma-physical-ai-v6-Q5_K_M.gguf done in 4.6s.
+Loading model from functiongemma-physical-ai-v7-Q5_K_M.gguf done in 4.6s.
 Warming up (one-time ~50s prefill on the 2-core A55) done in 48.3s.
-Ready. Ctrl-D or empty line to exit.
+Ready. /help for commands, Ctrl-D or /exit to leave.
 >>> Turn the lights red and beep twice
-  set_led_color: color = red
-  play_buzzer: pattern = double_beep
+  set_led_color: color=red
+  play_buzzer: pattern=double_beep
   (2 tool calls · 612 ms)
 >>>
 ```
 
-## Tool Schema (11 functions, v6)
+## Tool Schema (10 functions, v7)
 
 | Tool | Args | Effect |
 |---|---|---|
@@ -166,11 +166,11 @@ Ready. Ctrl-D or empty line to exit.
 | `play_buzzer` | pattern | Named pattern on the binary-GPIO buzzer (beep, double_beep, chirp, siren, alarm, success, error) |
 | `set_alarm` | duration\|time, label? | Schedule alarm (buzzer + flashing) |
 | `cancel_alarm` | label? | Cancel one or all alarms |
-| `list_alarms` | - | List active alarms |
 | `get_system_status` | metric? | CPU / memory / temperature / NPU |
 | `respond` | message | Natural-language reply when no tool fits |
 
-The full schema with descriptions lives in `tools.json`.
+The full schema with descriptions lives in `tools.json`. v7 dropped `list_alarms` —
+alarm-query prompts ("what alarms do I have?") route via `respond()` instead.
 
 ## Hardware
 
@@ -180,8 +180,9 @@ The full schema with descriptions lives in `tools.json`.
 ## Model Information
 
 `huggingface.co/BrinqAI/functiongemma-270m-physical-ai` —
-`functiongemma-physical-ai-v6-Q5_K_M.gguf`. Base model `google/functiongemma-270m-it`,
-fine-tuned on 2000 train / 200 eval examples covering all 11 tools and
-multi-tool routines (200 row eval: single-tool routing **95.5%**, multi-tool
-exact-match 23.9%, parse failure 0.5%). Compact output format
-(`<tool_N>(args)<end>`) for ~5x faster decode on the 2-core A55 CPU.
+`functiongemma-physical-ai-v7-Q5_K_M.gguf`. Base model `google/functiongemma-270m-it`,
+fine-tuned on 2000 train / 250 eval examples covering all 10 tools and
+multi-tool routines (250 row eval on the Q5_K_M GGUF: overall **86.8%**,
+single-tool **92.8%**, multi-tool exact-match **75.0%**, parse failure **0.0%**).
+Compact output format (`<tool_N>(args)<end>`) for ~5x faster decode on the
+2-core A55 CPU.

@@ -62,7 +62,6 @@ class Dispatcher:
             "play_buzzer": self._buzzer,
             "set_alarm": self._set_alarm,
             "cancel_alarm": self._cancel_alarm,
-            "list_alarms": self._list_alarms,
             "get_system_status": self._status,
             "respond": self._respond,
         }
@@ -153,12 +152,6 @@ class Dispatcher:
         which = f"label={args['label']}" if "label" in args else "all"
         return DispatchResult("cancel_alarm", "ok",
                               f"cancelled {n} ({which})", detail=result)
-
-    def _list_alarms(self, args: dict[str, Any]) -> DispatchResult:
-        result = self._hw.list_alarms()
-        return DispatchResult("list_alarms", "ok",
-                              f"{len(result['alarms'])} alarm(s)",
-                              detail=result)
 
     def _status(self, args: dict[str, Any]) -> DispatchResult:
         metric = args.get("metric", "all")

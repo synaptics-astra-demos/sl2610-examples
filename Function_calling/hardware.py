@@ -232,15 +232,6 @@ class HardwareDevice:
                 cancelled = []
         return {"cancelled": cancelled}
 
-    def list_alarms(self) -> dict[str, list[dict[str, str]]]:
-        with self._alarm_lock:
-            items = [
-                {"label": a.label,
-                 "trigger_at": a.trigger_at.isoformat(timespec="seconds")}
-                for a in self._alarms.values()
-            ]
-        return {"alarms": items}
-
     def _fire_alarm(self, label: str) -> None:
         if self._on_async_event is not None:
             self._on_async_event(f"ALARM FIRED: {label}")

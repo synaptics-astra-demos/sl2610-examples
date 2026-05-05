@@ -3,9 +3,9 @@
 The model was fine-tuned to emit tool calls in a compact form (~10-20 tokens
 per call, ~5x faster decode than canonical JSON on the 2-core A55):
 
-    <tool_2>("red")<end>           -> set_led_color(color="red")
-    <tool_5>("beep")<end>          -> play_buzzer(pattern="beep")
-    <tool_10>("hello there")<end>  -> respond(message="hello there")
+    <tool_2>("red")<end>          -> set_led_color(color="red")
+    <tool_5>("beep")<end>         -> play_buzzer(pattern="beep")
+    <tool_9>("hello there")<end>  -> respond(message="hello there")
 
 Argument order is positional: required params first, then optional params in
 schema declaration order. Trailing nulls are trimmed.
@@ -30,9 +30,8 @@ TOKEN_TO_NAME: dict[str, str | None] = {
     "<tool_5>": "play_buzzer",
     "<tool_6>": "set_alarm",
     "<tool_7>": "cancel_alarm",
-    "<tool_8>": "list_alarms",
-    "<tool_9>": "get_system_status",
-    "<tool_10>": "respond",
+    "<tool_8>": "get_system_status",
+    "<tool_9>": "respond",
     "<tool_none>": None,
 }
 
