@@ -1,0 +1,4 @@
+PyQt5>=5.15
+psutil>=5.9
+pyserial>=3.5
+numpy<2.0
