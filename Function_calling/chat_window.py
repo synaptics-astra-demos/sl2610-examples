@@ -28,6 +28,7 @@ from llamacpp import FunctionGemmaModel
 from metrics_panel import MetricsPanel
 from metrics_provider import MetricsPump, PsutilProvider
 from theme import PALETTE, TYPE
+from voice import VoicePipeline
 
 SUGGESTED_PROMPTS: tuple[str, ...] = (
     "turn on the lights",
@@ -122,8 +123,20 @@ class InferenceWorker(QObject):
             self.failed.emit(str(exc))
 
 
+class VoiceSignals(QObject):
+    """Marshal voice-pipeline emits (worker thread) onto the Qt main thread."""
+
+    text = pyqtSignal(str)
+    state = pyqtSignal(str)
+
+
 class ChatWindow(QMainWindow):
-    def __init__(self, model: FunctionGemmaModel, dispatcher: Dispatcher) -> None:
+    def __init__(
+        self,
+        model: FunctionGemmaModel,
+        dispatcher: Dispatcher,
+        voice: VoicePipeline | None = None,
+    ) -> None:
         super().__init__()
         self.setWindowTitle("FunctionGemma Physical AI Demo")
         self.resize(800, 1280)
@@ -144,9 +157,24 @@ class ChatWindow(QMainWindow):
         self.send_btn.setCursor(Qt.PointingHandCursor)
         self.send_btn.clicked.connect(self._on_send)
 
+        self._voice = voice
+        self._voice_signals: VoiceSignals | None = None
+        self.mic_btn: QPushButton | None = None
+        if voice is not None:
+            self._voice_signals = VoiceSignals()
+            self._voice_signals.text.connect(self._on_voice_text)
+            voice.set_callback(self._voice_signals.text.emit)
+            self.mic_btn = QPushButton("Mic")
+            self.mic_btn.setObjectName("PrimaryButton")
+            self.mic_btn.setCheckable(True)
+            self.mic_btn.setCursor(Qt.PointingHandCursor)
+            self.mic_btn.clicked.connect(self._on_mic_toggle)
+
         input_row = QHBoxLayout()
         input_row.setSpacing(12)
         input_row.addWidget(self.input, stretch=1)
+        if self.mic_btn is not None:
+            input_row.addWidget(self.mic_btn)
         input_row.addWidget(self.send_btn)
 
         self.status = QLabel("Ready.")
@@ -217,6 +245,29 @@ class ChatWindow(QMainWindow):
         for chip in self._prompt_chips:
             chip.setEnabled(enabled)
 
+    def _on_mic_toggle(self, checked: bool) -> None:
+        if self._voice is None or self.mic_btn is None:
+            return
+        if checked:
+            self._voice.start()
+            self.mic_btn.setText("Stop")
+            self._set_status("Listening...", "thinking")
+            self.send_btn.setEnabled(False)
+            self._set_chips_enabled(False)
+        else:
+            self._voice.stop()
+            self.mic_btn.setText("Mic")
+            self._set_status("Ready.")
+            self.send_btn.setEnabled(True)
+            self._set_chips_enabled(True)
+
+    def _on_voice_text(self, text: str) -> None:
+        if self.mic_btn is not None and self.mic_btn.isChecked():
+            self.mic_btn.setChecked(False)
+            self._on_mic_toggle(False)
+        self.input.setText(text)
+        self._on_send()
+
     def _on_send(self) -> None:
         text = self.input.text().strip()
         if not text:
@@ -264,5 +315,7 @@ class ChatWindow(QMainWindow):
         self.log.append_system(msg)
 
     def closeEvent(self, event: Any) -> None:
+        if self._voice is not None:
+            self._voice.stop()
         self.pump.stop()
         super().closeEvent(event)

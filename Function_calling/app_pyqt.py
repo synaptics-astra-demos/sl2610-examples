@@ -22,6 +22,7 @@ from dispatcher import Dispatcher
 from hardware import HardwareDevice
 from llamacpp import FunctionGemmaModel
 from theme import apply_theme
+from voice import make_voice_pipeline
 from wled import WLEDSerialClient
 
 
@@ -59,7 +60,9 @@ def main() -> int:
     hardware = HardwareDevice(wled=wled)
     dispatcher = Dispatcher(hardware)
 
-    win = ChatWindow(model=model, dispatcher=dispatcher)
+    voice = make_voice_pipeline(on_text=lambda _t: None)
+
+    win = ChatWindow(model=model, dispatcher=dispatcher, voice=voice)
     if args.fullscreen or os.environ.get("FUNCTIONGEMMA_FULLSCREEN", "").lower() in ("1", "true", "yes"):
         win.showFullScreen()
     else:
@@ -67,6 +70,8 @@ def main() -> int:
     try:
         return app.exec_()
     finally:
+        if voice is not None:
+            voice.stop()
         hardware.cleanup()
 
 

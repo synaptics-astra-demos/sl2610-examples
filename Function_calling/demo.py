@@ -33,6 +33,7 @@ from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
 from hardware import HardwareDevice
 from llamacpp import FunctionGemmaModel
+from voice import VoicePipeline, make_voice_pipeline
 from wled import WLEDSerialClient
 
 
@@ -228,6 +229,12 @@ def main() -> None:
     )
     p.add_argument("--wled-baud", type=int, default=115200,
                    help="WLED serial baud rate (default 115200)")
+    p.add_argument(
+        "--voice",
+        action="store_true",
+        help="Enable voice input. Honors CORAL_VOICE (off|stub|moonshine) "
+             "and CORAL_MIC. Spoken utterances are queued as if typed.",
+    )
     args = p.parse_args()
 
     with _Spinner(f"Loading model from {args.model.name}"):
@@ -238,19 +245,48 @@ def main() -> None:
     hardware = HardwareDevice(wled=wled, on_async_event=_print_async)
     dispatcher = Dispatcher(hardware)
 
+    voice: VoicePipeline | None = None
+    if args.voice:
+        voice = make_voice_pipeline(on_text=lambda _t: None)
+        if voice is None:
+            print(_dim(
+                "voice unavailable: set CORAL_VOICE=stub|moonshine and install "
+                "sounddevice + silero-vad (requires libportaudio2)."
+            ))
+
     try:
         if args.prompt:
             run_turn(model, dispatcher, args.prompt)
             return
 
-        # Prime the prefix cache up front so turn 1 from the user is
-        # sub-second. This pays the ~48 s cold prefill once, visibly,
-        # before we accept input.
-        with _Spinner("Warming up (one-time ~50s prefill on the 2-core A55)"):
-            model.generate("hello")
-
         _setup_history()
         stats = SessionStats()
+        turn_lock = threading.Lock()
+
+        # Prime the prefix cache up front so turn 1 from the user is
+        # sub-second. This pays the ~48 s cold prefill once, visibly,
+        # before we accept input. Holding turn_lock during warmup keeps
+        # any --voice utterances spoken in this window from piling up:
+        # the audio thread blocks at _on_voice_text rather than queuing
+        # 50 s of buffered model.generate calls.
+        with turn_lock, _Spinner(
+            "Warming up (one-time ~50s prefill on the 2-core A55)"
+        ):
+            model.generate("hello")
+
+        def _on_voice_text(text: str) -> None:
+            text = text.strip()
+            if not text:
+                return
+            with turn_lock:
+                _print_async(f"(voice) {text}")
+                run_turn(model, dispatcher, text, stats=stats)
+
+        if voice is not None:
+            voice.set_callback(_on_voice_text)
+            voice.start()
+            print(_dim("voice: listening (CORAL_VOICE active)."))
+
         print(_dim("Ready. /help for commands, Ctrl-D or /exit to leave."))
         while True:
             try:
@@ -268,8 +304,11 @@ def main() -> None:
                     print(_dim(f"unknown command: {line.split()[0]} (try /help)"))
                     print()
                 continue
-            run_turn(model, dispatcher, line, stats=stats)
+            with turn_lock:
+                run_turn(model, dispatcher, line, stats=stats)
     finally:
+        if voice is not None:
+            voice.stop()
         hardware.cleanup()
 
 
