@@ -1,0 +1,13 @@
+../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
+
+numpy<2.0
+tqdm~=4.67.1
+requests
+tokenizers
+onnxruntime
+#silero_vad
+silero-vad-notorch
+sounddevice
+soundfile
+PyQt5
+ml_dtypes>=0.4.0

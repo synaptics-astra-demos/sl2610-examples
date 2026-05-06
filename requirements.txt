@@ -1,6 +1,8 @@
 # Local wheel files
-./wheelhouse/torq_runtime-0.dev0+20260328t193647z.g0b9d557-cp312-cp312-linux_aarch64.whl
 ./wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
+# torq_runtime: install separately AFTER `pip install -r requirements.txt`
+# due to an upstream dep-resolution bug. See README.md / speech_to_text/README.md.
+#./wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
 
 # Other standard dependencies from PyPI
 numpy<2.0
@@ -8,16 +10,16 @@ Pillow
 PyQt5>=5.15
 psutil>=5.9
 pyserial>=3.5
+ml_dtypes
 
 # Voice input (optional; enabled when CORAL_VOICE=stub|moonshine).
 # Requires libportaudio2 system package for sounddevice.
 #
 # The Moonshine ASR backend (CORAL_VOICE=moonshine) reuses the shared
-# runtime that ships under speech_to_text/ + utils/ at the repo root
-# (added in sl2610-examples PR #8). The deps for that backend
-# (onnxruntime, tokenizers, ml_dtypes, requests, tqdm, huggingface_hub)
-# live in speech_to_text/requirements.txt — install that file in addition
-# to this one when enabling Moonshine. The stub backend only needs the
+# runtime under speech_to_text/ + utils/ at the repo root. Its full deps
+# (onnxruntime, tokenizers, requests, tqdm, soundfile, …) live in
+# speech_to_text/requirements.txt — install that file in addition to
+# this one when enabling Moonshine. The stub backend only needs the
 # two dependencies below.
 sounddevice>=0.4
 silero-vad-notorch
