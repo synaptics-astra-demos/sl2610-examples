@@ -177,6 +177,34 @@ alarm-query prompts ("what alarms do I have?") route via `respond()` instead.
 - **Coral Dev Board (SL2619)** with the Grinn Coral HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
 - **Optional Adafruit Mini Sparkle Motion (6314)** running WLED firmware, enumerated as `/dev/ttyACM0` over USB-CDC. Drives a 36-pixel WS2812B ring (Adafruit 2539). Pass `--wled-port /dev/ttyACM0` to enable.
 
+### Buzzer wiring note
+
+Despite the schematic name suggesting active-low, `BUZZERn` on the Grinn Coral HAT is electrically wired such that the buzzer **silences on the line being driven HIGH and beeps when LOW**. The kernel device tree marks the line `active-high` (so `gpioset gpiochip0 6=1` drives physical HIGH = silent; `=0` = beep). The chip driver also retains the last-driven value across `gpioset --mode=exit`, so once a value is written the line holds it.
+
+`hardware.py` writes the inverted polarity (`0` to beep, `1` to silence). If you port this code to a board with the polarity wired the other way, flip the `_BUZZER_OFF` / `_BUZZER_ON` constants at the top of `hardware.py`. Verify with `gpioinfo gpiochip0` (look for the line named `"BUZZERn"`).
+
+### Crash-safe cleanup
+
+The demo guarantees the buzzer + status LEDs return to a silent/off state on every exit path that the Python interpreter can observe:
+
+- normal exit (`/exit`, EOF, end of `--prompt`)
+- uncaught exceptions
+- `KeyboardInterrupt` (Ctrl-C / SIGINT) mid-pattern
+- `SIGTERM` (e.g. `kill <pid>`, init shutdown)
+- `SIGHUP` (terminal close, parent process death)
+- a fresh demo loading `hardware.py` after a crashed prior process
+
+Layered as `try/finally` inside `play_buzzer` + `blink_lights`, a `HardwareDevice.cleanup()` called from a `finally` block in `main()`, signal handlers for `SIGTERM`/`SIGHUP`, and an `atexit` net.
+
+`SIGKILL`, kernel OOM kill, segfault, and power loss bypass all in-process cleanup. If the demo is going to run as a long-lived service, drop a systemd unit with:
+
+```ini
+[Service]
+ExecStopPost=/usr/bin/gpioset gpiochip0 6=1
+```
+
+(or run a oneshot `coral-buzzer-safe.service` at boot that just runs that command.)
+
 ## Model Information
 
 `huggingface.co/BrinqAI/functiongemma-270m-physical-ai` —
