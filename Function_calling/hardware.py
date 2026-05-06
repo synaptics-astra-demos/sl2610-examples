@@ -4,7 +4,7 @@ Backed by the interfaces in Grinn's OOBE image report for the Coral Dev
 Board (SL2619, AstraSOM-261x):
 
     Status LEDs : /sys/class/leds/{red,green,blue}:status/brightness  (0-255)
-    Buzzer      : gpioset `gpiofind BUZZERn`=1/0  (binary, no PWM)
+    Buzzer      : gpioset `gpiofind BUZZERn`  (binary, ACTIVE-LOW: 0=ON, 1=OFF)
     Camera      : gst-launch-1.0 v4l2src device=/dev/video0 (OV5647 NV12)
     Thermal     : /sys/class/thermal/thermal_zone0/temp  (millidegrees C)
 
@@ -13,6 +13,7 @@ Neopixel ring is delegated to a ``WLEDSerialClient`` if one was passed in.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import shutil
 import subprocess
@@ -71,27 +72,61 @@ _HAS_GPIOD = (
     and shutil.which("gpioset") is not None
 )
 
+# BUZZERn is ACTIVE-LOW: gpioset value 0 = beeping, 1 = silent. The chip
+# driver also LATCHES the last-driven value across `gpioset --mode=exit`
+# calls (default mode), so once a value is set the line holds it
+# until something else drives it. This means we only need to write the
+# inverse polarity to play_buzzer's pulse semantics: state=True (pulse on)
+# → 0, state=False (silence) → 1. And every pattern MUST end with state=False
+# or the buzzer will be stuck on after exit.
+_BUZZER_OFF = "1"
+_BUZZER_ON = "0"
 
-def _gpio_buzzer(state: bool) -> None:
-    """Set the HAT buzzer via gpioset + gpiofind.
 
-    ``gpiofind BUZZERn`` prints "<chip> <line>"; gpioset takes that + a value.
-    No-ops silently on systems without libgpiod (a one-time warning is logged
-    from ``HardwareDevice.__init__``); the traceback was cluttering REPL
-    output on dev boards without the HAT wired in.
-    """
+def _resolve_buzzer_line() -> tuple[str, str] | None:
+    """Return (chip, line) for the BUZZERn GPIO, or None if unavailable."""
     if not _HAS_GPIOD:
-        return
+        return None
     try:
         find = _run(["gpiofind", "BUZZERn"])
-        if find.returncode != 0 or not find.stdout.strip():
-            log.warning("gpiofind BUZZERn empty (rc=%d, stderr=%r)",
-                        find.returncode, find.stderr)
-            return
-        chip, line = find.stdout.strip().split(maxsplit=1)
-        _run(["gpioset", chip, f"{line}={1 if state else 0}"])
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        log.warning("gpiofind not callable")
+        return None
+    if find.returncode != 0 or not find.stdout.strip():
+        log.warning("gpiofind BUZZERn empty (rc=%d, stderr=%r)",
+                    find.returncode, find.stderr)
+        return None
+    chip, _, line = find.stdout.strip().partition(" ")
+    return chip, line
+
+
+_BUZZER_LINE: tuple[str, str] | None = _resolve_buzzer_line()
+
+
+def _drive_buzzer(value: str) -> None:
+    """Drive BUZZERn to '0' or '1'. Releases the line on exit, but the
+    Synaptics chip driver retains the latched value until next write."""
+    if _BUZZER_LINE is None:
+        return
+    chip, line = _BUZZER_LINE
+    try:
+        _run(["gpioset", chip, f"{line}={value}"])
     except subprocess.TimeoutExpired:
-        log.warning("gpioset/gpiofind timed out (state=%s)", state)
+        log.warning("gpioset BUZZERn=%s timed out", value)
+
+
+def _gpio_buzzer(state: bool) -> None:
+    """Drive BUZZERn for one half-pulse. ``state=True`` beeps, ``False`` silences."""
+    _drive_buzzer(_BUZZER_ON if state else _BUZZER_OFF)
+
+
+def _silence_buzzer_atexit() -> None:
+    """Last-resort guarantee that the buzzer is off when the process dies."""
+    _drive_buzzer(_BUZZER_OFF)
+
+
+if _BUZZER_LINE is not None:
+    atexit.register(_silence_buzzer_atexit)
 
 
 def _read_cpu_temp_c() -> float | None:
@@ -141,11 +176,16 @@ class HardwareDevice:
         self._alarm_lock = threading.Lock()
         if not _HAS_GPIOD:
             log.warning("libgpiod (gpiofind/gpioset) not in PATH — buzzer is a no-op")
+        elif _BUZZER_LINE is None:
+            log.warning("BUZZERn line not found via gpiofind — buzzer is a no-op")
+        else:
+            _drive_buzzer(_BUZZER_OFF)
         log.info(
-            "HardwareDevice ready (status_leds=%d, wled=%s, gpiod=%s)",
+            "HardwareDevice ready (status_leds=%d, wled=%s, gpiod=%s, buzzer=%s)",
             sum(1 for p in STATUS_LEDS.values() if p.exists()),
             "yes" if wled else "no",
             "yes" if _HAS_GPIOD else "no",
+            f"{_BUZZER_LINE[0]} {_BUZZER_LINE[1]}" if _BUZZER_LINE else "absent",
         )
 
     # ------------------------------------------------------------------ LEDs
