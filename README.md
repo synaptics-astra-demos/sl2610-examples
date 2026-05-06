@@ -74,3 +74,6 @@ Follow the steps in /object_detection/README.md to see how to perform object det
 
 Follow the steps in /image_classification/README.md to see how to perform image classification using MobileNetV2 on a single image. 
 
+## Speech To Text (Moonshine)
+
+Follow the steps in /speech_to_text/README.md to see how to perform speed-to-text function using Moonshine Model with a microphone. 

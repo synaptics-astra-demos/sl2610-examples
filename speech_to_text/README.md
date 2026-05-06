@@ -20,6 +20,7 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 ```
 speech_to_text
 ├── moonshine.py
+├── inference.py
 ├── portaudio_libs.tgz
 ├── README.md
 └── requirements.txt
@@ -87,7 +88,7 @@ pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_2
 Extract the audio libraries
 
 ```bash
-tar -xvzf portaudio_libs.tgz -C /
+tar -xvzf library/portaudio_libs.tgz -C /
 ```
 
 Connect a USB or PDM microphone
@@ -95,32 +96,16 @@ Connect a USB or PDM microphone
 ## Start
 
 
-If you have a display, use the pyQt app version.
-
 ```bash
 python moonshine.py
 ```
 
-## Usage
-
-It will ask you to select your microphone.
-
-```bash
-List of Audio input devices:
-  0 HyperX SoloCast: USB Audio (hw:0,0), ALSA (2 in, 0 out)
-  1 sysdefault, ALSA (128 in, 0 out)
-  2 spdif, ALSA (2 in, 0 out)
-> 3 default, ALSA (128 in, 0 out)
-Enter input device to listen on:
-```
-
-The models will be loaded and the app will open. 
 
 ## Speak into the microphone! 
 
 Speak phrases (in English) that are more than a few words but less than 5 seconds. 
 
-The app will capture your speech and translate it to the selected language. 
+The app will capture your speech and show the text on the terminal.
 
 
 # Citations

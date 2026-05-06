@@ -1,48 +1,53 @@
 from __future__ import annotations
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pathlib import Path
-import numpy as np
+import sys, os
+
+# ---------------------- system ----------------------
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+os.environ["PA_ALSA_PLUGHW"] = "4"
+
 import time
 import threading
+import numpy as np
+import sounddevice as sd
+import logging
+
+
+from pathlib import Path
 from tokenizers import Tokenizer
 from queue import Queue
-from utils.download import download_from_hf
 
+from sounddevice import InputStream
+from silero_vad_notorch import VADIterator, load_silero_vad
+from utils.download import download_from_hf
+from utils.log import add_logging_args, configure_logging
+from inference import (
+    format_answer,
+    run_vmfb,
+    load_moonshine
+)
 # ---------------------- paths ----------------------
 _THIS_DIR = Path(__file__).resolve().parent
+MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "moonshine" ).resolve()
+
+# ---------------------- sound device config ----------------------
+SAMPLING_RATE = 16000
+CHUNK_SIZE = 512  # Silero VAD requirement with sampling rate 16000.
+LOOKBACK_CHUNKS = 5
+MAX_LINE_LENGTH = 80
+# These affect live caption updating - adjust for your platform speed and model.
+MAX_SPEECH_SECS = 10
+MIN_SPEECH_SECS = 1
+MIN_REFRESH_SECS = 2
+MIN_SILENCE_DURATION_MS = 400
+
+# ---------------------- moonshine config ----------------------
+INPUT_LEN = 5 # input len in seconds for moonshine model
+TOKENS_PER_SEC = 6
 
 running = False
 
 def start_audio_thread():
-    import logging
-    from utils.log import add_logging_args, configure_logging
-    from inference import (
-        format_answer,
-        run_vmfb,
-        load_moonshine
-    )
-
-    os.environ["PA_ALSA_PLUGHW"] = "1"
-    import sounddevice as sd
-    from sounddevice import InputStream
-    from silero_vad import VADIterator, load_silero_vad
-
-    SAMPLING_RATE = 16000
-    CHUNK_SIZE = 512  # Silero VAD requirement with sampling rate 16000.
-    LOOKBACK_CHUNKS = 5
-    MAX_LINE_LENGTH = 80
-    # These affect live caption updating - adjust for your platform speed and model.
-    MAX_SPEECH_SECS = 10
-    MIN_SPEECH_SECS = 1
-    MIN_REFRESH_SECS = 2
-    MIN_SILENCE_DURATION_MS = 400
-
-    #MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "onnx" / "tiny" / "float" / "static" ).resolve()
-    MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "moonshine" ).resolve()
-    INPUT_LEN = 5 # input len in seconds for moonshine model
-    TOKENS_PER_SEC = 6
 
     class Transcriber(object):
         def __init__(self):
