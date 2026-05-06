@@ -9,10 +9,14 @@ Run via ``app_pyqt.py``, which injects the model + dispatcher.
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
@@ -130,6 +134,13 @@ class VoiceSignals(QObject):
     state = pyqtSignal(str)
 
 
+class WarmupSignals(QObject):
+    """Marshal background-warmup completion onto the Qt main thread."""
+
+    done = pyqtSignal(float)  # elapsed seconds
+    failed = pyqtSignal(str)
+
+
 class ChatWindow(QMainWindow):
     def __init__(
         self,
@@ -223,6 +234,48 @@ class ChatWindow(QMainWindow):
         self.worker = InferenceWorker(model, dispatcher)
         self.worker.finished.connect(self._on_turn_done)
         self.worker.failed.connect(self._on_failed)
+
+        # Pay the one-time ~50 s prefill in the background instead of
+        # making the user's first send hit the cold model. Send button,
+        # chips, and mic stay disabled until warmup signals done; the
+        # demo.py REPL does the same thing with a spinner.
+        self._warmup_signals = WarmupSignals()
+        self._warmup_signals.done.connect(self._on_warmup_done)
+        self._warmup_signals.failed.connect(self._on_warmup_failed)
+        self._set_status("Warming up... (one-time ~50s prefill)", "thinking")
+        self.send_btn.setEnabled(False)
+        self._set_chips_enabled(False)
+        if self.mic_btn is not None:
+            self.mic_btn.setEnabled(False)
+        threading.Thread(
+            target=self._run_warmup, args=(model,), daemon=True, name="warmup",
+        ).start()
+
+    def _run_warmup(self, model: FunctionGemmaModel) -> None:
+        t0 = time.time()
+        try:
+            model.generate("hello")
+        except Exception as exc:
+            logger.exception("warmup failed")
+            self._warmup_signals.failed.emit(str(exc))
+            return
+        self._warmup_signals.done.emit(time.time() - t0)
+
+    def _on_warmup_done(self, elapsed: float) -> None:
+        self._set_status(f"Ready. Warmed up in {elapsed:.1f}s.")
+        self.send_btn.setEnabled(True)
+        self._set_chips_enabled(True)
+        if self.mic_btn is not None:
+            self.mic_btn.setEnabled(True)
+
+    def _on_warmup_failed(self, error: str) -> None:
+        self._set_status(f"Warmup failed: {error}", "error")
+        # Re-enable controls so the user can still try; first send will
+        # pay the prefill cost.
+        self.send_btn.setEnabled(True)
+        self._set_chips_enabled(True)
+        if self.mic_btn is not None:
+            self.mic_btn.setEnabled(True)
 
     def _set_status(self, text: str, state: str = "idle") -> None:
         colors = {
