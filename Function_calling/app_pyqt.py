@@ -56,14 +56,18 @@ def main() -> int:
 
     wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud) \
         if args.wled_port else None
-    dispatcher = Dispatcher(HardwareDevice(wled=wled))
+    hardware = HardwareDevice(wled=wled)
+    dispatcher = Dispatcher(hardware)
 
     win = ChatWindow(model=model, dispatcher=dispatcher)
     if args.fullscreen or os.environ.get("FUNCTIONGEMMA_FULLSCREEN", "").lower() in ("1", "true", "yes"):
         win.showFullScreen()
     else:
         win.show()
-    return app.exec_()
+    try:
+        return app.exec_()
+    finally:
+        hardware.cleanup()
 
 
 if __name__ == "__main__":

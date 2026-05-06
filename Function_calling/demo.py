@@ -238,35 +238,39 @@ def main() -> None:
     hardware = HardwareDevice(wled=wled, on_async_event=_print_async)
     dispatcher = Dispatcher(hardware)
 
-    if args.prompt:
-        run_turn(model, dispatcher, args.prompt)
-        return
+    try:
+        if args.prompt:
+            run_turn(model, dispatcher, args.prompt)
+            return
 
-    # Prime the prefix cache up front so turn 1 from the user is sub-second.
-    # This pays the ~48 s cold prefill once, visibly, before we accept input.
-    with _Spinner("Warming up (one-time ~50s prefill on the 2-core A55)"):
-        model.generate("hello")
+        # Prime the prefix cache up front so turn 1 from the user is
+        # sub-second. This pays the ~48 s cold prefill once, visibly,
+        # before we accept input.
+        with _Spinner("Warming up (one-time ~50s prefill on the 2-core A55)"):
+            model.generate("hello")
 
-    _setup_history()
-    stats = SessionStats()
-    print(_dim("Ready. /help for commands, Ctrl-D or /exit to leave."))
-    while True:
-        try:
-            line = input(PROMPT).strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if not line:
-            continue
-        if line.startswith("/"):
-            outcome = _handle_slash(line, stats)
-            if outcome == "exit":
-                break
-            if outcome == "unknown":
-                print(_dim(f"unknown command: {line.split()[0]} (try /help)"))
+        _setup_history()
+        stats = SessionStats()
+        print(_dim("Ready. /help for commands, Ctrl-D or /exit to leave."))
+        while True:
+            try:
+                line = input(PROMPT).strip()
+            except (EOFError, KeyboardInterrupt):
                 print()
-            continue
-        run_turn(model, dispatcher, line, stats=stats)
+                break
+            if not line:
+                continue
+            if line.startswith("/"):
+                outcome = _handle_slash(line, stats)
+                if outcome == "exit":
+                    break
+                if outcome == "unknown":
+                    print(_dim(f"unknown command: {line.split()[0]} (try /help)"))
+                    print()
+                continue
+            run_turn(model, dispatcher, line, stats=stats)
+    finally:
+        hardware.cleanup()
 
 
 if __name__ == "__main__":

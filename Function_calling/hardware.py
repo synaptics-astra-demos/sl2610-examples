@@ -15,13 +15,17 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import shutil
+import signal
 import subprocess
 import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import FrameType
 from typing import Any, Callable
 
 from wled import WLEDSerialClient, resolve_color
@@ -120,13 +124,73 @@ def _gpio_buzzer(state: bool) -> None:
     _drive_buzzer(_BUZZER_ON if state else _BUZZER_OFF)
 
 
-def _silence_buzzer_atexit() -> None:
-    """Last-resort guarantee that the buzzer is off when the process dies."""
+def _all_status_leds_off() -> None:
+    for path in STATUS_LEDS.values():
+        if path.exists():
+            try:
+                path.write_text("0")
+            except OSError:
+                pass
+
+
+def _safe_shutdown_outputs() -> None:
+    """Drive buzzer + status LEDs to silent/off. No instance state required —
+    this is the bare minimum we always want, callable from a signal handler
+    or atexit on a half-constructed/destroyed process."""
     _drive_buzzer(_BUZZER_OFF)
+    _all_status_leds_off()
 
 
-if _BUZZER_LINE is not None:
-    atexit.register(_silence_buzzer_atexit)
+_ACTIVE_DEVICE: "weakref.ReferenceType[HardwareDevice] | None" = None
+_HANDLERS_INSTALLED = False
+
+
+def _safe_shutdown_full() -> None:
+    """Outputs-off + per-instance cleanup (alarm timers, WLED close)."""
+    if _ACTIVE_DEVICE is not None:
+        dev = _ACTIVE_DEVICE()
+        if dev is not None:
+            try:
+                dev._cleanup_instance()
+            except Exception:  # noqa: BLE001 — best-effort during shutdown
+                log.exception("HardwareDevice cleanup raised")
+    _safe_shutdown_outputs()
+
+
+def _signal_handler(signum: int, frame: FrameType | None) -> None:
+    """Drive outputs to safe state, then re-raise the signal under its
+    default disposition so normal termination proceeds (exit code, parent
+    notification, core dump policy, etc.)."""
+    _safe_shutdown_full()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
+def _install_shutdown_handlers() -> None:
+    """Idempotent: install atexit + signal handlers once per process.
+
+    Covers normal exit, sys.exit, uncaught exceptions, SIGTERM (kill, init
+    shutdown), and SIGHUP (terminal close, parent death). SIGINT is left
+    alone — Python's default raises KeyboardInterrupt, which unwinds
+    play_buzzer's try/finally and triggers atexit.
+
+    NOT covered: SIGKILL, kernel OOM kill, segfault, power loss. Those
+    require an OS-level safety net (e.g. a systemd unit with ExecStopPost
+    that runs `gpioset gpiochip0 6=1`).
+    """
+    global _HANDLERS_INSTALLED
+    if _HANDLERS_INSTALLED:
+        return
+    _HANDLERS_INSTALLED = True
+    atexit.register(_safe_shutdown_full)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, _signal_handler)
+        except (ValueError, OSError, AttributeError):
+            # ValueError: not in main thread. AttributeError: SIGHUP missing
+            # on Windows. OSError: signal unsupported. All non-fatal — atexit
+            # still gives us cleanup on normal exits.
+            pass
 
 
 def _read_cpu_temp_c() -> float | None:
@@ -170,6 +234,7 @@ class HardwareDevice:
         wled: WLEDSerialClient | None = None,
         on_async_event: Callable[[str], None] | None = None,
     ) -> None:
+        global _ACTIVE_DEVICE
         self._wled = wled
         self._on_async_event = on_async_event
         self._alarms: dict[str, _Alarm] = {}
@@ -178,8 +243,11 @@ class HardwareDevice:
             log.warning("libgpiod (gpiofind/gpioset) not in PATH — buzzer is a no-op")
         elif _BUZZER_LINE is None:
             log.warning("BUZZERn line not found via gpiofind — buzzer is a no-op")
-        else:
-            _drive_buzzer(_BUZZER_OFF)
+        # Drive everything to a safe state on construction in case a prior
+        # process crashed mid-pulse and left a stuck output.
+        _safe_shutdown_outputs()
+        _ACTIVE_DEVICE = weakref.ref(self)
+        _install_shutdown_handlers()
         log.info(
             "HardwareDevice ready (status_leds=%d, wled=%s, gpiod=%s, buzzer=%s)",
             sum(1 for p in STATUS_LEDS.values() if p.exists()),
@@ -187,6 +255,28 @@ class HardwareDevice:
             "yes" if _HAS_GPIOD else "no",
             f"{_BUZZER_LINE[0]} {_BUZZER_LINE[1]}" if _BUZZER_LINE else "absent",
         )
+
+    def cleanup(self) -> None:
+        """Cancel timers, silence buzzer, kill LEDs, close WLED.
+
+        Idempotent; safe to call multiple times. Wrap your demo's main loop
+        in ``try / finally: hardware.cleanup()`` so a normal exit path also
+        triggers it (signal handlers + atexit are the safety net for the
+        abnormal paths)."""
+        self._cleanup_instance()
+        _safe_shutdown_outputs()
+
+    def _cleanup_instance(self) -> None:
+        with self._alarm_lock:
+            for a in self._alarms.values():
+                a.timer.cancel()
+            self._alarms.clear()
+        if self._wled is not None:
+            try:
+                self._wled.off()
+                self._wled.close()
+            except Exception:  # noqa: BLE001 — serial close is a boundary
+                log.exception("WLED close failed")
 
     # ------------------------------------------------------------------ LEDs
 
@@ -229,13 +319,14 @@ class HardwareDevice:
         if self._wled:
             self._wled.blink(count=count, color=color, speed=speed)
         period = {"slow": 0.40, "normal": 0.20, "fast": 0.08}.get(speed, 0.20)
-        for _ in range(max(1, int(count))):
-            self._apply_status_leds(color, 100)
-            time.sleep(period)
-            for path in STATUS_LEDS.values():
-                if path.exists():
-                    _write_sysfs(path, "0")
-            time.sleep(period)
+        try:
+            for _ in range(max(1, int(count))):
+                self._apply_status_leds(color, 100)
+                time.sleep(period)
+                _all_status_leds_off()
+                time.sleep(period)
+        finally:
+            _all_status_leds_off()
 
     def set_neopixel_pattern(self, pattern: str, color: str | None = None,
                              speed: str = "normal") -> None:
@@ -250,12 +341,15 @@ class HardwareDevice:
     def play_buzzer(self, pattern: str) -> None:
         seq = BUZZER_PATTERNS.get(pattern, BUZZER_PATTERNS["beep"])
         log.info("buzzer pattern=%s pulses=%d", pattern, len(seq))
-        for on_s, off_s in seq:
-            _gpio_buzzer(True)
-            time.sleep(on_s)
+        try:
+            for on_s, off_s in seq:
+                _gpio_buzzer(True)
+                time.sleep(on_s)
+                _gpio_buzzer(False)
+                if off_s > 0:
+                    time.sleep(off_s)
+        finally:
             _gpio_buzzer(False)
-            if off_s > 0:
-                time.sleep(off_s)
 
     # ---------------------------------------------------------------- Alarms
 
