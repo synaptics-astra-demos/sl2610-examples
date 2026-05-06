@@ -139,13 +139,13 @@ class ChatWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self.setWindowTitle("FunctionGemma Physical AI Demo")
-        self.resize(800, 1280)
+        self.resize(480, 800)
 
         self.pump = MetricsPump(PsutilProvider(), interval_s=0.5)
         self.pump.start()
 
         self.metrics = MetricsPanel(self.pump)
-        self.metrics.setFixedHeight(320)
+        self.metrics.setFixedHeight(200)
         self.log = CommandLog()
 
         self.input = QLineEdit()
