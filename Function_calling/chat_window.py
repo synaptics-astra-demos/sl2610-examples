@@ -31,10 +31,10 @@ from theme import PALETTE, TYPE
 from voice import VoicePipeline
 
 SUGGESTED_PROMPTS: tuple[str, ...] = (
-    "turn on the lights",
+    "lights on",
     "beep",
     "take a photo",
-    "turn off the lights",
+    "lights off",
     "system status",
     "play rainbow",
 )
@@ -45,7 +45,7 @@ _CHIP_QSS = (
     f"  color: {PALETTE.text_secondary};"
     f"  border: 1px solid {PALETTE.border};"
     f"  border-radius: 999px;"
-    f"  padding: 8px 16px;"
+    f"  padding: 6px 10px;"
     f"  font-size: {TYPE.sm}px;"
     f"  font-weight: 500;"
     f"}}"
@@ -207,8 +207,8 @@ class ChatWindow(QMainWindow):
         input_area.addWidget(self.status)
 
         root = QVBoxLayout()
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(14)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(10)
         root.addWidget(self.metrics)
         root.addWidget(self.log, stretch=1)
         root.addLayout(input_area)

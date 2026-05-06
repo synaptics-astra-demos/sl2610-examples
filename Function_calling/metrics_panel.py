@@ -119,8 +119,8 @@ class MetricsPanel(QFrame):
         self._tiles: dict[str, MetricTile] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(10, 12, 10, 12)
+        root.setSpacing(10)
 
         header = QLabel("SYSTEM METRICS")
         header.setObjectName("SectionHeader")
