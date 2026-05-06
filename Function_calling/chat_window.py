@@ -145,7 +145,7 @@ class ChatWindow(QMainWindow):
         self.pump.start()
 
         self.metrics = MetricsPanel(self.pump)
-        self.metrics.setFixedHeight(200)
+        self.metrics.setFixedHeight(270)
         self.log = CommandLog()
 
         self.input = QLineEdit()
