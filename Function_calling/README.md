@@ -56,13 +56,17 @@ If offline
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
-If you plan to use voice input (see "Voice input (optional)" below), also install the PortAudio system library *before* `pip install` — `sounddevice` installs cleanly without it but fails at runtime with `OSError: PortAudio library not found`. The OOBE image ships it; on a stripped-down rootfs:
+If you plan to use voice input (see "Voice input (optional)" below), also install the voice deps and the PortAudio system library:
 
 ```bash
-sudo apt install libportaudio2
+pip install -r speech_to_text/requirements.txt
+pip install --no-deps wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
+sudo tar -xzf library/portaudio_libs.tgz -C /
 ```
 
-> **Note**: the offline `wheelhouse/` does not yet include aarch64 wheels for the voice deps (`sounddevice`, `silero-vad`, `onnxruntime`, `tokenizers`, `ml_dtypes`). Until those are added, voice input requires the **online** install path — or a one-time `pip download --platform manylinux2014_aarch64 ...` against an aarch64 host to populate the wheelhouse.
+The `torq_runtime` wheel must be installed manually with `--no-deps` per the standalone Moonshine example (`speech_to_text/README.md`); pip's resolver pulls a CPU-only build otherwise. The `portaudio_libs.tgz` extract is the primary path since the OOBE image does not ship `libportaudio.so.2`.
+
+> **Note**: the offline `wheelhouse/` does not yet include aarch64 wheels for the voice-only deps (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `ml_dtypes`, `soundfile`). Until those are populated, voice input requires the **online** install path.
 
 ### Download the Fine-Tuned Model
 
@@ -74,29 +78,16 @@ wget https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main/
 cd ..
 ```
 
-### (Optional) Download Moonshine ASR for voice input
+### (Optional) Moonshine ASR artifacts for voice input
 
-> **TBD: VMFB tarball not yet uploaded.** The HF repo path below
-> (`BrinqAI/moonshine-tiny-torq`) is a placeholder. Until those VMFBs
-> are published you cannot run `CORAL_VOICE=moonshine` end-to-end —
-> use `CORAL_VOICE=stub` instead, which exercises mic + VAD + dispatch
-> without a real ASR model. This warning will be removed once the
-> artifacts are live.
-
-For real voice input (vs. the `stub` rotation) you'll need the Moonshine "tiny" artifacts — encoder, decoder, decoder-with-past as `.vmfb` files (Torq NPU compile target) plus the HuggingFace `tokenizer.json`. All four files must live in the same directory:
+The Moonshine "tiny" VMFBs (`encoder.onnx`, `decoder.vmfb`, `decoder_with_past.vmfb`, `decoder_token_embeddings.npy`) ship in `models/moonshine/` alongside the standalone Moonshine example. The HuggingFace `tokenizer.json` is auto-fetched on first run by `MoonshineASR`; for fully offline use, drop a copy alongside the VMFBs:
 
 ```bash
-mkdir -p models/moonshine-tiny && cd models/moonshine-tiny
-# encoder + decoder + decoder_with_past VMFBs (compile target: torq) — pending
-wget https://huggingface.co/BrinqAI/moonshine-tiny-torq/resolve/main/encoder.vmfb
-wget https://huggingface.co/BrinqAI/moonshine-tiny-torq/resolve/main/decoder.vmfb
-wget https://huggingface.co/BrinqAI/moonshine-tiny-torq/resolve/main/decoder_with_past.vmfb
-# tokenizer (live)
-wget https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
-cd ../..
+wget -O models/moonshine/tokenizer.json \
+  https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
 
-Override the directory with `CORAL_MOONSHINE_DIR=/path/to/dir`. The default resolves to `<repo>/models/moonshine-tiny/` (sibling of the GGUF directory).
+Override the artifact directory with `CORAL_MOONSHINE_DIR=/path/to/dir`. The default is `<repo>/models/moonshine/`.
 
 ### (Optional) Wire up the Neopixel Ring
 
@@ -179,9 +170,9 @@ Set `CORAL_VOICE` to pick the ASR backend:
 |---|---|
 | `off` (default) | No voice. Mic button hidden; `--voice` warns and continues text-only. |
 | `stub` | Real mic + VAD; ASR returns rotating canned phrases. Use to validate the mic → VAD → tool-dispatch path without a real ASR model. |
-| `moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU (see Phase B). Requires the Moonshine VMFB artifacts in `models/moonshine-tiny/` (or override with `CORAL_MOONSHINE_DIR`). |
+| `moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU. Reads VMFB artifacts from `models/moonshine/` (or `CORAL_MOONSHINE_DIR`). |
 
-Optional: `CORAL_MIC=<index|substring>` selects a specific input device (sounddevice device selector). Defaults to the system default — usually a USB mic. The HAT PDM mic at `alsasrc hw:0,0` is reachable as `CORAL_MIC=hw:0,0` once the HAT is wired.
+Optional: `CORAL_MIC=<index|substring>` selects a specific input device (sounddevice device selector). Defaults to the system default. The HAT PDM mic enumerates as device 0 (`klamath-asoc, hw:0,0`); reach it with `CORAL_MIC=0` or `CORAL_MIC=hw:0,0`. A plugged-in USB mic typically takes the default slot.
 
 ```bash
 # PyQt UI with stub voice (validates plumbing without a real ASR model)
@@ -194,7 +185,7 @@ CORAL_VOICE=stub python3 demo.py --voice
 CORAL_VOICE=moonshine python3 app_pyqt.py
 ```
 
-System-level prerequisite for the mic stream: `libportaudio2` must be present (see install section above). The Python deps (`sounddevice`, `silero-vad`, `onnxruntime`, `tokenizers`) install from `requirements.txt`. `silero-vad` is loaded via `load_silero_vad(onnx=True)` so the Torch dependency path is bypassed.
+System-level prerequisite for the mic stream: `libportaudio.so.2` must be present (extracted from `library/portaudio_libs.tgz` per the install section above). The Python deps (`sounddevice`, `silero-vad-notorch`, plus the Moonshine stack `onnxruntime`/`tokenizers`/`ml_dtypes`/`soundfile`) install from `requirements.txt` + `speech_to_text/requirements.txt`. The VAD loads via `load_silero_vad(onnx=True)` and `silero-vad-notorch` is a torch-free fork, so no PyTorch is pulled in.
 
 **REPL caveat**: in `demo.py --voice` you can talk *or* type. Voice transcription completes asynchronously, so if a spoken utterance arrives while you are mid-keystroke at the `>>>` prompt, the readline buffer is dropped and you have to retype. Acceptable for headless smoke tests; the PyQt UI does not have this problem.
 

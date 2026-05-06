@@ -14,7 +14,7 @@ from .mic import VoiceUnavailable
 
 
 class VAD:
-    """Wrap silero-vad's VADIterator + a speech buffer.
+    """Wrap silero-vad-notorch's VADIterator + a speech buffer.
 
     Call feed(chunk) per mic chunk. Returns a 1D float32 utterance ndarray
     when speech ends (or None otherwise). Internally manages the speech buffer,

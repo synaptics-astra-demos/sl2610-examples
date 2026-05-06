@@ -1,4 +1,4 @@
-"""Tests for voice/ — only the parts that work without sounddevice / silero-vad / numpy.
+"""Tests for voice/ — only the parts that work without sounddevice / silero-vad-notorch / numpy.
 
 The mic stream and VAD are exercised on-device; here we sanity-check the ASR
 Protocol, the StubASR rotation, and the pipeline factory's fall-through paths.
@@ -54,9 +54,9 @@ def test_make_voice_pipeline_moonshine_disables_when_unavailable(
     tmp_path,
 ) -> None:
     """Without staged Moonshine artifacts the factory must return None,
-    not crash the caller. Phase B: MoonshineASR.__init__ raises
-    FileNotFoundError / VoiceUnavailable when the model dir is missing or
-    deps are unavailable. The factory swallows both and disables voice."""
+    not crash the caller. MoonshineASR.__init__ raises FileNotFoundError /
+    VoiceUnavailable when the model dir is missing or deps are unavailable;
+    the factory swallows both and disables voice."""
     monkeypatch.setenv("CORAL_VOICE", "moonshine")
     monkeypatch.setenv("CORAL_MOONSHINE_DIR", str(tmp_path / "definitely-not-here"))
     pipe = make_voice_pipeline(on_text=lambda _t: None)

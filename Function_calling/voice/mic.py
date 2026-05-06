@@ -16,7 +16,7 @@ CHUNK_SAMPLES = 512
 
 
 class VoiceUnavailable(RuntimeError):
-    """Raised when a voice dependency (sounddevice / silero-vad / model) is missing."""
+    """Raised when a voice dependency (sounddevice / silero-vad-notorch / model) is missing."""
 
 
 def _require_sounddevice() -> Any:
@@ -25,7 +25,8 @@ def _require_sounddevice() -> Any:
     except ImportError as e:  # pragma: no cover - import guard
         raise VoiceUnavailable(
             "sounddevice is not installed. Install with `pip install sounddevice`. "
-            "On Linux you may also need `sudo apt install libportaudio2`."
+            "PortAudio is also required at runtime — extract `library/portaudio_libs.tgz` "
+            "(or `sudo apt install libportaudio2` as a fallback)."
         ) from e
     return sd
 

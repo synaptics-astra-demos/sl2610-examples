@@ -251,7 +251,8 @@ def main() -> None:
         if voice is None:
             print(_dim(
                 "voice unavailable: set CORAL_VOICE=stub|moonshine and install "
-                "sounddevice + silero-vad (requires libportaudio2)."
+                "sounddevice + silero-vad-notorch (requires libportaudio.so.2 — "
+                "extract library/portaudio_libs.tgz)."
             ))
 
     try:
