@@ -6,36 +6,36 @@ Jellectronica runs **entirely on the Coral Dev Board**. No computation happens o
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                    CORAL DEV BOARD (SL2619)                           │
+│                    CORAL DEV BOARD (SL2619)                            │
 │                                                                        │
 │   Video Source                                                         │
-│   (YouTube live / local .mp4)                                         │
+│   (YouTube live / local .mp4)                                          │
 │         │                                                              │
 │         ▼                                                              │
-│   ┌─────────────────────┐    ┌──────────────────────┐                 │
-│   │   cv2.VideoCapture  │───▶│  Torq NPU Inference  │                 │
-│   │   (frame decode)    │    │  YOLOv8 320×320 int8 │                 │
-│   └─────────────────────┘    │  ~32ms / 31 FPS      │                 │
-│                              └──────────┬───────────┘                 │
+│   ┌─────────────────────┐    ┌──────────────────────┐                  │
+│   │   cv2.VideoCapture  │───▶│  Torq NPU Inference  │                  │
+│   │   (frame decode)    │    │  YOLOv8 320×320 int8 │                  │
+│   └─────────────────────┘    │  ~32ms / 31 FPS      │                  │
+│                              └──────────┬───────────┘                  │
 │                                         │                              │
-│                              ┌──────────▼───────────┐                 │
-│                              │   Tracker + Grid     │                 │
-│                              │   8×4 musical grid   │                 │
-│                              │   cell transitions   │                 │
-│                              └──────────┬───────────┘                 │
+│                              ┌──────────▼───────────┐                  │
+│                              │   Tracker + Grid     │                  │
+│                              │   8×4 musical grid   │                  │
+│                              │   cell transitions   │                  │
+│                              └──────────┬───────────┘                  │
 │                                         │                              │
-│           ┌─────────────────────────────┼────────────────┐            │
-│           │                             │                │            │
-│   ┌───────▼───────┐          ┌──────────▼──────┐   ┌────▼───────┐   │
-│   │   SoftSynth   │          │   MelodyRNN     │   │  Display   │   │
-│   │   5 channels  │◀─────────│   LSTM AI       │   │  DSI/MJPEG │   │
-│   │   → aplay     │  notes   │   (optional)    │   │  + overlay │   │
-│   │   → USB DAC   │          │   NumPy only    │   └────────────┘   │
-│   └───────────────┘          └─────────────────┘                     │
+│           ┌─────────────────────────────┼────────────────┐             │
+│           │                             │                │             │
+│   ┌───────▼───────┐          ┌──────────▼──────┐   ┌────▼───────┐      │
+│   │   SoftSynth   │          │   MelodyRNN     │   │  Display   │      │
+│   │   5 channels  │◀─────────│   LSTM AI       │   │  DSI/MJPEG │      │
+│   │   → aplay     │  notes   │   (optional)    │   │  + overlay │      │
+│   │   → USB DAC   │          │   NumPy only    │   └────────────┘      │
+│   └───────────────┘          └─────────────────┘                       │
 │                                                                        │
-│   Ports (server mode only):                                           │
-│     :5002 → Flask HTTP (MJPEG stream + monitoring page)               │
-│     :5003 → WebSocket (real-time trigger events + AI notes)           │
+│   Ports (server mode only):                                            │
+│     :5002 → Flask HTTP (MJPEG stream + monitoring page)                │
+│     :5003 → WebSocket (real-time trigger events + AI notes)            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,12 +43,11 @@ Jellectronica runs **entirely on the Coral Dev Board**. No computation happens o
 
 ### Detection (`detector.py`)
 
-YOLOv8 jellyfish detection with two backends:
+YOLOv8 jellyfish detection:
 
 | Backend | Model File | Performance | Notes |
 |---------|-----------|-------------|-------|
 | **Torq NPU** (primary) | `moon320.vmfb` | ~32ms / 31 FPS | INT8 quantized, IREE FlatBuffer |
-| **ONNX CPU** (fallback) | `moon.onnx` | ~200ms / 5 FPS | Float32, auto-selected if NPU unavailable |
 
 The detector handles letterbox padding, int8 quantization, NMS postprocessing, and outputs normalized bounding boxes.
 
@@ -75,7 +74,17 @@ Uses additive synthesis with ADSR envelopes, 24-voice polyphony, and feedback-de
 
 Includes a `SoundEvolver` that slowly modulates filter brightness, pan, reverb, and program changes for evolving timbre. The AI channel receives independent pan drift and extra reverb for an ethereal, spatial quality.
 
-### MelodyRNN (`melody_rnn.py`) — Optional
+### AI Accompaniment (`melody_rnn.py`) — Optional
+
+Jellectronica includes an optional **MelodyRNN** AI melody generator — a real pre-trained [Magenta](https://magenta.tensorflow.org/) basic_rnn neural network that generates evolving melodies in real time.
+
+1. Jellyfish-triggered MIDI notes are fed into the MelodyRNN as seed input
+2. A 2-layer LSTM (512-unit hidden state) generates melodic continuations
+3. Output is snapped to the pentatonic scale for guaranteed consonance
+4. Notes play through a soft, ethereal sine-wave synth patch (Channel 3)
+5. Temperature modulation: more jellyfish = more exploratory melodies
+
+The model weights (`basic_rnn_weights.npz`, ~12MB) are pre-extracted from a TensorFlow.js checkpoint. Inference runs in **pure NumPy** — no TensorFlow, no GPU, no additional dependencies. It runs entirely on the Cortex-A55 CPU alongside everything else.
 
 Real Magenta MelodyRNN running **pure NumPy LSTM inference** — zero TensorFlow dependency.
 
@@ -96,6 +105,21 @@ Real Magenta MelodyRNN running **pure NumPy LSTM inference** — zero TensorFlow
 
 **Weights**: `model/basic_rnn_weights.npz` (~12MB) — pre-extracted from a Magenta TF.js checkpoint. Contains LSTM kernels, biases, and the fully-connected output layer.
 
+When disabled:
+- The `--no-ai` flag cleanly skips MelodyRNN loading
+- All other audio (pads, arpeggios, bass, clash chimes) continue normally
+- The DSI overlay shows "AI ACCOMPANIMENT [OFF]"
+- Zero performance impact — no weights are loaded
+
+When enabled:
+- MelodyRNN loads in ~1 second (12MB weights)
+- Two background threads handle generation and playback
+- CPU usage is minimal (~5% for continuous generation)
+- DSI overlay shows "AI ACCOMPANIMENT" with a pulsing indicator and live note names
+- Web monitor shows real-time AI note events
+
+---
+
 ### 8×4 Musical Grid
 
 The video frame is divided into an 8×4 grid. Each cell maps to a MIDI note:
@@ -112,7 +136,7 @@ When a tracked jellyfish moves from one cell to another, the corresponding note 
 ## Display Modes
 
 ### Kiosk Mode (`kiosk_dsi.py`)
-- Renders to the Waveshare 5" DSI display via GStreamer `waylandsink`
+- Renders to the Waveshare 7" DSI display via GStreamer `waylandsink`
 - OpenCV draws detection overlay, converts to BGRx, pipes to GStreamer
 - AI Accompaniment visualization bar at the bottom of the display
 - Fullscreen, standalone — no laptop needed

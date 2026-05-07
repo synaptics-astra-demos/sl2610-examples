@@ -8,7 +8,7 @@ Runs entirely on the Coral board:
 
 Usage:
     python3 server.py
-    python3 server.py --video video/moon15.mp4
+    python3 server.py --video video/jellyfish.mp4
     python3 server.py --audio-driver alsa --alsa-device hw:0,0
 """
 
@@ -337,7 +337,7 @@ def inference_loop(video_path: str, model_path: str):
             is_stream = True
         else:
             fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "../samples", "moon15.mp4")
+                                    "../samples", "jellyfish.mp4")
             if os.path.exists(fallback):
                 print(f"[Inference] Falling back to {fallback}", flush=True)
                 actual_url = fallback
@@ -366,7 +366,7 @@ def inference_loop(video_path: str, model_path: str):
                 else:
                     # Fall back to local video
                     fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                            "../samples", "moon15.mp4")
+                                            "../samples", "jellyfish.mp4")
                     if os.path.exists(fallback):
                         print(f"[Inference] Stream failed after {MAX_STREAM_RETRIES} attempts — "
                               f"falling back to {os.path.basename(fallback)}", flush=True)
@@ -424,7 +424,7 @@ def inference_loop(video_path: str, model_path: str):
                                 reconnect_ok = True
                         if not reconnect_ok:
                             fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                    "../samples", "moon15.mp4")
+                                                    "../samples", "jellyfish.mp4")
                             if os.path.exists(fallback):
                                 print(f"[Inference] Cannot reconnect — falling back to "
                                       f"{os.path.basename(fallback)}", flush=True)
@@ -450,7 +450,7 @@ def inference_loop(video_path: str, model_path: str):
                         print("[Inference] Dark frame detected...", flush=True)
                     if black_frame_count >= 15:
                         fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                "../samples", "moon15.mp4")
+                                                "../samples", "jellyfish.mp4")
                         if os.path.exists(fallback):
                             print(f"[Inference] Stream is black (lights off?) — "
                                   f"switching to {os.path.basename(fallback)}", flush=True)
@@ -673,7 +673,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Jellectronica — Native Server")
     parser.add_argument("--video", default=DEFAULT_VIDEO, help="Video source (YouTube URL, file, or stream)")
-    parser.add_argument("--model", default="../models/moon320.vmfb", help="Model path (.vmfb for NPU, .onnx for CPU)")
+    parser.add_argument("--model", default="../models/moon_jellyfish/moon320.vmfb", help="Model path (.vmfb for NPU, .onnx for CPU)")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host")
     parser.add_argument("--port", type=int, default=5002, help="HTTP port")
     parser.add_argument("--ws-port", type=int, default=5003, help="WebSocket port")

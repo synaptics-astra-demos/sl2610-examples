@@ -2,7 +2,7 @@
 
 **Turn any video stream into ambient music using real-time AI object detection**, running entirely on the [Synaptics Astra SL2619 Coral Dev Board](https://coral.ai/products/).
 
-Jellectronica watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 31 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
+Jellectronica watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
 
 An optional **MelodyRNN AI accompaniment** layer listens to the triggered notes and generates real-time generative melodies using a pre-trained Magenta LSTM neural network — all running on-device in pure Python/NumPy.
 
@@ -27,7 +27,7 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 
 | Component | Required |
 |-----------|----------|
-| **Coral Devboard** | Synaptics Astra SL2619 |
+| **Synaptics Astra SL2619** | Coralboard or Machina Kit |
 | **USB Audio** | Any USB speaker or headset |
 | **Display** | Waveshare 7" DSI LCD (optional) |
 | **Network** | For YouTube livestream (optional — local video fallback included) |
@@ -38,18 +38,23 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 - Astra SDK v2.0+ (Yocto scarthgap, Python 3.12)
 - NPU must be enabled in the device tree
 
+### Host Computer Software
+
+- Android Debug Bridge (ADB) from [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) (recommended)
+
 ---
 
 
 ## Set Up
 
-Connect the network. The Synaptics Coralboards support network sharing over USB. Connect to a computer and enable network sharing. 
+- Connect to the network
 
-Attach USB audio device such as speaker or headset.
+The Synaptics Coralboards support network sharing over USB. Connect to a computer and enable network sharing. See [Coralboard Documentation](https://developers.google.com/coral/products/SL2610-dev-board) for details. 
 
-Optionally, if you have the supported WiFi/BT module, you can use WiFi for the network and bluetooth for the audio device. 
+Optionally, if you have the supported WiFi/BT module, you can use WiFi for the network and Bluetooth for the audio device. This module comes standard with the Machina Kit, but sold separately with the Coralboard.
 
-See Coralboard documentation for details. 
+
+- Attach USB audio device such as speaker or headset.
 
 
 ### Choose an installation mdethod
@@ -58,19 +63,18 @@ See Coralboard documentation for details.
 
 2. Direct - clone directly onto the coralboard
 
-[Warning!] Due to the large files, Git LFS must be installed before cloning this repository. 
-
 
 ### 🔧 Installation (Indirect Method)
 
-Ensure you have git LFS installed. 
 
-Clone the repositiory on your computer and copy over the files.
+- Clone the repositiory on your computer.
 
 ```bash
 git clone https://github.com/synaptics-astra-demos/sl2610-examples 
 cd sl2610-examples
 ```
+
+- Copy over the files.
 
 ```bash
 # Push the files to the target
@@ -81,12 +85,17 @@ adb push . /home/root/sl2610-examples
 scp -r . root@<board-ip>:/home/root/sl2610-examples
 ```
 
+- Connect to the target 
+
 ```bash
 # Use ADB
 adb shell
+
+# or us SSH
+ssh root@<board-ip>
 ```
 
-On the target, navigate to the repository directory:
+- On the target, navigate to the repository directory:
 
 ```bash
 cd /home/root/sl2610-examples
@@ -94,12 +103,23 @@ cd /home/root/sl2610-examples
 
 ### 🔧 Installation (Direct Method)
  
-Clone the repository using the following command:
+- Connect to the target 
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
+# Use ADB
+adb shell
+
+# or us SSH
+ssh root@<board-ip>
 ```
-Navigate to the repository directory:
+
+- Clone the repository using the following command:
+
+```bash
+git clone https://github.com/synaptics-astra-demos/sl2610-examples
+```
+
+- Navigate to the repository directory:
 
 ```bash
 cd sl2610-examples
@@ -107,24 +127,29 @@ cd sl2610-examples
 
 ### Setup Python Environment
 
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
+- To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
 
 ```bash
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 ```
 
-Install dependencies
+- Install general dependencies for sl2610-examples
 
-If online
 ```bash
 pip install -r requirements.txt
 ```
 
+- Install specific dependencies for this example
+
+```bash
+cd jellectronica
+pip install -r requirements.txt
+```
 
 #### Optionally Pair a Bluetooth Device
 
-If you have the WiFi/BT card installed, follow this guide to pair a bluetooth headset or speaker. 
+- If you have the WiFi/BT module, follow this guide to pair a bluetooth headset or speaker. 
 https://synaptics-astra.github.io/doc/v/latest/linux/index.html#using-bluetooth
 
 
@@ -148,54 +173,6 @@ Runs headless on the board. Open `http://<board-ip>:5002` in any browser to see 
 ---
 
 ## How It Works
-
-### AI Accompaniment (MelodyRNN)
-
-Jellectronica includes an optional **MelodyRNN** AI melody generator — a real pre-trained [Magenta](https://magenta.tensorflow.org/) basic_rnn neural network that generates evolving melodies in real time.
-
-1. Jellyfish-triggered MIDI notes are fed into the MelodyRNN as seed input
-2. A 2-layer LSTM (512-unit hidden state) generates melodic continuations
-3. Output is snapped to the pentatonic scale for guaranteed consonance
-4. Notes play through a soft, ethereal sine-wave synth patch (Channel 3)
-5. Temperature modulation: more jellyfish = more exploratory melodies
-
-The model weights (`basic_rnn_weights.npz`, ~12MB) are pre-extracted from a TensorFlow.js checkpoint. Inference runs in **pure NumPy** — no TensorFlow, no GPU, no additional dependencies. It runs entirely on the Cortex-A55 CPU alongside everything else.
-
-### Enabling / Disabling
-
-AI accompaniment is **enabled by default**. To disable it:
-
-```bash
-# Command line
-python3 server.py --no-ai
-python3 kiosk_dsi.py --no-ai
-
-# Or in the systemd service, add --no-ai to ExecStart
-```
-
-When disabled:
-- The `--no-ai` flag cleanly skips MelodyRNN loading
-- All other audio (pads, arpeggios, bass, clash chimes) continue normally
-- The DSI overlay shows "AI ACCOMPANIMENT [OFF]"
-- Zero performance impact — no weights are loaded
-
-When enabled:
-- MelodyRNN loads in ~1 second (12MB weights)
-- Two background threads handle generation and playback
-- CPU usage is minimal (~5% for continuous generation)
-- DSI overlay shows "AI ACCOMPANIMENT" with a pulsing indicator and live note names
-- Web monitor shows real-time AI note events
-
-### Graceful Fallback
-
-If the weights file is missing or MelodyRNN fails to load, the system continues normally without AI accompaniment. No crash, no error — just a log message:
-
-```
-[MusicEngine] AI accompaniment disabled (weights not found)
-```
-
----
-
 
 ```
 YouTube Live ──→ yt-dlp ──→ cv2.VideoCapture
@@ -235,30 +212,14 @@ See [docs/architecture.md](docs/architecture.md) for full technical details.
 | Source | Config | Notes |
 |--------|--------|-------|
 | YouTube livestream (default) | `--youtube <URL>` | Requires WiFi + yt-dlp |
-| Local video file | `--video video/moon15.mp4` | Bundled fallback, no network needed |
+| Local video file | `--video video/jellyfish.mp4` | Bundled fallback, no network needed |
 | Any HTTP stream | `--video http://...` | HLS, DASH, MJPEG |
 
-When YouTube is unavailable (no network or yt-dlp not installed), the system automatically falls back to the bundled `video/moon15.mp4`. If the stream goes black (e.g. aquarium turns off lights), it also falls back automatically.
+When YouTube is unavailable (no network or yt-dlp not installed), the system automatically falls back to the bundled `video/jellyfish.mp4`. If the stream goes black (e.g. aquarium turns off lights), it also falls back automatically.
 
 ---
 
 ## Customization
-
-### Setting Up WiFi
-
-Newer Coral boards ship with WiFi built in. To connect:
-
-```bash
-# SSH or serial into the board, then:
-wpa_passphrase "YourNetworkName" "YourPassword" > /etc/wpa_supplicant.conf
-wpa_supplicant -i wlan0 -c /etc/wpa_supplicant.conf -B
-udhcpc -i wlan0
-
-# Verify connectivity
-ping -c 3 google.com
-```
-
-To make it persist across reboots, ensure `wpa_supplicant` is enabled as a systemd service or configured in your Yocto network setup.
 
 ### Changing the Video Source
 
@@ -283,15 +244,15 @@ The default model detects jellyfish, but you can swap in any YOLOv8 model to det
 
 1. **Train a YOLOv8 model** using [Ultralytics](https://docs.ultralytics.com/) on your chosen objects (dogs, birds, cars, etc.)
 
-2. **Convert it for the NPU** — see [docs/model-conversion.md](docs/model-conversion.md) for the full SyNAP Toolkit workflow
+2. **Convert it for the NPU** — see [docs/model-conversion.md](docs/model-conversion.md) for the Torq compiler workflow.
 
 3. **Deploy the model**:
    ```bash
    # Copy your converted model to the board
-   adb push your_model.vmfb /home/root/jellyphony-native/model/
+   adb push your_model.vmfb /home/root/sl2610-examples/jellectronica/models/
 
    # Run with the new model
-   python3 server.py --model model/your_model.vmfb
+   python3 server.py --model ../models/your_model.vmfb
    ```
 
 The musical grid mapping works with any single-class detection model. Multi-class models will work too — all detected objects trigger notes regardless of class.
@@ -303,11 +264,11 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 ```bash
 # Kiosk mode (DSI display, fullscreen)
 python3 kiosk_dsi.py
-python3 kiosk_dsi.py --video video/moon15.mp4
+python3 kiosk_dsi.py --video video/jellyfish.mp4
 
 # Server mode (headless, MJPEG stream)
 python3 server.py
-python3 server.py --video video/moon15.mp4 --port 5002
+python3 server.py --video video/jellyfish.mp4 --port 5002
 
 # Custom video source
 python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID
@@ -344,14 +305,11 @@ jellectronica
 │   ├── basic_rnn_weights.npz # MelodyRNN weights (Magenta basic_rnn, 12MB)
 │   └── moon.json             # Model metadata
 ├── video/
-│   └── moon15.mp4            # Fallback jellyfish video (~208MB)
+│   └── jellyfish.mp4            # Fallback jellyfish video (~208MB)
 └── docs/
     ├── architecture.md       # Technical architecture deep-dive
-    ├── serial-console.md     # Serial console wiring & connection
-    ├── model-conversion.md   # How to retrain/convert the YOLOv8 model
-    ├── dsi-display.md        # Waveshare 5" DSI LCD setup
-    └── recovery.md           # Board recovery (bricked boot)
-```
+    └── model-conversion.md   # How to retrain/convert the YOLOv8 model
+ ``
 
 ---
 

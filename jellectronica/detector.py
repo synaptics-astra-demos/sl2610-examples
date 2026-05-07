@@ -35,7 +35,7 @@ class Detector:
     for the Synaptics SL2610 NPU.
     """
 
-    def __init__(self, model_path: str = "../models/moon320.vmfb"):
+    def __init__(self, model_path: str = "../models/moon_jellyfish/moon320.vmfb"):
         self.model_path = model_path
         self._runner = None      # torq VMFBInferenceRunner
         self._backend = None

@@ -37,19 +37,21 @@ This produces a `best.onnx` file.
 
 The Torq compiler converts ONNX models to IREE FlatBuffer (`.vmfb`) format with INT8 quantization for the NPU.
 
-```bash
-# Using the SyNAP Toolkit Docker image
-docker pull ghcr.io/synaptics-synap/toolkit:<version>
+Follow the [Torq Compiler Getting Started Guide](https://synaptics-torq.github.io/torq-compiler/v/latest/user-manual/getting_started.html) to set up your environment. 
 
-docker run --rm -it \
-  -v $(pwd):/workspace \
-  ghcr.io/synaptics-synap/toolkit:<version> \
-  synap_convert \
-    --model /workspace/best.onnx \
-    --target SL2619 \
-    --quantize int8 \
-    --calibration-data /workspace/calibration_images/ \
-    --out-dir /workspace/output
+Next, follow the steps in the [Step-by-Step Model deployment Examples](https://synaptics-torq.github.io/torq-compiler/v/latest/user-manual/step_by_step_examples.html#step-by-step-model-deployment-examples). Focus on the **Example: ONNX model** section. 
+
+
+And finally, compile the model with these recommended settings.
+
+```bash
+torq-compile -o <Your Model>.vmfb <Your Model>.mlir \
+    --torq-convert-dtypes \
+    --torq-disable-slicing \
+    --torq-enable-torq-hl-tiling \
+    --torq-enable-transpose-optimization \
+    --torq-convert-io-dtype \
+    --torq-hw=SL2610 \
 ```
 
 > **Note**: INT8 quantization requires ~100-500 representative sample images for calibration.
@@ -58,10 +60,10 @@ docker run --rm -it \
 
 ```bash
 # Copy the compiled model
-scp output/moon320.vmfb root@<board-ip>:/home/root/jellectronica-coral-native/model/
+scp output/moon320.vmfb root@<board-ip>:/home/root/sl2610-examples/models/
 
 # Or via ADB
-adb push output/moon320.vmfb /home/root/jellectronica-coral-native/model/
+adb push output/moon320.vmfb /home/root/sl2610-examples/models/
 ```
 
 ## Step 4: Test

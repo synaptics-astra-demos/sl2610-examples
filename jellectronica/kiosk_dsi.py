@@ -37,7 +37,7 @@ from music_engine import MusicEngine, NOTE_GRID
 
 #  Configuration 
 DEFAULT_YOUTUBE_URL = "https://www.youtube.com/watch?v=7N9-FODmuBA"
-DEFAULT_LOCAL_VIDEO = "../samples/moon15.mp4"
+DEFAULT_LOCAL_VIDEO = "../samples/jellyfish.mp4"
 DETECT_INTERVAL_S = 0.15
 DISPLAY_W = 800
 DISPLAY_H = 480
