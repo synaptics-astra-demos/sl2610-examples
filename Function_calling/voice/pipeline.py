@@ -1,7 +1,12 @@
 """VoicePipeline — thread-managed mic → VAD → ASR → text emit.
 
 UI usage:
-    pipe = make_voice_pipeline(on_text=lambda text: signal.emit(text))
+    pipe = make_voice_pipeline(
+        on_text=lambda text: signal.emit(text),
+        mode="moonshine",
+        mic_device=None,
+        moonshine_dir=None,
+    )
     if pipe is None:           # voice unavailable; hide button
         ...
     pipe.start()               # opens mic, runs VAD loop
@@ -11,8 +16,8 @@ UI usage:
 from __future__ import annotations
 
 import logging
-import os
 import threading
+from pathlib import Path
 from typing import Callable
 
 from .asr import ASR, MoonshineASR, StubASR
@@ -21,6 +26,9 @@ from .vad import VAD
 
 
 logger = logging.getLogger(__name__)
+
+
+VoiceMode = str  # "off" | "stub" | "moonshine"
 
 
 class VoicePipeline:
@@ -96,16 +104,41 @@ class VoicePipeline:
                     logger.exception("on_text callback failed")
 
 
+def _coerce_mic_device(raw: str | int | None) -> int | str | None:
+    """Sounddevice accepts either a device index (int) or a substring (str).
+    CLI args arrive as strings; coerce numeric strings to int so e.g.
+    --mic 0 selects device index 0, while --mic hw:0,0 stays as a name."""
+    if raw is None:
+        return None
+    if isinstance(raw, int):
+        return raw
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
 def make_voice_pipeline(
     on_text: Callable[[str], None],
+    mode: VoiceMode = "off",
+    mic_device: str | int | None = None,
+    moonshine_dir: str | Path | None = None,
 ) -> VoicePipeline | None:
-    """Build a VoicePipeline per CORAL_VOICE; return None if voice is off
-    or required deps are missing.
+    """Build a VoicePipeline; return None if voice is off or required deps
+    are missing.
 
-    CORAL_VOICE values: off | stub | moonshine
-    CORAL_MIC: optional device index or substring (sounddevice device selector)
+    Args:
+        on_text: callback invoked from the pipeline thread for each
+            finalised utterance.
+        mode: "off" | "stub" | "moonshine".
+        mic_device: optional sounddevice selector (index or name substring).
+        moonshine_dir: optional path to staged Moonshine artifacts. Used
+            only when mode="moonshine".
     """
-    mode = os.environ.get("CORAL_VOICE", "off").lower()
+    mode = (mode or "off").lower()
     if mode == "off":
         return None
 
@@ -113,23 +146,15 @@ def make_voice_pipeline(
         asr: ASR = StubASR()
     elif mode == "moonshine":
         try:
-            asr = MoonshineASR()
+            asr = MoonshineASR(model_dir=moonshine_dir)
         except (VoiceUnavailable, NotImplementedError, FileNotFoundError) as e:
             logger.warning("moonshine ASR unavailable: %s", e)
             return None
     else:
-        logger.warning("unknown CORAL_VOICE=%r; voice disabled", mode)
+        logger.warning("unknown voice mode %r; voice disabled", mode)
         return None
 
-    raw_device = os.environ.get("CORAL_MIC")
-    device: int | str | None
-    if raw_device is None or raw_device == "":
-        device = None
-    else:
-        try:
-            device = int(raw_device)
-        except ValueError:
-            device = raw_device
+    device = _coerce_mic_device(mic_device)
 
     try:
         return VoicePipeline(asr=asr, on_text=on_text, device=device)

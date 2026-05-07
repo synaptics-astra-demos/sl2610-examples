@@ -231,9 +231,24 @@ def main() -> None:
                    help="WLED serial baud rate (default 115200)")
     p.add_argument(
         "--voice",
-        action="store_true",
-        help="Enable voice input. Honors CORAL_VOICE (off|stub|moonshine) "
-             "and CORAL_MIC. Spoken utterances are queued as if typed.",
+        choices=("off", "stub", "moonshine"),
+        default="off",
+        help="Voice input mode (default off). 'stub' = real mic + canned "
+             "phrases (validates pipeline plumbing). 'moonshine' = real "
+             "Moonshine ASR on the Torq NPU. Spoken utterances are queued "
+             "as if typed.",
+    )
+    p.add_argument(
+        "--mic",
+        help="Sounddevice selector for the input device. Accepts a numeric "
+             "index (e.g. --mic 0) or a name substring (e.g. --mic hw:0,0). "
+             "Defaults to the system default input.",
+    )
+    p.add_argument(
+        "--moonshine-dir",
+        type=Path,
+        help="Directory holding Moonshine VMFB artifacts. Defaults to "
+             "<repo>/models/moonshine/ when --voice=moonshine.",
     )
     args = p.parse_args()
 
@@ -246,13 +261,18 @@ def main() -> None:
     dispatcher = Dispatcher(hardware)
 
     voice: VoicePipeline | None = None
-    if args.voice:
-        voice = make_voice_pipeline(on_text=lambda _t: None)
+    if args.voice != "off":
+        voice = make_voice_pipeline(
+            on_text=lambda _t: None,
+            mode=args.voice,
+            mic_device=args.mic,
+            moonshine_dir=args.moonshine_dir,
+        )
         if voice is None:
             print(_dim(
-                "voice unavailable: set CORAL_VOICE=stub|moonshine and install "
-                "sounddevice + silero-vad-notorch (requires libportaudio.so.2 — "
-                "extract library/portaudio_libs.tgz)."
+                f"voice unavailable: --voice={args.voice} requires "
+                "sounddevice + silero-vad-notorch (and libportaudio.so.2 — "
+                "extract library/portaudio_libs.tgz). Continuing text-only."
             ))
 
     try:
@@ -286,7 +306,7 @@ def main() -> None:
         if voice is not None:
             voice.set_callback(_on_voice_text)
             voice.start()
-            print(_dim("voice: listening (CORAL_VOICE active)."))
+            print(_dim(f"voice: listening (--voice={args.voice})."))
 
         print(_dim("Ready. /help for commands, Ctrl-D or /exit to leave."))
         while True:

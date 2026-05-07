@@ -3,9 +3,9 @@
 Public API:
     - VoicePipeline: thread-managed orchestrator (mic + VAD + ASR)
     - ASR (Protocol), StubASR, MoonshineASR
-    - make_voice_pipeline(on_text): factory keyed off CORAL_VOICE
+    - make_voice_pipeline(on_text, mode, mic_device, moonshine_dir): factory
 
-CORAL_VOICE values:
+Voice modes (passed via the demo's --voice flag):
     off       - no voice (default; UI mic button hidden / disabled)
     stub      - real mic + VAD, stub ASR (rotating canned phrases)
     moonshine - real mic + VAD + Moonshine ASR on the Torq NPU

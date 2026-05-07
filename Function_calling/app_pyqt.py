@@ -10,7 +10,6 @@ Run (after exporting the wayland env vars listed in README.md):
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -47,6 +46,30 @@ def main() -> int:
                    help="WLED serial baud rate (default 115200)")
     p.add_argument("--fullscreen", action="store_true",
                    help="Open the window full-screen (recommended on the 7\" panel)")
+    p.add_argument(
+        "--voice",
+        choices=("off", "stub", "moonshine"),
+        default="off",
+        help="Voice input mode (default off). 'stub' uses canned phrases; "
+             "'moonshine' uses the Torq-accelerated Moonshine ASR.",
+    )
+    p.add_argument(
+        "--mic",
+        help="Sounddevice selector (numeric index or name substring) for "
+             "the input device. Defaults to the system default input.",
+    )
+    p.add_argument(
+        "--moonshine-dir",
+        type=Path,
+        help="Directory holding Moonshine VMFB artifacts. Defaults to "
+             "<repo>/models/moonshine/ when --voice=moonshine.",
+    )
+    p.add_argument(
+        "--screenshot-dir",
+        type=Path,
+        default=Path("/tmp"),
+        help="Directory for Ctrl+P screenshots (default /tmp).",
+    )
     args = p.parse_args()
 
     app = QApplication(sys.argv)
@@ -60,10 +83,22 @@ def main() -> int:
     hardware = HardwareDevice(wled=wled)
     dispatcher = Dispatcher(hardware)
 
-    voice = make_voice_pipeline(on_text=lambda _t: None)
+    voice = None
+    if args.voice != "off":
+        voice = make_voice_pipeline(
+            on_text=lambda _t: None,
+            mode=args.voice,
+            mic_device=args.mic,
+            moonshine_dir=args.moonshine_dir,
+        )
 
-    win = ChatWindow(model=model, dispatcher=dispatcher, voice=voice)
-    if args.fullscreen or os.environ.get("FUNCTIONGEMMA_FULLSCREEN", "").lower() in ("1", "true", "yes"):
+    win = ChatWindow(
+        model=model,
+        dispatcher=dispatcher,
+        voice=voice,
+        screenshot_dir=args.screenshot_dir,
+    )
+    if args.fullscreen:
         win.showFullScreen()
     else:
         win.show()

@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import datetime
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -147,10 +147,12 @@ class ChatWindow(QMainWindow):
         model: FunctionGemmaModel,
         dispatcher: Dispatcher,
         voice: VoicePipeline | None = None,
+        screenshot_dir: str | Path = "/tmp",
     ) -> None:
         super().__init__()
         self.setWindowTitle("FunctionGemma Physical AI Demo")
         self.resize(480, 800)
+        self._screenshot_dir = Path(screenshot_dir)
 
         self.pump = MetricsPump(PsutilProvider(), interval_s=0.5)
         self.pump.start()
@@ -358,11 +360,11 @@ class ChatWindow(QMainWindow):
         self._set_chips_enabled(True)
 
     def _screenshot(self) -> None:
-        out_dir = os.environ.get("CORAL_SCREENSHOT_DIR", "/tmp")
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        path = os.path.join(out_dir, f"functiongemma-{ts}.png")
+        self._screenshot_dir.mkdir(parents=True, exist_ok=True)
+        path = self._screenshot_dir / f"functiongemma-{ts}.png"
         pix = self.grab()
-        ok = pix.save(path, "PNG")
+        ok = pix.save(str(path), "PNG")
         msg = f"screenshot saved: {path}" if ok else f"screenshot FAILED: {path}"
         self._set_status(msg)
         self.log.append_system(msg)

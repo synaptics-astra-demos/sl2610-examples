@@ -35,44 +35,29 @@ Navigate to the Repository Directory:
 cd sl2610-examples
 ```
 
-### Setup Python Environment
+### One-shot setup script (recommended)
 
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
+`Function_calling/scripts/setup.sh` is idempotent: it creates a venv, installs the requirements (offline-friendly via `wheelhouse/`), and downloads the v7 GGUF model. Run from the repo root:
+
+```bash
+bash Function_calling/scripts/setup.sh             # online install, no voice
+bash Function_calling/scripts/setup.sh --offline   # use wheelhouse/, no voice
+bash Function_calling/scripts/setup.sh --voice     # online + voice deps (sounddevice, silero-vad-notorch, torq_runtime, portaudio)
+bash Function_calling/scripts/setup.sh --offline --voice
+```
+
+The `--voice` flag also extracts `library/portaudio_libs.tgz` into `/` (needs sudo or root) — the OOBE image doesn't ship `libportaudio.so.2`. The `torq_runtime` wheel installs separately with `--no-deps` per the standalone Moonshine example.
+
+> **Note**: the offline `wheelhouse/` does not yet include aarch64 wheels for the voice-only deps (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `ml_dtypes`, `soundfile`). Until those are populated, `--voice` requires the **online** path (omit `--offline`).
+
+### Manual setup (if you prefer)
 
 ```bash
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
-```
+pip install -r requirements.txt                              # online
+pip install --no-index --find-links=./wheelhouse -r requirements.txt   # offline
 
-Install dependencies
-
-If online
-```bash
-pip install -r requirements.txt
-```
-
-If offline
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
-```
-
-If you plan to use voice input (see "Voice input (optional)" below), also install the voice deps and the PortAudio system library:
-
-```bash
-pip install -r speech_to_text/requirements.txt
-pip install --no-deps wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
-sudo tar -xzf library/portaudio_libs.tgz -C /
-```
-
-The `torq_runtime` wheel must be installed manually with `--no-deps` per the standalone Moonshine example (`speech_to_text/README.md`); pip's resolver pulls a CPU-only build otherwise. The `portaudio_libs.tgz` extract is the primary path since the OOBE image does not ship `libportaudio.so.2`.
-
-> **Note**: the offline `wheelhouse/` does not yet include aarch64 wheels for the voice-only deps (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `ml_dtypes`, `soundfile`). Until those are populated, voice input requires the **online** install path.
-
-### Download the Fine-Tuned Model
-
-Download the v7 GGUF (248 MB, Q5_K_M, compact tool-call format) into the top-level `models/` directory:
-
-```bash
 mkdir -p models && cd models
 wget https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main/functiongemma-physical-ai-v7-Q5_K_M.gguf
 cd ..
@@ -87,7 +72,7 @@ wget -O models/moonshine/tokenizer.json \
   https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
 
-Override the artifact directory with `CORAL_MOONSHINE_DIR=/path/to/dir`. The default is `<repo>/models/moonshine/`.
+Override the artifact directory with `--moonshine-dir /path/to/dir`. The default is `<repo>/models/moonshine/`.
 
 ### (Optional) Wire up the Neopixel Ring
 
@@ -101,7 +86,7 @@ ls /dev/ttyACM*
 
 The first model invocation prefills the tool-declaration prompt and takes ~45-50 s on the 2-core A55 CPU. The interactive REPL pays this cost once at start-up so every subsequent turn is sub-second; one-shot mode pays it on every invocation. Default to the REPL.
 
-Optionally set up the display environment (required for the PyQt UI variant):
+For interactive runs of the **PyQt UI** from a terminal, export the Wayland env vars first so Qt can find the OOBE image's weston compositor (the systemd service in [Auto-start on boot](#auto-start-on-boot-systemd) handles this for you):
 
 ```bash
 export XDG_RUNTIME_DIR=/var/run/user/0
@@ -162,30 +147,30 @@ Press `Ctrl+P` for a screenshot to `/tmp/`. Press `Esc` to quit.
 
 ### Voice input (optional)
 
-The PyQt UI grows a **Mic** button when voice is enabled, and the REPL gains a `--voice` flag that mixes spoken utterances with typed input.
+The PyQt UI grows a **Mic** button when voice is enabled, and the REPL accepts spoken utterances mixed with typed input. Both entrypoints take the same flags:
 
-Set `CORAL_VOICE` to pick the ASR backend:
-
-| Value | What it does |
+| Flag | What it does |
 |---|---|
-| `off` (default) | No voice. Mic button hidden; `--voice` warns and continues text-only. |
-| `stub` | Real mic + VAD; ASR returns rotating canned phrases. Use to validate the mic → VAD → tool-dispatch path without a real ASR model. |
-| `moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU. Reads VMFB artifacts from `models/moonshine/` (or `CORAL_MOONSHINE_DIR`). |
-
-Optional: `CORAL_MIC=<index|substring>` selects a specific input device (sounddevice device selector). Defaults to the system default. The HAT PDM mic enumerates as device 0 (`klamath-asoc, hw:0,0`); reach it with `CORAL_MIC=0` or `CORAL_MIC=hw:0,0`. A plugged-in USB mic typically takes the default slot.
+| `--voice off` (default) | No voice. Mic button hidden; spoken input ignored. |
+| `--voice stub` | Real mic + VAD; ASR returns rotating canned phrases. Use to validate the mic → VAD → tool-dispatch path without a real ASR model. |
+| `--voice moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU. Reads VMFB artifacts from `--moonshine-dir` (default `<repo>/models/moonshine/`). |
+| `--mic <index\|substring>` | Sounddevice device selector. The HAT PDM mic enumerates as device 0 (`klamath-asoc, hw:0,0`); reach it with `--mic 0` or `--mic hw:0,0`. Defaults to the system default; a plugged-in USB mic typically takes that slot. |
 
 ```bash
 # PyQt UI with stub voice (validates plumbing without a real ASR model)
-CORAL_VOICE=stub python3 app_pyqt.py
+python3 app_pyqt.py --voice stub
 
 # REPL with stub voice (talk OR type — both feed run_turn)
-CORAL_VOICE=stub python3 demo.py --voice
+python3 demo.py --voice stub
 
 # PyQt UI with real Moonshine ASR (needs Moonshine artifacts staged)
-CORAL_VOICE=moonshine python3 app_pyqt.py
+python3 app_pyqt.py --voice moonshine
+
+# Pin to the HAT PDM mic explicitly
+python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-System-level prerequisite for the mic stream: `libportaudio.so.2` must be present (extracted from `library/portaudio_libs.tgz` per the install section above). The Python deps (`sounddevice`, `silero-vad-notorch`, plus the Moonshine stack `onnxruntime`/`tokenizers`/`ml_dtypes`/`soundfile`) install from `requirements.txt` + `speech_to_text/requirements.txt`. The VAD loads via `load_silero_vad(onnx=True)` and `silero-vad-notorch` is a torch-free fork, so no PyTorch is pulled in.
+Voice prerequisites are installed in one shot by `bash Function_calling/scripts/setup.sh --voice` (see [Installation](#-installation)): the Python deps (`sounddevice`, `silero-vad-notorch`, plus the Moonshine stack `onnxruntime` / `tokenizers` / `ml_dtypes` / `soundfile`) from `requirements.txt` + `speech_to_text/requirements.txt`, the `torq_runtime` wheel with `--no-deps`, and `libportaudio.so.2` extracted from `library/portaudio_libs.tgz`. The VAD loads via `load_silero_vad(onnx=True)` and `silero-vad-notorch` is a torch-free fork, so no PyTorch is pulled in.
 
 **REPL caveat**: in `demo.py --voice` you can talk *or* type. Voice transcription completes asynchronously, so if a spoken utterance arrives while you are mid-keystroke at the `>>>` prompt, the readline buffer is dropped and you have to retype. Acceptable for headless smoke tests; the PyQt UI does not have this problem.
 
@@ -248,14 +233,45 @@ The demo guarantees the buzzer + status LEDs return to a silent/off state on eve
 
 Layered as `try/finally` inside `play_buzzer` + `blink_lights`, a `HardwareDevice.cleanup()` called from a `finally` block in `main()`, signal handlers for `SIGTERM`/`SIGHUP`, and an `atexit` net.
 
-`SIGKILL`, kernel OOM kill, segfault, and power loss bypass all in-process cleanup. If the demo is going to run as a long-lived service, drop a systemd unit with:
+`SIGKILL`, kernel OOM kill, segfault, and power loss bypass all in-process cleanup. The systemd unit installed by `scripts/install-service.sh` (see below) carries an `ExecStopPost=` that drives `BUZZERn` back to silent on every service exit, including SIGKILL, so the buzzer can never latch ON across an unclean restart.
 
-```ini
-[Service]
-ExecStopPost=/usr/bin/gpioset gpiochip0 6=1
+## Auto-start on boot (systemd)
+
+After `scripts/setup.sh` has populated the venv and downloaded the model, install the systemd service to launch the PyQt demo full-screen at boot:
+
+```bash
+sudo bash Function_calling/scripts/install-service.sh
 ```
 
-(or run a oneshot `coral-buzzer-safe.service` at boot that just runs that command.)
+By default the unit runs `app_pyqt.py --fullscreen`. To pass extra flags (e.g. WLED port, voice mode) at install time, append them — they are baked into the generated `ExecStart=` line:
+
+```bash
+sudo bash Function_calling/scripts/install-service.sh --wled-port /dev/ttyACM0
+sudo bash Function_calling/scripts/install-service.sh --voice stub --mic 0
+```
+
+Other flags:
+
+- `--no-enable` — install the unit but don't enable it on boot
+- `--no-start` — enable on boot but don't start it now
+
+The unit:
+
+- waits for `weston.service` (the OOBE image's Wayland compositor)
+- exports the Wayland env vars used by weston (`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `QT_QPA_PLATFORM`, `WESTON_DISABLE_GBM_MODIFIERS`)
+- runs as `root` from `Function_calling/` with the venv's `python3`
+- restarts on failure (5 s back-off, 120 s start timeout — the model takes ~50 s to cold-prefill)
+- on stop drives `gpioset $(gpiofind BUZZERn)=1` so the buzzer is silenced even after SIGKILL
+
+Day-to-day:
+
+```bash
+systemctl status functiongemma-demo
+journalctl -u functiongemma-demo -f       # follow logs
+systemctl restart functiongemma-demo      # after editing source
+
+sudo bash Function_calling/scripts/uninstall-service.sh   # remove
+```
 
 ## Model Information
 

@@ -6,8 +6,6 @@ Protocol, the StubASR rotation, and the pipeline factory's fall-through paths.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from voice import StubASR, make_voice_pipeline
@@ -31,48 +29,40 @@ def test_stub_asr_custom_phrase_set():
     assert asr.transcribe(None, 16_000) == "alpha"  # type: ignore[arg-type]
 
 
-def test_make_voice_pipeline_off_returns_none(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("CORAL_VOICE", "off")
+def test_make_voice_pipeline_off_returns_none():
+    pipe = make_voice_pipeline(on_text=lambda _t: None, mode="off")
+    assert pipe is None
+
+
+def test_make_voice_pipeline_default_is_off():
     pipe = make_voice_pipeline(on_text=lambda _t: None)
     assert pipe is None
 
 
-def test_make_voice_pipeline_default_is_off(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("CORAL_VOICE", raising=False)
-    pipe = make_voice_pipeline(on_text=lambda _t: None)
+def test_make_voice_pipeline_unknown_mode_disables():
+    pipe = make_voice_pipeline(on_text=lambda _t: None, mode="espresso")
     assert pipe is None
 
 
-def test_make_voice_pipeline_unknown_mode_disables(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("CORAL_VOICE", "espresso")
-    pipe = make_voice_pipeline(on_text=lambda _t: None)
-    assert pipe is None
-
-
-def test_make_voice_pipeline_moonshine_disables_when_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
-) -> None:
+def test_make_voice_pipeline_moonshine_disables_when_unavailable(tmp_path) -> None:
     """Without staged Moonshine artifacts the factory must return None,
     not crash the caller. MoonshineASR.__init__ raises FileNotFoundError /
     VoiceUnavailable when the model dir is missing or deps are unavailable;
     the factory swallows both and disables voice."""
-    monkeypatch.setenv("CORAL_VOICE", "moonshine")
-    monkeypatch.setenv("CORAL_MOONSHINE_DIR", str(tmp_path / "definitely-not-here"))
-    pipe = make_voice_pipeline(on_text=lambda _t: None)
+    pipe = make_voice_pipeline(
+        on_text=lambda _t: None,
+        mode="moonshine",
+        moonshine_dir=str(tmp_path / "definitely-not-here"),
+    )
     assert pipe is None
 
 
-def test_moonshine_asr_missing_dir_raises_filenotfound(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
-) -> None:
+def test_moonshine_asr_missing_dir_raises_filenotfound(tmp_path) -> None:
     """MoonshineASR(...) with a non-existent model_dir always raises
     FileNotFoundError — the dir check runs *before* the heavy-deps import,
     so the exact host configuration doesn't matter."""
     from voice.asr import MoonshineASR
 
-    monkeypatch.delenv("CORAL_MOONSHINE_DIR", raising=False)
     missing = tmp_path / "no-such-dir"
     with pytest.raises(FileNotFoundError):
         MoonshineASR(model_dir=missing)

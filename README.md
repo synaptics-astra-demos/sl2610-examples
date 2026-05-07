@@ -76,7 +76,14 @@ Follow the steps in /image_classification/README.md to see how to perform image 
 
 ## Function Calling
 
-Follow the steps in /Function_calling/README.md to see how to run an on-device voice + text function-calling demo using a fine-tuned FunctionGemma 270M LLM that maps natural-language commands to tool calls and dispatches them to real HAT hardware (status LEDs, piezo buzzer, and an optional WLED-driven Neopixel ring).
+See [/Function_calling/README.md](Function_calling/README.md) for the on-device voice + text function-calling demo. A fine-tuned FunctionGemma 270M LLM maps natural-language commands to tool calls and dispatches them to real HAT hardware (status LEDs, piezo buzzer, and an optional WLED-driven Neopixel ring).
+
+The demo ships its own setup scripts under `Function_calling/scripts/`:
+
+- `bash Function_calling/scripts/setup.sh [--offline] [--voice]` — idempotent first-time setup: creates the venv, installs requirements, downloads the model, and (with `--voice`) installs the voice deps plus portaudio.
+- `sudo bash Function_calling/scripts/install-service.sh [extra-flags]` — installs a systemd unit that runs `app_pyqt.py --fullscreen` on boot under Wayland, with crash-safe buzzer cleanup on stop. Any extra flags (`--wled-port /dev/ttyACM0`, `--voice stub`, …) are baked into the generated `ExecStart=`.
+
+`demo.py` and `app_pyqt.py` accept all runtime configuration as CLI flags: `--model`, `--wled-port`, `--voice`, `--mic`, `--moonshine-dir`, `--screenshot-dir`, `--fullscreen`.
 
 ## Speech To Text (Moonshine)
 

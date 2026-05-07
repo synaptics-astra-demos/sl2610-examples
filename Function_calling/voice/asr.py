@@ -77,9 +77,8 @@ class MoonshineASR:
     this wrapper tracks it for free.
 
     Resolution order for ``model_dir``:
-      1. explicit constructor arg
-      2. ``CORAL_MOONSHINE_DIR`` env var
-      3. ``<repo_root>/models/moonshine/`` (the path the standalone
+      1. explicit constructor arg (e.g. from ``--moonshine-dir``)
+      2. ``<repo_root>/models/moonshine/`` (the path the standalone
          Moonshine example uses for its committed VMFB artifacts)
 
     Heavy deps (onnxruntime, iree.runtime, ml_dtypes, tokenizers, plus
@@ -99,8 +98,8 @@ class MoonshineASR:
         resolved = self._resolve_model_dir(model_dir)
         if not resolved.is_dir():
             raise FileNotFoundError(
-                f"Moonshine model dir not found: {resolved}. Set "
-                "CORAL_MOONSHINE_DIR or stage the artifacts under "
+                f"Moonshine model dir not found: {resolved}. Pass "
+                "--moonshine-dir or stage the artifacts under "
                 "<repo>/models/moonshine/."
             )
 
@@ -162,9 +161,6 @@ class MoonshineASR:
     def _resolve_model_dir(model_dir: str | os.PathLike | None) -> Path:
         if model_dir is not None:
             return Path(model_dir)
-        env = os.environ.get("CORAL_MOONSHINE_DIR")
-        if env:
-            return Path(env)
         # Function_calling/voice/asr.py → repo_root/models/moonshine/
         return Path(__file__).resolve().parent.parent.parent / "models" / "moonshine"
 
