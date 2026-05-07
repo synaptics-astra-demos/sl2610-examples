@@ -96,10 +96,16 @@ pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_2
 
 ### Other setup
 
-Download Gemma3 model and Moonshine tokenizer
+Download Gemma3 and Moonshine model files
 
 ```bash
 wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf
+
+wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder.vmfb
+
+wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder_with_past.vmfb
+
+wget -P ../models/https://huggingface.co/Synaptics/Moonshine/tree/main/models/bf16/onnx/encoder.onnx
 
 wget https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
@@ -107,7 +113,7 @@ wget https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.
 Extract the audio libraries
 
 ```bash
-tar -xvzf portaudio_libs.tgz -C /
+tar -xvzf ../library/portaudio_libs.tgz -C /
 ```
 
 Connect a USB or PDM microphone
