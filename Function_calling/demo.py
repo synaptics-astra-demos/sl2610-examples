@@ -38,7 +38,7 @@ from wled import WLEDSerialClient
 
 
 DEFAULT_MODEL = (
-    Path(__file__).resolve().parent.parent
+    Path(__file__).resolve().parent
     / "models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"

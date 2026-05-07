@@ -5,18 +5,15 @@ ASR is a Protocol: any object with `transcribe(audio: np.ndarray, sample_rate: i
 Two impls:
     - StubASR: rotates canned phrases (one per utterance). Useful for end-to-end
       pipeline verification without loading a real ASR model.
-    - MoonshineASR: loads Moonshine ONNX/VMFB on Torq NPU via the shared
-      runtime that ships under ``speech_to_text/`` + ``utils/`` at the
-      repo root (see the standalone Moonshine STT example added in
-      synaptics-astra-demos/sl2610-examples PR #8). Mirrors the
-      Transcriber in speech_to_text/moonshine.py.
+    - MoonshineASR: loads Moonshine ONNX/VMFB on the Torq NPU via the vendored
+      runtime under ``voice/_runtime/``. Mirrors the Transcriber in the
+      standalone Moonshine example.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -69,25 +66,20 @@ class StubASR:
 
 
 class MoonshineASR:
-    """Moonshine ASR on Torq NPU via the shared runtime in
-    ``speech_to_text/inference.py`` + ``utils/runners.py`` at the repo root.
-
-    Mirrors ``speech_to_text/moonshine.py:Transcriber``. We deliberately do
-    not vendor the runtime — when the standalone STT example evolves,
-    this wrapper tracks it for free.
+    """Moonshine ASR on the Torq NPU via the vendored runtime under
+    ``voice/_runtime/``.
 
     Resolution order for ``model_dir``:
       1. explicit constructor arg (e.g. from ``--moonshine-dir``)
-      2. ``<repo_root>/models/moonshine/`` (the path the standalone
-         Moonshine example uses for its committed VMFB artifacts)
+      2. ``Function_calling/models/moonshine/`` (default; populated by
+         ``scripts/setup.sh --voice``)
 
     Heavy deps (onnxruntime, iree.runtime, ml_dtypes, tokenizers, plus
-    requests/tqdm/huggingface_hub pulled in transitively by
-    utils.download) are imported lazily inside ``__init__`` so a host
-    without them keeps the rest of the demo importable. The factory in
-    ``voice/pipeline.py`` catches the resulting VoiceUnavailable +
-    FileNotFoundError so voice degrades to "disabled" rather than
-    crashing the app.
+    requests/tqdm/huggingface_hub pulled in transitively) are imported
+    lazily inside ``__init__`` so a host without them keeps the rest of
+    the demo importable. The factory in ``voice/pipeline.py`` catches
+    the resulting VoiceUnavailable + FileNotFoundError so voice degrades
+    to "disabled" rather than crashing the app.
     """
 
     def __init__(
@@ -99,43 +91,28 @@ class MoonshineASR:
         if not resolved.is_dir():
             raise FileNotFoundError(
                 f"Moonshine model dir not found: {resolved}. Pass "
-                "--moonshine-dir or stage the artifacts under "
-                "<repo>/models/moonshine/."
+                "--moonshine-dir, or stage the artifacts under "
+                "Function_calling/models/moonshine/ (run "
+                "`scripts/setup.sh --voice` to fetch from HuggingFace)."
             )
-
-        # Make the repo-root packages (utils/, speech_to_text/) importable
-        # regardless of which directory the demo was launched from.
-        # Function_calling/voice/asr.py → repo_root.
-        repo_root = str(Path(__file__).resolve().parent.parent.parent)
-        if repo_root not in sys.path:
-            sys.path.insert(0, repo_root)
 
         try:
             from tokenizers import Tokenizer  # type: ignore[import-not-found]
 
-            from speech_to_text.inference import load_moonshine  # type: ignore[import-not-found]
+            from ._runtime.moonshine import load_moonshine
+            from ._runtime.download import download_from_hf
         except ImportError as e:
             raise VoiceUnavailable(
                 f"moonshine deps not available: {e}. The Moonshine voice "
-                "path requires (a) the speech_to_text/ + utils/ scaffolding "
-                "from sl2610-examples (PR #8) to be present at the repo "
-                "root, and (b) onnxruntime, ml_dtypes, tokenizers, and "
-                "torq_runtime installed."
+                "path requires onnxruntime, ml_dtypes, tokenizers, "
+                "huggingface_hub, requests, tqdm, and torq_runtime to be "
+                "installed."
             ) from e
 
         tokenizer_path = resolved / "tokenizer.json"
         if tokenizer_path.is_file():
             tokenizer = Tokenizer.from_file(str(tokenizer_path))
         else:
-            # Fall back to the same auto-fetch path the standalone
-            # speech_to_text/moonshine.py uses.
-            try:
-                from utils.download import download_from_hf  # type: ignore[import-not-found]
-            except ImportError as e:
-                raise FileNotFoundError(
-                    f"tokenizer.json not found in {resolved} and "
-                    "utils.download is not importable for the HF fallback."
-                ) from e
             tokenizer = Tokenizer.from_file(
                 download_from_hf("UsefulSensors/moonshine-tiny", "tokenizer.json")
             )
@@ -151,8 +128,8 @@ class MoonshineASR:
         self._sample_rate = _MOONSHINE_SAMPLE_RATE
 
         # Warm-up pass on silence so the first user utterance hits a
-        # primed graph (mirrors Transcriber.__init__ in
-        # speech_to_text/moonshine.py).
+        # primed graph (mirrors the Transcriber in the standalone
+        # Moonshine example).
         warmup = np.zeros(self._sample_rate, dtype=np.float32)
         self._runner.run(warmup[np.newaxis, :])
         logger.info("Moonshine warm-up complete")
@@ -161,8 +138,8 @@ class MoonshineASR:
     def _resolve_model_dir(model_dir: str | os.PathLike | None) -> Path:
         if model_dir is not None:
             return Path(model_dir)
-        # Function_calling/voice/asr.py → repo_root/models/moonshine/
-        return Path(__file__).resolve().parent.parent.parent / "models" / "moonshine"
+        # voice/asr.py → Function_calling/models/moonshine/
+        return Path(__file__).resolve().parent.parent / "models" / "moonshine"
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if sample_rate != self._sample_rate:

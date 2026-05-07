@@ -78,10 +78,13 @@ Follow the steps in /image_classification/README.md to see how to perform image 
 
 See [/Function_calling/README.md](Function_calling/README.md) for the on-device voice + text function-calling demo. A fine-tuned FunctionGemma 270M LLM maps natural-language commands to tool calls and dispatches them to real HAT hardware (status LEDs, piezo buzzer, and an optional WLED-driven Neopixel ring).
 
-The demo ships its own setup scripts under `Function_calling/scripts/`:
+The demo is fully self-contained inside `Function_calling/` — its own venv, wheels, library tarball, and models all live there, and it does not depend on the parent repo's `requirements.txt`, `wheelhouse/`, `library/`, `utils/`, or `speech_to_text/`. After cloning, two one-liners are enough to ship it:
 
-- `bash Function_calling/scripts/setup.sh [--offline] [--voice]` — idempotent first-time setup: creates the venv, installs requirements, downloads the model, and (with `--voice`) installs the voice deps plus portaudio.
-- `sudo bash Function_calling/scripts/install-service.sh [extra-flags]` — installs a systemd unit that runs `app_pyqt.py --fullscreen` on boot under Wayland, with crash-safe buzzer cleanup on stop. Any extra flags (`--wled-port /dev/ttyACM0`, `--voice stub`, …) are baked into the generated `ExecStart=`.
+```bash
+cd Function_calling
+bash scripts/setup.sh [--voice]                  # venv + deps + GGUF (+ voice toolchain)
+sudo bash scripts/install-service.sh             # systemd autostart of the PyQt UI
+```
 
 `demo.py` and `app_pyqt.py` accept all runtime configuration as CLI flags: `--model`, `--wled-port`, `--voice`, `--mic`, `--moonshine-dir`, `--screenshot-dir`, `--fullscreen`.
 

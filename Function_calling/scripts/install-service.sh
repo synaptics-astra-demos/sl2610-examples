@@ -22,8 +22,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_ROOT="$(cd "${FC_DIR}/.." && pwd)"
-VENV_PY="${REPO_ROOT}/.venv/bin/python3"
+VENV_PY="${FC_DIR}/.venv/bin/python3"
 SERVICE_NAME="functiongemma-demo.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 
