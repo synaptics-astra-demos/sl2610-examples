@@ -10,8 +10,14 @@ Run (after exporting the wayland env vars listed in README.md):
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 from PyQt5.QtWidgets import QApplication
 

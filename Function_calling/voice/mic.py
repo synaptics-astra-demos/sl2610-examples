@@ -7,9 +7,13 @@ so the UI can disable the mic button instead of crashing on import.
 
 from __future__ import annotations
 
+import logging
+import os
 from queue import Queue
 from typing import Any
 
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16_000
 CHUNK_SAMPLES = 512
@@ -29,6 +33,14 @@ def _require_sounddevice() -> Any:
             "(or `sudo apt install libportaudio2` as a fallback)."
         ) from e
     return sd
+
+
+# PortAudio's ALSA backend opens raw `hw:` by default, which fails when the
+# device's native rate/channels don't match the request (e.g. a 48 kHz stereo
+# USB mic asked for 16 kHz mono). Setting PA_ALSA_PLUGHW=1 makes PortAudio
+# wrap the device with ALSA's `plughw:` which transparently resamples and
+# up/down-mixes. The standalone Moonshine example uses the same trick.
+os.environ.setdefault("PA_ALSA_PLUGHW", "1")
 
 
 class MicStream:
@@ -64,6 +76,23 @@ class MicStream:
         sd = _require_sounddevice()
         import numpy as np
 
+        # Resolve the actual device that sounddevice will open so users can
+        # see in journalctl which mic the pipeline picked. None => "default".
+        try:
+            info = sd.query_devices(self.device, kind="input")
+            chosen = (
+                f"index={info.get('index', '?')} "
+                f"name={info.get('name', '?')!r} "
+                f"max_in={info.get('max_input_channels', '?')} "
+                f"default_sr={info.get('default_samplerate', '?')}"
+            )
+        except Exception as e:  # noqa: BLE001
+            chosen = f"<query_devices failed: {e}>"
+        logger.info(
+            "opening mic: requested device=%r → %s @ %d Hz, %d-sample chunks",
+            self.device, chosen, self.sample_rate, self.chunk_samples,
+        )
+
         self._stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -73,6 +102,7 @@ class MicStream:
             callback=self._callback,
         )
         self._stream.start()
+        logger.info("mic stream started")
 
     def stop(self) -> None:
         if self._stream is None:
@@ -80,6 +110,7 @@ class MicStream:
         try:
             self._stream.stop()
             self._stream.close()
+            logger.info("mic stream stopped")
         finally:
             self._stream = None
 

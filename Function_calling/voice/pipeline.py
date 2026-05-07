@@ -81,6 +81,9 @@ class VoicePipeline:
         return self._thread is not None and self._thread.is_alive()
 
     def _run(self) -> None:
+        import time
+
+        logger.info("voice pipeline thread starting")
         while not self._stop_evt.is_set():
             try:
                 chunk, status = self._mic.queue.get(timeout=0.5)
@@ -91,17 +94,26 @@ class VoicePipeline:
             utterance = self._vad.feed(chunk)
             if utterance is None:
                 continue
+            duration_s = len(utterance) / self._mic.sample_rate
+            logger.info("VAD finalised utterance: %.2fs (%d samples)",
+                        duration_s, len(utterance))
+            t0 = time.time()
             try:
                 text = self._asr.transcribe(utterance, self._mic.sample_rate)
             except Exception:
                 logger.exception("ASR failed")
                 continue
+            asr_ms = (time.time() - t0) * 1000.0
             text = text.strip()
-            if text:
-                try:
-                    self._on_text(text)
-                except Exception:
-                    logger.exception("on_text callback failed")
+            if not text:
+                logger.info("ASR returned empty text in %.0f ms (silence?)", asr_ms)
+                continue
+            logger.info("ASR transcribed in %.0f ms: %r", asr_ms, text)
+            try:
+                self._on_text(text)
+            except Exception:
+                logger.exception("on_text callback failed")
+        logger.info("voice pipeline thread exiting")
 
 
 def _coerce_mic_device(raw: str | int | None) -> int | str | None:

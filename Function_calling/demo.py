@@ -22,12 +22,18 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import logging
 import readline
 import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
