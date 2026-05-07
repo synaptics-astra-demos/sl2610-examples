@@ -17,7 +17,6 @@ Design priorities:
   4. Reliability — 1MB kernel pipe buffer absorbs GIL stalls from inference
 """
 
-import re
 import shutil
 import subprocess
 import sys
@@ -87,15 +86,14 @@ TIMBRES = {
         ],
         "attack": 0.001,
     },
-    # Channel 4: Crystal — bright, short, delicate
+    # Channel 4: AI Sine — ultra-soft, pure sine for MelodyRNN accompaniment
     4: {
-        "name": "Crystal",
+        "name": "AI Sine",
         "partials": [
-            (1.0,   0.25, 3.0),
-            (2.0,   0.10, 4.0),
-            (3.0,   0.05, 6.0),
+            (1.0,   0.30, 0.3),    # Pure fundamental, slow decay
+            (1.002, 0.15, 0.35),   # Tiny detune for warmth/chorus
         ],
-        "attack": 0.001,
+        "attack": 0.5,             # Very slow attack — ethereal
     },
 }
 
@@ -223,38 +221,6 @@ class SimpleReverb:
             offset += chunk
             remaining -= chunk
         return samples * (1.0 - self._mix) + wet * self._mix
-
-
-# ── Audio Device Detection ─────────────────────────────────────
-def _detect_audio_device() -> str | None:
-    """Auto-detect a connected audio output: Bluetooth → USB → ALSA default."""
-    # 1. BlueALSA — connected Bluetooth device
-    try:
-        r = subprocess.run(["bluealsa-aplay", "--list-devices"],
-                           capture_output=True, text=True, timeout=2)
-        for line in r.stdout.splitlines():
-            m = re.match(r'\w+:\s+([0-9A-Fa-f:]{17})', line)
-            if m:
-                mac = m.group(1).upper()
-                print(f"[SoftSynth] Found Bluetooth device: {mac}")
-                return f"bluealsa:DEV={mac},PROFILE=a2dp"
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    # 2. USB audio 
-    try:
-        r = subprocess.run(["aplay", "-l"],
-                           capture_output=True, text=True, timeout=2)
-        for line in r.stdout.splitlines():
-            m = re.match(r'^card (\d+):.*\[.*usb.*\]', line, re.IGNORECASE)
-            if m:
-                card = m.group(1)
-                print(f"[SoftSynth] Found USB audio: card {card}")
-                return f"plughw:{card}"
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    return None  # fall back to ALSA default
 
 
 # ── Audio Output Backends ──────────────────────────────────────
@@ -480,8 +446,6 @@ class SoftSynth:
         self._thread.start()
 
     def _create_output(self, driver, device):
-        if device is None:
-            device = _detect_audio_device()
         if driver == "alsa" or (driver is None and sys.platform == "linux"):
             if shutil.which("aplay"):
                 try:

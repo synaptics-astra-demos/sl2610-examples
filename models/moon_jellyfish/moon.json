@@ -1,0 +1,18 @@
+{
+  "description": "Moon Jelly Model",
+  "author": "Patrick Miller",
+  "date": "2026-04-02T03:13:05.699869",
+  "version": "1.0",
+  "license": "MIT",
+  "docs": "google.com",
+  "stride": 32,
+  "task": "detect",
+  "batch": 1,
+  "imgsz": [
+    320,
+    320
+  ],
+  "names": {
+    "0": "jelly"
+  }
+}

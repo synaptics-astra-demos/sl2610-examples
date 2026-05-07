@@ -47,7 +47,7 @@ GRID_ROWS = 4
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 def midi_to_name(midi): return f"{_NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
 
-
+AI_COLOR = (180, 140, 255)  # Soft purple
 #  NPU Clock 
 def enable_npu_clock():
     """Enable NPU clock via devmem (required before Torq inference)."""
@@ -285,14 +285,75 @@ def draw_overlay(frame, tracks, triggers, clashes, trigger_count, jelly_count, f
     return frame
 
 
-#  Main 
+def draw_ai_bar(frame, ai_notes, ai_active):
+    """Draw AI Accompaniment visualization bar at the bottom of the frame."""
+    h, w = frame.shape[:2]
+    bar_h = 36
+    bar_y = h - bar_h
+    now = time.time()
+
+    # Semi-transparent dark bar background
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, bar_y), (w, h), (15, 10, 25), -1)
+    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+
+    # Thin accent line at top of bar
+    line_alpha = 0.4 + 0.2 * math.sin(now * 2.0)
+    line_color = tuple(int(c * line_alpha) for c in AI_COLOR)
+    cv2.line(frame, (0, bar_y), (w, bar_y), line_color, 1)
+
+    # Pulsing dot indicator
+    dot_x = 12
+    dot_y = bar_y + bar_h // 2
+    pulse = 0.5 + 0.5 * math.sin(now * 3.0)
+    dot_color = tuple(int(c * pulse) for c in AI_COLOR)
+    cv2.circle(frame, (dot_x, dot_y), 4, dot_color, -1)
+
+    # Label
+    label = "AI ACCOMPANIMENT" if ai_active else "AI ACCOMPANIMENT [OFF]"
+    label_color = AI_COLOR if ai_active else (80, 60, 100)
+    cv2.putText(frame, label, (22, bar_y + 14),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.32, label_color, 1, cv2.LINE_AA)
+
+    if not ai_active or not ai_notes:
+        return frame
+
+    # Draw recent AI notes as fading note indicators
+    note_area_x = 160
+    note_spacing = 28
+    max_visible = min(len(ai_notes), (w - note_area_x) // note_spacing)
+
+    for i, note_info in enumerate(ai_notes[-max_visible:]):
+        age = now - note_info["t"]
+        if age > 4.0:
+            continue
+
+        fade = max(0.0, 1.0 - age / 4.0)
+        nx = note_area_x + i * note_spacing
+        ny = bar_y + bar_h // 2
+
+        # Small glowing circle
+        radius = int(3 + 4 * max(0, 1.0 - age / 0.5))  # Expand then shrink
+        circle_color = tuple(int(c * fade) for c in AI_COLOR)
+        cv2.circle(frame, (nx, ny + 4), radius, circle_color, -1)
+
+        # Note name
+        name = midi_to_name(note_info["midi"])
+        text_color = tuple(int(c * fade * 0.8) for c in AI_COLOR)
+        cv2.putText(frame, name, (nx - 8, ny - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.28, text_color, 1, cv2.LINE_AA)
+
+    return frame
+
+
+# ── Main ───────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Jellectronica DSI Kiosk (Standalone)")
     parser.add_argument("--video", default=None, help="Local video file")
     parser.add_argument("--youtube", default=None, help="YouTube URL")
-    parser.add_argument("--model", default="../models/moon320.vmfb")
-    parser.add_argument("--soundfont", default=None)  # ignored, kept for CLI compat
+    parser.add_argument("--model", default="../models/moon_jellyfish/moon320.vmfb")
     parser.add_argument("--no-audio", action="store_true")
+    parser.add_argument("--no-ai", action="store_true", help="Disable MelodyRNN AI accompaniment")
 
     parser.add_argument("--width", type=int, default=DISPLAY_W)
     parser.add_argument("--height", type=int, default=DISPLAY_H)
@@ -364,6 +425,7 @@ def main():
             music = MusicEngine(
                 audio_driver=args.audio_driver,
                 alsa_device=args.alsa_device,
+                ai_enabled=not args.no_ai,
             )
             music.init()
         except Exception as e:
@@ -506,13 +568,20 @@ def main():
                     if music:
                         music.play_clash()
 
-
+                # Feed jellyfish count to AI accompaniment
+                if music:
+                    music.feed_activity(tracker.count)
 
             # Draw overlay
             frame = draw_overlay(frame, tracker.tracks, triggers, clash_fx,
                                  trigger_count, tracker.count, fps)
             if is_live:
                 frame = draw_live_badge(frame)
+
+            # AI Accompaniment visualization
+            ai_notes = music.get_recent_ai_notes() if music else []
+            ai_active = music.ai_enabled if music else False
+            frame = draw_ai_bar(frame, ai_notes, ai_active)
 
             # Write to GStreamer
             try:

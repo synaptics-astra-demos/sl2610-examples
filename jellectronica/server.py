@@ -222,6 +222,7 @@ _youtube_recheck_url = None  # Set when YouTube fallback is active
 def _detection_thread(detector, tracker):
     global _detect_frame, _trigger_count, _jelly_count
     detect_count = 0
+    _detection_thread._last_ai_t = 0.0
     while True:
         with _detect_frame_lock:
             frame = _detect_frame
@@ -262,6 +263,20 @@ def _detection_thread(detector, tracker):
         with _detect_results_lock:
             _jelly_count = tracker.count
             broadcast({"type": "count", "count": tracker.count})
+
+        # Feed jellyfish count to AI accompaniment
+        if _music:
+            _music.feed_activity(tracker.count)
+
+        # Broadcast AI notes for web UI
+        if _music and _music.ai_enabled:
+            ai_notes = _music.get_recent_ai_notes()
+            for note_info in ai_notes:
+                if note_info["t"] > _detection_thread._last_ai_t:
+                    broadcast({"type": "ai_note",
+                               "note": note_info["midi"],
+                               "noteName": midi_to_name(note_info["midi"])})
+                    _detection_thread._last_ai_t = note_info["t"]
 
 
 
@@ -598,7 +613,12 @@ PAGE_HTML = """<!DOCTYPE html>
   </div>
   <div id="audio-badge">
     <div id="audio-dot"></div>
-    Audio playing on board (SoftSynth)
+    Audio playing on board (SoftSynth → USB DAC)
+  </div>
+  <div id="ai-badge" style="margin-top:4px;font-size:0.65rem;color:#b48cff;letter-spacing:0.08em;display:flex;align-items:center;gap:6px">
+    <div id="ai-dot" style="width:6px;height:6px;background:#b48cff;border-radius:50%;animation:pulse-dot 2s ease-in-out infinite"></div>
+    <span id="ai-status">AI Accompaniment: waiting…</span>
+    <span id="ai-notes" style="color:#8a6cbf;font-family:'SF Mono','Fira Code',monospace;font-size:0.58rem;margin-left:8px"></span>
   </div>
   <div id="log"></div>
   <script>
@@ -626,6 +646,11 @@ PAGE_HTML = """<!DOCTYPE html>
         const e = JSON.parse(evt.data);
         if (e.type === 'trigger') logEvent(e.noteName, e.row);
         else if (e.type === 'count') document.getElementById('jf-count').textContent = e.count;
+        else if (e.type === 'ai_note') {
+          document.getElementById('ai-status').textContent = 'AI Accompaniment: active';
+          const an = document.getElementById('ai-notes');
+          an.textContent = e.noteName + ' ' + an.textContent.split(' ').slice(0,8).join(' ');
+        }
       };
       ws.onclose = () => {
         document.getElementById('ws-status').textContent = 'reconnecting…';
@@ -655,6 +680,7 @@ def main():
     parser.add_argument("--audio-driver", type=str, default=None, help="Audio driver (alsa, auto)")
     parser.add_argument("--alsa-device", type=str, default=None, help="ALSA device (e.g. hw:0,0)")
     parser.add_argument("--no-audio", action="store_true", help="Disable audio")
+    parser.add_argument("--no-ai", action="store_true", help="Disable MelodyRNN AI accompaniment")
 
     args = parser.parse_args()
 
@@ -674,6 +700,7 @@ def main():
             _music = MusicEngine(
                 audio_driver=args.audio_driver,
                 alsa_device=args.alsa_device,
+                ai_enabled=not args.no_ai,
             )
             _music.init()
             print("[Audio] ✓ Audio ready")

@@ -5,7 +5,8 @@ Design (housey / deep / sine-wave focused):
   - Channel 0: Main synth (rows 1-2) — Warm Pad (smooth, sine-like)
   - Channel 1: Arp synth (row 0) — Bell (mellow)
   - Channel 2: Bass synth (row 3) — Sub Bass (deep house)
-  - Channel 3: Clash — Percussive shimmer
+  - Channel 3: AI Accompaniment — Soft sine (MelodyRNN, optional)
+  - Channel 4: Clash — Percussive shimmer
 
 Audio is rendered by SoftSynth (pure Python/NumPy) and piped to
 ALSA via `aplay`. Zero system dependencies beyond Python + NumPy.
@@ -71,25 +72,37 @@ NOTE_DURATIONS = {
 class MusicEngine:
     """Ambient music engine using SoftSynth (pure Python/NumPy).
 
-    Drives 4 channels of synthesized audio through ALSA.
+    Drives 5 channels of synthesized audio through ALSA.
+    Optional MelodyRNN AI accompaniment on Channel 3.
     Zero system dependencies — only Python stdlib + NumPy.
     """
 
     def __init__(self, audio_driver: str | None = None,
                  alsa_device: str | None = None,
+                 ai_enabled: bool = True,
                  **kwargs):
         self.fs = None
         self._ready = False
         self._note_off_timers: list[threading.Timer] = []
         self._audio_driver = audio_driver
         self._alsa_device = alsa_device
+        self._ai_enabled = ai_enabled
+
+        # MelodyRNN AI accompaniment (optional)
+        self._jammer = None
+        self.ai_notes: list[dict] = []  # Recent AI notes for visualization
+        self._ai_notes_lock = threading.Lock()
 
         # Clash rate limiting: 2-4 triggers per 3-5 second window
         self._clash_cooldown_end = 0.0
         self._clash_triggers_left = 0
 
+    @property
+    def ai_enabled(self) -> bool:
+        return self._ai_enabled and self._jammer is not None
+
     def init(self) -> None:
-        """Initialize SoftSynth audio engine."""
+        """Initialize SoftSynth audio engine and optional MelodyRNN."""
         print("[MusicEngine] Initializing SoftSynth...")
 
         self.fs = SoftSynth(gain=0.5)
@@ -99,13 +112,15 @@ class MusicEngine:
         self.fs.cc(0, 7, 65)    # Main — warm, not too loud
         self.fs.cc(1, 7, 15)    # Arp — very barely audible
         self.fs.cc(2, 7, 75)    # Bass — present but deep
-        self.fs.cc(3, 7, 20)    # Clash — subtle
+        self.fs.cc(3, 7, 40)    # AI Accompaniment — quiet
+        self.fs.cc(4, 7, 20)    # Clash — subtle
 
         # Reverb send (CC 91)
         self.fs.cc(0, 91, 60)   # Main — moderate reverb
         self.fs.cc(1, 91, 70)   # Arp — more reverb (ethereal)
         self.fs.cc(2, 91, 30)   # Bass — less reverb
-        self.fs.cc(3, 91, 120)  # Clash — massive reverb
+        self.fs.cc(3, 91, 100)  # AI Accompaniment — heavy reverb
+        self.fs.cc(4, 91, 120)  # Clash — massive reverb
 
         self._ready = True
         print("[MusicEngine] ✓ SoftSynth ready (ambient oscillator synthesis)")
@@ -113,6 +128,26 @@ class MusicEngine:
         # Start sound evolution
         self._evolver = SoundEvolver(self)
         self._evolver.start()
+
+        # ── MelodyRNN AI Accompaniment (optional) ──
+        if self._ai_enabled:
+            try:
+                from melody_rnn import MelodyRNN
+                self._jammer = MelodyRNN()
+                if self._jammer.load_weights():
+                    self._jammer.on_note = self._play_ai_note
+                    self._jammer.start()
+                else:
+                    self._jammer = None
+                    print("[MusicEngine] AI accompaniment disabled (weights not found)")
+            except ImportError:
+                print("[MusicEngine] AI accompaniment disabled (melody_rnn not available)")
+                self._jammer = None
+            except Exception as e:
+                print(f"[MusicEngine] AI accompaniment failed: {e}")
+                self._jammer = None
+        else:
+            print("[MusicEngine] AI accompaniment disabled (--no-ai)")
 
     def trigger_cell(self, row: int, col: int) -> dict | None:
         """Trigger note(s) for a grid cell. Returns trigger info or None."""
@@ -133,11 +168,38 @@ class MusicEngine:
             velocity = int(50 + 20 * (1 - row / GRID_ROWS))
             self._play_note(0, note, velocity, duration)
 
+        # Feed note to MelodyRNN for AI accompaniment
+        if self._jammer:
+            self._jammer.feed_note(note)
+
         return {
             "row": row, "col": col, "note": note,
             "x": (col + 0.5) / GRID_COLS,
             "y": (row + 0.5) / GRID_ROWS,
         }
+
+    def feed_activity(self, count: int) -> None:
+        """Update jellyfish count for MelodyRNN temperature modulation."""
+        if self._jammer:
+            self._jammer.feed_activity(count)
+
+    def _play_ai_note(self, midi: int, velocity: int, duration: float) -> None:
+        """Callback from MelodyRNN — plays an AI-generated note on Channel 3."""
+        if not self._ready or self.fs is None:
+            return
+        self._play_note(3, midi, velocity, duration)
+        # Record for visualization
+        note_info = {"midi": midi, "velocity": velocity, "t": time.time()}
+        with self._ai_notes_lock:
+            self.ai_notes.append(note_info)
+            # Keep only last 20 notes
+            if len(self.ai_notes) > 20:
+                self.ai_notes = self.ai_notes[-20:]
+
+    def get_recent_ai_notes(self) -> list[dict]:
+        """Get recent AI notes for visualization (thread-safe)."""
+        with self._ai_notes_lock:
+            return list(self.ai_notes)
 
     def play_clash(self) -> None:
         """Trigger a clash chime sound (rate-limited: 2-4 per 3-5s window)."""
@@ -159,7 +221,7 @@ class MusicEngine:
         for i, val in enumerate([0, 4, 7]):
             delay = i * 0.04
             def play_hit(n=base+val, v=23-i*3):
-                self._play_note(3, n, v, 2.0)
+                self._play_note(4, n, v, 2.0)
             if delay > 0:
                 t = threading.Timer(delay, play_hit)
                 t.daemon = True
@@ -230,6 +292,9 @@ class MusicEngine:
 
     def dispose(self) -> None:
         """Clean up synth resources."""
+        if self._jammer:
+            self._jammer.stop()
+            self._jammer = None
         if hasattr(self, '_evolver'):
             self._evolver.stop()
         for timer in self._note_off_timers:
@@ -297,6 +362,7 @@ class SoundEvolver:
         # Slow sine wave: period ~45 seconds, range 40-100
         brightness = int(70 + 30 * math.sin(t / 45 * math.tau + self._phases['brightness']))
         fs.cc(0, 74, brightness)       # Main pad
+        fs.cc(3, 74, brightness + 10)  # AI accompaniment (slightly brighter)
 
         # ── Modulation / Vibrato (CC 1) ──
         # Very slow: period ~60 seconds, range 0-35
@@ -307,9 +373,12 @@ class SoundEvolver:
         # ── Pan drift (CC 10) ──
         # Channels drift gently: period ~30 seconds, range 44-84
         pan_main = int(64 + 20 * math.sin(t / 30 * math.tau + self._phases['pan']))
+        pan_ai = int(64 - 15 * math.sin(t / 25 * math.tau + self._phases['pan'] + 1.5))
         fs.cc(0, 10, pan_main)  # Main pad drifts
+        fs.cc(3, 10, pan_ai)    # AI accompaniment drifts opposite
 
         # ── Reverb amount (CC 91) ──
         # Slow breathe: period ~50 seconds, range 40-90
         reverb = int(65 + 25 * math.sin(t / 50 * math.tau + self._phases['reverb']))
         fs.cc(0, 91, reverb)       # Main
+        fs.cc(3, 91, min(127, reverb + 20))  # AI — wetter

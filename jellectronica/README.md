@@ -4,7 +4,9 @@
 
 Jellectronica watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 31 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
 
-**Everything runs on-device** — NPU inference, audio synthesis, and visual rendering. No cloud, no host processing.
+An optional **MelodyRNN AI accompaniment** layer listens to the triggered notes and generates real-time generative melodies using a pre-trained Magenta LSTM neural network — all running on-device in pure Python/NumPy.
+
+**Everything runs on-device** — NPU inference, AI melody generation, audio synthesis, and visual rendering. No cloud, no host processing.
 
 ### Make It Your Own
 
@@ -147,6 +149,54 @@ Runs headless on the board. Open `http://<board-ip>:5002` in any browser to see 
 
 ## How It Works
 
+### AI Accompaniment (MelodyRNN)
+
+Jellectronica includes an optional **MelodyRNN** AI melody generator — a real pre-trained [Magenta](https://magenta.tensorflow.org/) basic_rnn neural network that generates evolving melodies in real time.
+
+1. Jellyfish-triggered MIDI notes are fed into the MelodyRNN as seed input
+2. A 2-layer LSTM (512-unit hidden state) generates melodic continuations
+3. Output is snapped to the pentatonic scale for guaranteed consonance
+4. Notes play through a soft, ethereal sine-wave synth patch (Channel 3)
+5. Temperature modulation: more jellyfish = more exploratory melodies
+
+The model weights (`basic_rnn_weights.npz`, ~12MB) are pre-extracted from a TensorFlow.js checkpoint. Inference runs in **pure NumPy** — no TensorFlow, no GPU, no additional dependencies. It runs entirely on the Cortex-A55 CPU alongside everything else.
+
+### Enabling / Disabling
+
+AI accompaniment is **enabled by default**. To disable it:
+
+```bash
+# Command line
+python3 server.py --no-ai
+python3 kiosk_dsi.py --no-ai
+
+# Or in the systemd service, add --no-ai to ExecStart
+```
+
+When disabled:
+- The `--no-ai` flag cleanly skips MelodyRNN loading
+- All other audio (pads, arpeggios, bass, clash chimes) continue normally
+- The DSI overlay shows "AI ACCOMPANIMENT [OFF]"
+- Zero performance impact — no weights are loaded
+
+When enabled:
+- MelodyRNN loads in ~1 second (12MB weights)
+- Two background threads handle generation and playback
+- CPU usage is minimal (~5% for continuous generation)
+- DSI overlay shows "AI ACCOMPANIMENT" with a pulsing indicator and live note names
+- Web monitor shows real-time AI note events
+
+### Graceful Fallback
+
+If the weights file is missing or MelodyRNN fails to load, the system continues normally without AI accompaniment. No crash, no error — just a log message:
+
+```
+[MusicEngine] AI accompaniment disabled (weights not found)
+```
+
+---
+
+
 ```
 YouTube Live ──→ yt-dlp ──→ cv2.VideoCapture
   (or local video)                │
@@ -163,16 +213,18 @@ YouTube Live ──→ yt-dlp ──→ cv2.VideoCapture
                           │  cell triggers │
                           └───────┬────────┘
                                   │
-                ┌─────────────────┼
-                │                 │                 
-        ┌───────▼──────┐  ┌──────▼───────┐
-        │  SoftSynth   │  │   Display    │
-        │  → aplay     │  │  DSI/MJPEG   │
-        │  → USB DAC   │  │  + overlay   │
-        └──────────────┘  └──────────────┘
+                ┌─────────────────┼─────────────────┐
+                │                 │                 │
+        ┌───────▼──────┐  ┌──────▼───────┐  ┌─────▼────────┐
+        │  SoftSynth   │  │  MelodyRNN   │  │   Display    │
+        │  → aplay     │  │  LSTM AI     │  │  DSI / MJPEG │
+        │  → USB DAC   │  │  (optional)  │  │  + overlay   │
+        └──────────────┘  └──────────────┘  └──────────────┘
+
 ```
 
-When a detected object crosses a cell boundary in the 8×4 grid, it triggers a note. Four rows map to different instruments — arpeggios, pads, chords, and bass. The more objects in the frame, the richer the sound.
+When a detected object crosses a cell boundary in the 8×4 grid, it triggers a note. Four rows map to different instruments — arpeggios, pads, chords, and bass. The more objects in the frame, the richer the sound. If MelodyRNN is enabled, triggered notes also seed the AI to generate evolving melodic accompaniment.
+
 
 See [docs/architecture.md](docs/architecture.md) for full technical details.
 
@@ -267,6 +319,10 @@ python3 server.py --model model/your_model.vmfb
 # Audio configuration
 python3 server.py --audio-driver alsa --alsa-device hw:0,0
 
+# Disable AI accompaniment
+python3 server.py --no-ai
+python3 kiosk_dsi.py --no-ai
+
 ```
 
 ---
@@ -279,11 +335,13 @@ jellectronica
 ├── kiosk_dsi.py              # Standalone DSI/HDMI kiosk display
 ├── detector.py               # YOLOv8 — Torq NPU (primary) + ONNX CPU (fallback)
 ├── tracker.py                # Multi-object tracker with grid mapping
-├── music_engine.py           # Audio engine (4 instruments + effects)
+├── music_engine.py           # Audio engine (5 channels + effects)
 ├── soft_synth.py             # Built-in synthesizer (pure Python/NumPy, zero dependencies)
+├── melody_rnn.py             # MelodyRNN AI accompaniment (pure NumPy LSTM inference)
 ├── requirements.txt          # Python dependencies
 ├── models/
 │   ├── moon320.vmfb          # Quantized YOLOv8 (int8, NPU)
+│   ├── basic_rnn_weights.npz # MelodyRNN weights (Magenta basic_rnn, 12MB)
 │   └── moon.json             # Model metadata
 ├── video/
 │   └── moon15.mp4            # Fallback jellyfish video (~208MB)
@@ -307,8 +365,7 @@ jellectronica
 - ALSA (audio output)
 - Weston compositor
 
-
-> **Note**: Audio synthesis is built-in via SoftSynth (pure Python/NumPy → `aplay` → ALSA). No additional audio libraries are needed.
+> **Note**: Audio synthesis and AI melody generation are built-in via SoftSynth and MelodyRNN (pure Python/NumPy). No TensorFlow, no Magenta pip package, no additional AI libraries needed.
 
 ---
 
@@ -318,6 +375,8 @@ jellectronica
 - **Jellyfish Detection Model**: [seaphony-ml](https://github.com/patrickdmiller/seaphony-ml) by Patrick Miller
 - **Live Stream**: [Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) Moon Jelly Cam
 - **Hardware**: [Synaptics Astra SL2619](https://coral.ai/products/) Coral Dev Board
+- **MelodyRNN Weights**: [Magenta](https://magenta.tensorflow.org/) basic_rnn checkpoint by Google Brain
+
 
 ## License
 
