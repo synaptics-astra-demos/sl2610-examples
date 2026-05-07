@@ -24,6 +24,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${FC_DIR}/.." && pwd)"
+
+# requirements.txt references wheels under ./wheelhouse/, which pip resolves
+# against cwd (not against the requirements file). Run everything from the
+# repo root so the script is invokable from anywhere.
+cd "${REPO_ROOT}"
+
 VENV_DIR="${REPO_ROOT}/.venv"
 MODELS_DIR="${REPO_ROOT}/models"
 WHEELHOUSE="${REPO_ROOT}/wheelhouse"
