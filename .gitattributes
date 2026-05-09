@@ -1,6 +1,0 @@
-samples/*.mp4 filter=lfs diff=lfs merge=lfs -text
-soundfonts/*.sf3 filter=lfs diff=lfs merge=lfs -text
-models/*.vmfb filter=lfs diff=lfs merge=lfs -text
-models/*.onnx filter=lfs diff=lfs merge=lfs -text
-models/*.npz filter=lfs diff=lfs merge=lfs -text
-models/*.whl filter=lfs diff=lfs merge=lfs -text
