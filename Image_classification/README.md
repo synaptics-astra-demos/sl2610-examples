@@ -2,15 +2,25 @@
 
 This guide describes how to run the MobileNetV2 image classification workflow directly on the target board.
 
-## Setting up Astra Machina Board
-For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
+## Hardware Setup
+
+This example is compatible with the following hardware:
+- Astra Machina SL2610 Dev Kit
+- Synaptics Coralboard
+
+Machina Dev Kit
+- For setup instructions, see the [Setting up the hardware guide](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)
+
+Coralboard
+- For setup instructions, see the [Synaptics Coralboard Site](https://developers.google.com/coral/products/SL2610-dev-board)
 
 ## Prerequisites
 Ensure your board has the following installed:
 
-**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from:
+**Astra SDK "OOBE" Image** (Default):
 - [SL2619 OOBE Image](https://github.com/synaptics-astra/sdk/releases)
-- The image includes important software components such as `git`, `python3`, and `gstreamer`.
+- The image includes important software components such as `git` and `python3`
+
 
 ## 🔧 Installation
  
@@ -50,8 +60,6 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 ## Runing the Image Classification Example
 
-Login to the board and execute the script. The script handles preprocessing, inference, and post-processing (label mapping) automatically.
-
 Optionally Set up display environment (Required for visual output).
 
 ```bash
@@ -66,7 +74,6 @@ cd image_classification/
 ```
 ### Run the image classification on an image file
 
-**Note:** The Python runtime is compatible with newer compiler and runtime settings. Use a model that was compiled recently, including the provided model mbv2.vmfb.  
 
 ```bash
 python3 classification.py \

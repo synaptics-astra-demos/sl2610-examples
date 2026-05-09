@@ -1,10 +1,3 @@
-# Jellectronica — On-Device Dependencies
-# Install on the Coral board with: pip install -r requirements.txt
-#
-# Note: torq_runtime is installed separately from the bundled .whl
-# in model/ by setup.sh. OpenCV is pre-installed in the Yocto image.
-
-# Core
 numpy>=1.24.0,<2.0
 flask>=3.0
 websockets>=12.0

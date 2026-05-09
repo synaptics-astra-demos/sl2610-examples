@@ -74,25 +74,12 @@ pip install -r requirements.txt
 cd gemma_translate
 ```
 
-[Warning!] Due to a temporary dependency issue, the torq runtime must be installed after all other requirements are satisfied.
-If the torq runtime is already installed, then uninstall it. 
-
-```bash
-pip uninstall torq_runtime
-```
-
 Now install the additional dependencies for this specific example. 
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Now (re)install the torq runtime. 
-
-
-```bash
-pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
-```
 
 ### Other setup
 
