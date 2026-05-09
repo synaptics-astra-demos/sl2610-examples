@@ -264,11 +264,11 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 ```bash
 # Kiosk mode (DSI display, fullscreen)
 python3 kiosk_dsi.py
-python3 kiosk_dsi.py --video video/jellyfish.mp4
+python3 kiosk_dsi.py --video ../samples/jellyfish.mp4
 
 # Server mode (headless, MJPEG stream)
 python3 server.py
-python3 server.py --video video/jellyfish.mp4 --port 5002
+python3 server.py --video ../samples/jellyfish.mp4 --port 5002
 
 # Custom video source
 python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID

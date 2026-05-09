@@ -12,7 +12,7 @@ Usage:
     python3 server.py --audio-driver alsa --alsa-device hw:0,0
 """
 
-import argparse, json, math, os, queue, subprocess, shutil
+import argparse, json, math, os, queue, re, subprocess, shutil
 import socket, sys, threading, time
 
 import cv2
@@ -39,8 +39,35 @@ _ws_lock = threading.Lock()
 app = Flask(__name__)
 
 _NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+
 def midi_to_name(midi: int) -> str:
     return f"{_NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
+
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
+
+def find_usb_audio_device():
+    """Return the first USB audio ALSA device string (e.g. 'hw:2,0'), or None."""
+    try:
+        result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            if re.search(r"\bUSB\b", line, re.IGNORECASE):
+                m = re.search(r"card\s+(\d+).*device\s+(\d+)", line, re.IGNORECASE)
+                if m:
+                    card, dev = m.group(1), m.group(2)
+                    device_str = f"hw:{card},{dev}"
+                    print(f"[Audio] USB speaker found: {device_str} ({line.strip()})")
+                    return device_str
+    except Exception as e:
+        print(f"[Audio] USB discovery failed: {e}")
+    return None
 
 def cell_hue(row: int, col: int) -> float:
     return (180 + (row * GRID_COLS + col) * 22.5) % 360
@@ -685,7 +712,7 @@ def main():
     args = parser.parse_args()
 
     print("╔═══════════════════════════════════════════════════╗")
-    print("║  🪼 Jellectronica — Native On-Device AI 🪼         ║")
+    print("║  🪼 Jellectronica — Native On-Device AI 🪼        ║")
     print("╚═══════════════════════════════════════════════════╝")
     print(f"  Video  : {args.video}")
     print(f"  Model  : {args.model}")
@@ -693,13 +720,19 @@ def main():
     print(f"  WS     : ws://{args.host}:{args.ws_port}")
 
 
+    # Set NPU clock
+    enable_npu_clock()
+
     # ── Initialize audio ──
     if not args.no_audio:
         print("\n[Audio] Initializing SoftSynth...")
+        alsa_device = args.alsa_device or find_usb_audio_device()
+        if alsa_device is None:
+            print("[Audio] No USB speaker found — using ALSA default")
         try:
             _music = MusicEngine(
                 audio_driver=args.audio_driver,
-                alsa_device=args.alsa_device,
+                alsa_device=alsa_device,
                 ai_enabled=not args.no_ai,
             )
             _music.init()

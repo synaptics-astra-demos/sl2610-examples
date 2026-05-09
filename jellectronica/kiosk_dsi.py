@@ -25,6 +25,8 @@ import threading
 import time
 import random
 
+import re
+
 import cv2
 import numpy as np
 
@@ -98,7 +100,25 @@ def resolve_youtube_stream(url):
     return None
 
 
-#  Buffered Video Reader 
+#  USB Audio Discovery
+def find_usb_audio_device():
+    """Return the first USB audio ALSA device string (e.g. 'hw:2,0'), or None."""
+    try:
+        result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            if re.search(r"\bUSB\b", line, re.IGNORECASE):
+                m = re.search(r"card\s+(\d+).*device\s+(\d+)", line, re.IGNORECASE)
+                if m:
+                    card, dev = m.group(1), m.group(2)
+                    device_str = f"hw:{card},{dev}"
+                    print(f"[Audio] USB speaker found: {device_str} ({line.strip()})")
+                    return device_str
+    except Exception as e:
+        print(f"[Audio] USB discovery failed: {e}")
+    return None
+
+
+#  Buffered Video Reader
 class BufferedVideoReader:
     """Reads frames in background to smooth out network stalls."""
     def __init__(self, source):
@@ -373,7 +393,7 @@ def main():
     os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"
     os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
-    # Enable NPU clock
+    # Set NPU clock
     enable_npu_clock()
 
     # Add symlink for Python library
@@ -417,14 +437,17 @@ def main():
     tracker = Tracker()
     physics = PhysicsEngine(cooldown=10.0)
 
-    #  Audio 
+    #  Audio
     music = None
     if not args.no_audio:
         print("[3/3] Initializing audio...")
+        alsa_device = args.alsa_device or find_usb_audio_device()
+        if alsa_device is None:
+            print("[Audio] No USB speaker found — using ALSA default")
         try:
             music = MusicEngine(
                 audio_driver=args.audio_driver,
-                alsa_device=args.alsa_device,
+                alsa_device=alsa_device,
                 ai_enabled=not args.no_ai,
             )
             music.init()
