@@ -171,6 +171,15 @@ class CameraApp(QWidget):
         )
         self.image_label.setPixmap(pix)
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
 
 def main():
     camera = find_camera()
@@ -178,6 +187,9 @@ def main():
         print("ERROR: No camera found")
         sys.exit(1)
     print(f"Camera: {camera}")
+
+    # Set NPU clock
+    enable_npu_clock()
 
     os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
     os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"

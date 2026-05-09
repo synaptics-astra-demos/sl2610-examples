@@ -11,6 +11,7 @@ import numpy as np
 from llama_cpp import Llama
 import time
 import threading
+import subprocess
 from queue import Queue
 from tokenizers import Tokenizer
 import logging
@@ -28,8 +29,18 @@ from utils.download import download_from_hf
 
 # UI constants
 BUBBLE_FONT_SIZE = 24  # px
-CHAT_WIDTH = 800 #1700
-CHAT_HEIGHT = 400 #900
+_ORIENTATION = os.environ.get("ORIENTATION", "landscape")
+CHAT_WIDTH  = int(os.environ.get("DISPLAY_WIDTH",  800 if _ORIENTATION == "landscape" else 480))
+CHAT_HEIGHT = int(os.environ.get("DISPLAY_HEIGHT", 480 if _ORIENTATION == "landscape" else 800))
+
+# trim dimensions
+#if _ORIENTATION == "portrait":
+#    CHAT_WIDTH = int(CHAT_WIDTH) - 80
+#    CHAT_HEIGHT = int(CHAT_HEIGHT) - 40
+#else: 
+#    CHAT_HEIGHT = int(CHAT_HEIGHT) - 80
+#    CHAT_WIDTH = int(CHAT_WIDTH) - 40
+
 ADD_STATS = True
 CONF_GATE = 0.7
 
@@ -267,7 +278,7 @@ def start_audio_thread(window, audio_device):
     logger.info("Audio thread initialized")
     logger.debug("Starting Audio stream...")
     stream.start()
-    window.show()
+    window.showFullScreen()
     new_query = 1
     while True:
         try:
@@ -406,7 +417,7 @@ class ChatWindow(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Astra SL2610 Voice Translation Engine")
-        self.resize(CHAT_WIDTH, CHAT_HEIGHT)
+        self.setGeometry(0, 0, CHAT_WIDTH, CHAT_HEIGHT)
 
         layout = QVBoxLayout(self)
         self.scroll = QScrollArea()
@@ -558,6 +569,16 @@ class ChatWindow(QWidget):
         print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time:.3f}s")
 
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
+
 # ---------------------- CLI / Entry ----------------------
 
 if __name__ == "__main__":
@@ -567,6 +588,9 @@ if __name__ == "__main__":
     parser.add_argument("--context", type=str, default=str(DEFAULT_PATH))
     parser.add_argument("--model", type=str, default=str(GEMMA_MODEL_PATH))
     args = parser.parse_args()
+
+    # Set NPU clock
+    enable_npu_clock()
 
     trnsl = LanguageTranslation(model_path=args.model)
 

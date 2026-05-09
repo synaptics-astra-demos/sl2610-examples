@@ -15,6 +15,7 @@ import time
 import torq.runtime as torq_rt
 
 MAX_DETECTIONS_TO_KEEP = 60
+ROTATE_CAMERA_180 = True
 
 # ==========================================
 # Helpers (Ported from helpers/yolo.py)
@@ -216,11 +217,14 @@ def resolve_camera_device(camera_device):
     return camera_device
 
 
-def create_display_pipeline(Gst, width, height, fps, sink_name):
+def create_display_pipeline(Gst, width, height, fps, sink_name, disp_width=None, disp_height=None):
+    disp_w = disp_width or width
+    disp_h = disp_height or height
     pipeline_str = (
         "appsrc name=display_src format=time is-live=true block=true ! "
         f"video/x-raw,format=BGRA,width={width},height={height},framerate={fps}/1 ! "
         "synavideoconvertscale ! "
+        f"video/x-raw,width={disp_w},height={disp_h} ! "
         f"{sink_name} sync=false"
     )
     pipeline = Gst.parse_launch(pipeline_str)
@@ -405,6 +409,9 @@ def run_with_opencv(args, runner, labels):
     out_fps = int(src_fps) if src_fps > 0 else 15
     display_fps = out_fps if out_fps > 0 else 15
 
+    orientation = os.environ.get("ORIENTATION", "landscape")
+    disp_w, disp_h = (480, 800) if orientation == "portrait" else (800, 480)
+
     # -- optional output writer ------------------------------------------------
     out_writer = None
     if args.output:
@@ -438,6 +445,9 @@ def run_with_opencv(args, runner, labels):
                 ret, bgr_frame = cap.read()
             if not ret or bgr_frame is None:
                 break
+
+            if ROTATE_CAMERA_180:
+                bgr_frame = cv2.rotate(bgr_frame, cv2.ROTATE_180)
 
             # -- preprocess ---------------------------------------------------
             input_data, pad_info, orig_shape = preprocess_frame_cv(bgr_frame)
@@ -503,14 +513,15 @@ def run_with_opencv(args, runner, labels):
                 if display_pipeline is None:
                     display_pipeline, display_appsrc = create_display_pipeline(
                         Gst,
-                        width,
-                        height,
+                        disp_w,
+                        disp_h,
                         display_fps,
                         args.display_sink,
                     )
                     display_pipeline.set_state(Gst.State.PLAYING)
 
-                rendered_frame = cv2.cvtColor(annotated, cv2.COLOR_BGR2BGRA)
+                display_frame = cv2.resize(annotated, (disp_w, disp_h))
+                rendered_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2BGRA)
                 ret = push_display_frame(
                     Gst,
                     display_appsrc,
@@ -545,6 +556,15 @@ def run_with_opencv(args, runner, labels):
         )
         print(f"Kept the last {len(all_detections)} detections in memory.")
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -566,6 +586,14 @@ def main():
     parser.add_argument("--display", action="store_true", help="Display annotated frames live")
     parser.add_argument("--display-sink", default="waylandsink", help="GStreamer video sink for live display")
     args = parser.parse_args()
+
+    # Set NPU clock
+    enable_npu_clock()
+
+    # Go ahead and set these
+    if args.display:
+        os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # 0. Load the model with Torq Runtime
     runner = torq_rt.VMFBInferenceRunner(

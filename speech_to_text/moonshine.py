@@ -11,7 +11,7 @@ import threading
 import numpy as np
 import sounddevice as sd
 import logging
-
+import subprocess
 
 from pathlib import Path
 from tokenizers import Tokenizer
@@ -216,9 +216,22 @@ def start_audio_thread():
     logger.debug("Closing Audio stream...")
     stream.close()
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}") 
+
 # ---------------------- CLI / Entry ----------------------
 
 if __name__ == "__main__":
+
+    # Set NPU clock
+    enable_npu_clock()
 
     # Start audio listener thread for Moonshine
     audio_thread = threading.Thread(target=start_audio_thread)

@@ -13,6 +13,7 @@ import numpy as np
 from llama_cpp import Llama
 import time
 import threading
+import subprocess
 from queue import Queue
 from tokenizers import Tokenizer
 import logging
@@ -407,7 +408,15 @@ def start_audio_thread(window, audio_device):
     import gc
     gc.collect()
 
-
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
 
 # ---------------------- CLI / Entry ----------------------
 
@@ -418,6 +427,9 @@ if __name__ == "__main__":
     parser.add_argument("--context", type=str, default=str(DEFAULT_PATH))
     parser.add_argument("--model", type=str, default=str(GEMMA_MODEL_PATH))
     args = parser.parse_args()
+
+    # Set NPU clock
+    enable_npu_clock()
 
     trnsl = LanguageTranslation(model_path=args.model)
 

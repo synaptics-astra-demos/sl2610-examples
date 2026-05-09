@@ -192,6 +192,15 @@ def run_inference_torq(runner, input_data):
     # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
     return outputs
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -200,7 +209,16 @@ def main():
     parser.add_argument("--labels")
     parser.add_argument("--device", default="torq")
     parser.add_argument("--save-image", action="store_true", help="If set, output annotated image")
+    parser.add_argument("--display", action="store_true", help="Display annotated frame")
     args = parser.parse_args()
+
+    # Set NPU clock
+    enable_npu_clock()
+
+    # Go ahead and set these
+    if args.display:
+        os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # 0. Load the model with Torq Runtime
     runner = torq_rt.VMFBInferenceRunner(
@@ -254,15 +272,19 @@ def main():
         print(f"  {label:<15} Conf: {conf:.4f}  Box: {box.astype(int)}")
 
     # 5. Save Annotated Image (only if --save-image is set)
-    if args.save_image and results:
+    if (args.save_image or args.display) and results:
+        orientation = os.environ.get("ORIENTATION", "landscape")
+        disp_w = int(os.environ.get("DISPLAY_WIDTH", 800 if orientation == "landscape" else 480))
+        disp_h = int(os.environ.get("DISPLAY_HEIGHT", 480 if orientation == "landscape" else 800))
+
         print("\n[5/5] Saving result image...")
         try:
             img = Image.open(args.image)
             if img.mode != "RGB":
                 img = img.convert("RGB")
             
-            # --- 1. Resize to 1280x720 (Letterbox) ---
-            target_w, target_h = 1280, 720
+            # --- 1. Resize to display dimensions (Letterbox) ---
+            target_w, target_h = disp_w, disp_h
             w, h = img.size
             
             # Calculate scale to fit
@@ -343,40 +365,45 @@ def main():
             img.save(out_img)
             print(f"Result image saved to: {out_img}")
 
-            # 6. Attempt Display
-            print("Attempting to display image...")
-            
-            # Option A: GStreamer (Wayland/Embedded)
-            # Pipeline: filesrc -> jpegdec -> videoconvert -> imagefreeze -> waylandsink
-            if shutil.which("gst-launch-1.0"):
-                try:
-                    print("Found gst-launch-1.0. Displaying with waylandsink for 5 seconds...")
-                    
-                    cmd = [
-                        "gst-launch-1.0",
-                        "filesrc", f"location={out_img}", "!",
-                        "jpegdec", "!",
-                        "videoconvert", "!",
-                        "imagefreeze", "!",
-                        "waylandsink", "fullscreen=true"
-                    ]
-                    
-                    # Run in background
-                    proc = subprocess.Popen(cmd)
-                    
-                    # Wait 5 seconds or for interrupt
+            if args.display:
+                # 6. Attempt Display
+                print("Attempting to display image...")
+                
+                # Option A: GStreamer (Wayland/Embedded)
+                # Pipeline: filesrc -> jpegdec -> videoconvert -> imagefreeze -> waylandsink
+                if shutil.which("gst-launch-1.0"):
                     try:
-                        time.sleep(5)
-                    except KeyboardInterrupt:
-                        pass # Handle early exit
+                        print("Found gst-launch-1.0. Displaying with waylandsink for 5 seconds...")
                         
-                    # Clean up
-                    proc.terminate()
-                    proc.wait()
-                    print("Display closed.")
-                    
-                except Exception as e:
-                    print(f"GStreamer failed: {e}")
+                        print(f"Using display resolution {disp_w}x{disp_h}")
+
+                        cmd = [
+                            "gst-launch-1.0",
+                            "filesrc", f"location={out_img}", "!",
+                            "jpegdec", "!",
+                            "videoconvert", "!",
+                            "imagefreeze", "!",
+                            "videoscale", "!",
+                            f"video/x-raw,width={disp_w},height={disp_h}", "!",
+                            "waylandsink"
+                        ]
+                        
+                        # Run in background
+                        proc = subprocess.Popen(cmd)
+                        
+                        # Wait 5 seconds or for interrupt
+                        try:
+                            time.sleep(5)
+                        except KeyboardInterrupt:
+                            pass # Handle early exit
+                            
+                        # Clean up
+                        proc.terminate()
+                        proc.wait()
+                        print("Display closed.")
+                        
+                    except Exception as e:
+                        print(f"GStreamer failed: {e}")
                     
 
         except Exception as e:
