@@ -84,17 +84,18 @@ def _stylesheet(p: Palette) -> str:
     }}
 
     QFrame#Card,
+    StatusBar,
     MetricsPanel,
     CommandLog {{
         background: {p.bg_secondary};
         border: 1px solid {p.border};
-        border-radius: 12px;
+        border-radius: 10px;
     }}
 
     QFrame#MetricTile {{
         background: {p.bg_secondary};
         border: 1px solid {p.border};
-        border-radius: 10px;
+        border-radius: 8px;
     }}
 
     QLabel#SectionHeader {{
@@ -125,32 +126,62 @@ def _stylesheet(p: Palette) -> str:
         background: {p.bg_secondary};
         color: {p.text_primary};
         border: 1px solid {p.border_strong};
-        border-radius: 10px;
-        padding: 14px 16px;
-        font-size: {t.md}px;
+        border-radius: 8px;
+        padding: 9px 11px;
+        font-size: 13px;
         selection-background-color: {p.accent_light};
         selection-color: {p.text_primary};
     }}
     QLineEdit:focus {{
         border: 1px solid {p.accent};
     }}
+    QLineEdit:disabled {{
+        background: {p.bg_tertiary};
+        color: {p.text_muted};
+    }}
 
     QPushButton#PrimaryButton {{
         background: {p.accent};
         color: {p.text_inverse};
-        border: none;
-        border-radius: 10px;
-        padding: 14px 28px;
+        border: 1px solid {p.accent};
+        border-radius: 22px;
+        padding: 0 22px;
         font-weight: 600;
-        font-size: {t.md}px;
-        min-height: 56px;
+        font-size: 13px;
+        min-height: 44px;
     }}
     QPushButton#PrimaryButton:hover {{
         background: {p.accent_dark};
+        border-color: {p.accent_dark};
     }}
     QPushButton#PrimaryButton:disabled {{
         background: {p.border_strong};
         color: {p.text_muted};
+        border-color: {p.border_strong};
+    }}
+
+    QPushButton#GhostButton {{
+        background: transparent;
+        color: {p.text_secondary};
+        border: 1px solid {p.border_strong};
+        border-radius: 22px;
+        padding: 0 22px;
+        font-size: 13px;
+        font-weight: 500;
+        min-height: 44px;
+    }}
+    QPushButton#GhostButton:hover {{
+        background: {p.bg_tertiary};
+        color: {p.text_primary};
+        border-color: {p.border_strong};
+    }}
+    QPushButton#GhostButton:pressed {{
+        background: {p.border};
+    }}
+    QPushButton#GhostButton:disabled {{
+        color: {p.text_muted};
+        background: transparent;
+        border-color: {p.border};
     }}
 
     QScrollBar:vertical {{

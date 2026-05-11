@@ -1,4 +1,8 @@
-"""Top-half metrics panel: 2x3 tile grid with sparklines."""
+"""Top-half metrics panel: 2x2 tile grid with sparklines.
+
+Tiles: CPU, Memory, Power, Inference. NPU + Temp were removed in the redesign
+(neither metric resolves on the Coralboard hardware in practice).
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from theme import CHART_COLORS, PALETTE, TYPE
 
 
 SPARK_POINTS = 60
-SPARK_HEIGHT = 28
+SPARK_HEIGHT = 16
 
 
 class Sparkline(QWidget):
@@ -66,6 +70,19 @@ class Sparkline(QWidget):
             p.drawLine(points[i - 1], points[i])
 
 
+_VALUE_STYLE = (
+    f"color: {PALETTE.text_primary}; font-family: {TYPE.mono};"
+    f" font-size: 16px; font-weight: 600; letter-spacing: -0.02em;"
+)
+_VALUE_MUTED_STYLE = (
+    f"color: {PALETTE.text_muted}; font-family: {TYPE.mono};"
+    f" font-size: 16px; font-weight: 500; letter-spacing: -0.02em;"
+)
+_LABEL_STYLE = (
+    f"color: {PALETTE.text_secondary}; font-size: 11px; font-weight: 500;"
+)
+
+
 class MetricTile(QFrame):
     def __init__(self, label: str, key: str, color: str, unit: str,
                  parent: QWidget | None = None) -> None:
@@ -75,19 +92,23 @@ class MetricTile(QFrame):
         self._key = key
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(6)
 
         head = QHBoxLayout()
-        head.setSpacing(12)
+        head.setSpacing(8)
         self._label = QLabel(label)
         self._label.setObjectName("MetricLabel")
+        self._label.setStyleSheet(_LABEL_STYLE)
+        self._label.setMinimumHeight(18)
         self._value = QLabel(f"-- {unit}")
         self._value.setObjectName("MetricValue")
+        self._value.setStyleSheet(_VALUE_STYLE)
         self._value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        head.addWidget(self._label)
+        self._value.setMinimumHeight(20)
+        head.addWidget(self._label, alignment=Qt.AlignBottom)
         head.addStretch(1)
-        head.addWidget(self._value)
+        head.addWidget(self._value, alignment=Qt.AlignBottom)
 
         self.spark = Sparkline(color=color)
 
@@ -96,18 +117,12 @@ class MetricTile(QFrame):
 
     def set_value(self, text: str, percent: float) -> None:
         self._value.setText(text)
-        if self._value.styleSheet():
-            self._value.setStyleSheet("")
+        self._value.setStyleSheet(_VALUE_STYLE)
         self.spark.push(percent)
 
     def set_muted(self, text: str = "n/a") -> None:
         self._value.setText(text)
-        self._value.setStyleSheet(
-            f"color: {PALETTE.text_muted}; "
-            f"font-family: {TYPE.mono}; "
-            f"font-size: {TYPE.xl}px; "
-            f"font-weight: 500;"
-        )
+        self._value.setStyleSheet(_VALUE_MUTED_STYLE)
 
 
 class MetricsPanel(QFrame):
@@ -115,20 +130,21 @@ class MetricsPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("MetricsPanel")
         self.setFrameShape(QFrame.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.pump = pump
         self._tiles: dict[str, MetricTile] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 12, 10, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(12, 11, 12, 11)
+        root.setSpacing(8)
 
         header = QLabel("SYSTEM METRICS")
         header.setObjectName("SectionHeader")
         root.addWidget(header)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(12)
+        grid.setHorizontalSpacing(7)
+        grid.setVerticalSpacing(7)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         root.addLayout(grid, stretch=1)
@@ -136,8 +152,6 @@ class MetricsPanel(QFrame):
         tiles = [
             ("CPU",       "cpu",    CHART_COLORS["cpu"],    "%"),
             ("Memory",    "memory", CHART_COLORS["memory"], "%"),
-            ("NPU",       "npu",    CHART_COLORS["npu"],    "%"),
-            ("Temp",      "temp",   CHART_COLORS["temp"],   "C"),
             ("Power",     "power",  CHART_COLORS["power"],  "W"),
             ("Inference", "infer",  CHART_COLORS["infer"],  "ms"),
         ]
@@ -169,15 +183,6 @@ class MetricsPanel(QFrame):
         self._tiles["memory"].set_value(
             f"{snap.memory_percent:.0f}%", snap.memory_percent,
         )
-        if snap.npu_percent is not None:
-            self._tiles["npu"].set_value(f"{snap.npu_percent:.0f}%", snap.npu_percent)
-        else:
-            self._tiles["npu"].set_muted()
-        if snap.temperature_c is not None:
-            pct = min(100.0, snap.temperature_c / 90.0 * 100)
-            self._tiles["temp"].set_value(f"{snap.temperature_c:.1f}C", pct)
-        else:
-            self._tiles["temp"].set_muted()
         if snap.power_w is not None:
             pct = min(100.0, snap.power_w / 5.0 * 100)
             self._tiles["power"].set_value(f"{snap.power_w:.1f}W", pct)

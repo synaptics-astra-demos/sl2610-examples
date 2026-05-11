@@ -22,13 +22,13 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from theme import PALETTE, SPACE, TYPE
+from model_loading import ModelLoadingPanel
+from theme import PALETTE, TYPE
 
 MAX_TURNS = 200
 
 P = PALETTE
 T = TYPE
-S = SPACE
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,8 @@ def _chip(text: str, *, fg: str, bg: str, border: str) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
         f"background: {bg}; color: {fg}; border: 1px solid {border}; "
-        f"border-radius: 999px; padding: 3px 10px; "
-        f"font-size: {T.xs}px; font-weight: 700; letter-spacing: 0.06em;"
+        f"border-radius: 999px; padding: 2px 7px; "
+        f"font-size: 10px; font-weight: 700; letter-spacing: 0.06em;"
     )
     lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
     return lbl
@@ -66,11 +66,11 @@ class _UserBubble(QFrame):
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setStyleSheet(
-            f"_UserBubble {{ background: {P.accent_light}; border-radius: 10px; }}"
+            f"_UserBubble {{ background: {P.accent_light}; border-radius: 8px; }}"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
 
         chip = _chip("YOU", fg=P.accent_dark, bg=P.bg_secondary, border="#bfdbfe")
         layout.addWidget(chip, alignment=Qt.AlignLeft)
@@ -78,7 +78,7 @@ class _UserBubble(QFrame):
         body = QLabel(text)
         body.setWordWrap(True)
         body.setStyleSheet(
-            f"background: transparent; font-size: {T.md}px; "
+            f"background: transparent; font-size: 13px; "
             f"color: {P.text_primary}; line-height: 145%;"
         )
         layout.addWidget(body)
@@ -92,15 +92,15 @@ class _ToolBubble(QFrame):
         border = "#fca5a5" if is_err else P.border
         self.setStyleSheet(
             f"_ToolBubble {{ background: {bg}; "
-            f"border: 1px solid {border}; border-radius: 10px; }}"
+            f"border: 1px solid {border}; border-radius: 8px; }}"
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
 
         head = QHBoxLayout()
-        head.setSpacing(10)
+        head.setSpacing(7)
         accent = P.danger if is_err else P.accent
         chip_border = "#fecaca" if is_err else "#bfdbfe"
         label = "ERROR" if is_err else "TOOL"
@@ -109,8 +109,8 @@ class _ToolBubble(QFrame):
         name_color = P.danger if is_err else P.text_primary
         name_lbl = QLabel(step.name)
         name_lbl.setStyleSheet(
-            f"background: transparent; font-size: 13px; font-family: {T.mono}; "
-            f"font-weight: 700; color: {name_color};"
+            f"background: transparent; font-size: 10px; font-family: {T.mono}; "
+            f"font-weight: 700; color: {name_color}; letter-spacing: -0.01em;"
         )
         head.addWidget(name_lbl)
         head.addStretch(1)
@@ -118,7 +118,7 @@ class _ToolBubble(QFrame):
 
         if step.args:
             args_row = QHBoxLayout()
-            args_row.setSpacing(6)
+            args_row.setSpacing(4)
             chip_border = "#fecaca" if is_err else P.border
             for k, v in step.args.items():
                 k_esc = _html.escape(str(k))
@@ -132,8 +132,8 @@ class _ToolBubble(QFrame):
                 chip_w.setStyleSheet(
                     f"background: {P.bg_secondary}; "
                     f"border: 1px solid {chip_border}; "
-                    f"border-radius: 6px; padding: 3px 9px; "
-                    f"font-family: {T.mono}; font-size: {T.sm}px;"
+                    f"border-radius: 5px; padding: 2px 7px; "
+                    f"font-family: {T.mono}; font-size: 11px;"
                 )
                 chip_w.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
                 args_row.addWidget(chip_w)
@@ -147,7 +147,7 @@ class _ToolBubble(QFrame):
             result_lbl = QLabel(f"-> {result_text}")
             result_lbl.setWordWrap(True)
             result_lbl.setStyleSheet(
-                f"background: transparent; font-size: 13px; "
+                f"background: transparent; font-size: 11px; "
                 f"font-family: {T.mono}; color: {result_color}; "
                 f"font-weight: {result_weight};"
             )
@@ -159,11 +159,11 @@ class _AssistantBubble(QFrame):
         super().__init__(parent)
         self.setStyleSheet(
             f"_AssistantBubble {{ background: {P.bg_secondary}; "
-            f"border: 1px solid {P.border}; border-radius: 10px; }}"
+            f"border: 1px solid {P.border}; border-radius: 8px; }}"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
 
         chip = _chip("ASSISTANT", fg=P.text_secondary, bg=P.bg_tertiary, border=P.border)
         layout.addWidget(chip, alignment=Qt.AlignLeft)
@@ -171,7 +171,7 @@ class _AssistantBubble(QFrame):
         body = QLabel(text)
         body.setWordWrap(True)
         body.setStyleSheet(
-            f"background: transparent; font-size: {T.md}px; "
+            f"background: transparent; font-size: 13px; "
             f"color: {P.text_primary}; line-height: 150%;"
         )
         layout.addWidget(body)
@@ -182,8 +182,8 @@ class _SystemMessage(QLabel):
         super().__init__(text, parent)
         self.setWordWrap(True)
         self.setStyleSheet(
-            f"color: {P.text_muted}; font-size: {T.xs}px; "
-            f"font-style: italic; padding: 6px 4px; background: transparent;"
+            f"color: {P.text_muted}; font-size: 10px; "
+            f"font-style: italic; padding: 4px 4px; background: transparent;"
         )
 
 
@@ -191,8 +191,8 @@ class _TurnFooter(QLabel):
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setStyleSheet(
-            f"color: {P.text_muted}; font-size: {T.xs}px; "
-            f"font-style: italic; padding: 0 4px; background: transparent;"
+            f"color: {P.text_muted}; font-size: 10px; "
+            f"font-style: italic; padding: 0 3px; background: transparent;"
         )
 
 
@@ -200,20 +200,20 @@ class _EmptyState(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(S.lg, 40, S.lg, 40)
+        layout.setContentsMargins(14, 24, 14, 24)
         layout.setAlignment(Qt.AlignCenter)
 
         title = QLabel("Ready when you are")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            f"font-size: 20px; font-weight: 600; color: {P.text_secondary}; "
+            f"font-size: 14px; font-weight: 600; color: {P.text_secondary}; "
             "background: transparent;"
         )
 
         sub = QLabel('Try: "turn on the lights" or "beep three times"')
         sub.setAlignment(Qt.AlignCenter)
         sub.setStyleSheet(
-            f"font-size: {T.sm}px; color: {P.text_muted}; "
+            f"font-size: 11px; color: {P.text_muted}; "
             f"font-family: {T.mono}; background: transparent;"
         )
 
@@ -226,11 +226,11 @@ class _ThinkingBubble(QFrame):
         super().__init__(parent)
         self.setStyleSheet(
             f"_ThinkingBubble {{ background: {P.bg_tertiary}; "
-            f"border: 1px solid {P.border}; border-radius: 10px; }}"
+            f"border: 1px solid {P.border}; border-radius: 8px; }}"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
 
         head = QHBoxLayout()
         head.setSpacing(10)
@@ -285,6 +285,8 @@ class CommandLog(QFrame):
         self._turns: deque[LogTurn] = deque(maxlen=MAX_TURNS)
         self._thinking_bubble: _ThinkingBubble | None = None
         self._thinking_wrapper: QWidget | None = None
+        self._loading_panel: ModelLoadingPanel | None = None
+        self._stick_to_bottom = True
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -293,7 +295,7 @@ class CommandLog(QFrame):
         header = QWidget()
         header.setStyleSheet("background: transparent;")
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(18, 14, 18, 10)
+        h_layout.setContentsMargins(12, 9, 12, 7)
         self._header_label = QLabel("CONVERSATION")
         self._header_label.setObjectName("SectionHeader")
         self._header_meta = QLabel("0 turns")
@@ -315,8 +317,8 @@ class CommandLog(QFrame):
         self._container = QWidget()
         self._container.setStyleSheet("background: transparent;")
         self._layout = QVBoxLayout(self._container)
-        self._layout.setContentsMargins(16, 16, 16, 16)
-        self._layout.setSpacing(6)
+        self._layout.setContentsMargins(12, 10, 12, 12)
+        self._layout.setSpacing(11)
         self._layout.addStretch(1)
 
         self._scroll.setWidget(self._container)
@@ -325,13 +327,18 @@ class CommandLog(QFrame):
         root.addWidget(sep)
         root.addWidget(self._scroll, stretch=1)
 
+        sb = self._scroll.verticalScrollBar()
+        sb.rangeChanged.connect(self._on_scroll_range_changed)
+        sb.valueChanged.connect(self._on_scroll_value_changed)
+
         self._empty_state: _EmptyState | None = None
         self.clear()
 
     def append_user_bubble(self, text: str) -> None:
         self._remove_empty_state()
+        self._stick_to_bottom = True
         bubble = _UserBubble(text)
-        self._insert_widget(bubble, margin_right=S.lg)
+        self._insert_widget(bubble, margin_right=14)
 
     def append_turn(self, turn: LogTurn) -> None:
         self._turns.append(turn)
@@ -345,18 +352,19 @@ class CommandLog(QFrame):
     def append_error(self, text: str) -> None:
         self._remove_empty_state()
         step = ToolStep(name="(backend)", status="error", error=text)
-        self._insert_widget(_ToolBubble(step), margin_left=S.lg)
+        self._insert_widget(_ToolBubble(step), margin_left=14)
 
     def show_thinking(self) -> None:
         if self._thinking_wrapper is not None:
             return
         self._remove_empty_state()
+        self._stick_to_bottom = True
         bubble = _ThinkingBubble()
         self._thinking_bubble = bubble
         wrapper = QWidget()
         wrapper.setStyleSheet("background: transparent;")
         w_layout = QVBoxLayout(wrapper)
-        w_layout.setContentsMargins(S.lg, 0, 0, 0)
+        w_layout.setContentsMargins(14, 0, 0, 0)
         w_layout.setSpacing(0)
         w_layout.addWidget(bubble)
         self._thinking_wrapper = wrapper
@@ -377,8 +385,39 @@ class CommandLog(QFrame):
         self._thinking_wrapper = None
         self._thinking_bubble = None
 
+    def show_loading(self) -> None:
+        if self._loading_panel is not None:
+            return
+        self._remove_empty_state()
+        panel = ModelLoadingPanel()
+        idx = max(0, self._layout.count() - 1)
+        self._layout.insertWidget(idx, panel)
+        panel.start()
+        self._loading_panel = panel
+        self._header_meta.setText("loading model...")
+
+    def hide_loading(self) -> None:
+        if self._loading_panel is None:
+            return
+        self._loading_panel.stop()
+        idx = self._layout.indexOf(self._loading_panel)
+        if idx >= 0:
+            self._layout.takeAt(idx)
+        self._loading_panel.hide()
+        self._loading_panel.deleteLater()
+        self._loading_panel = None
+        if self._empty_state is None and not self._turns:
+            self._empty_state = _EmptyState()
+            self._layout.insertWidget(0, self._empty_state)
+        self._update_header()
+
+    def update_loading_remaining(self, seconds: int) -> None:
+        if self._loading_panel is not None:
+            self._loading_panel.set_remaining_seconds(seconds)
+
     def clear(self) -> None:
         self.hide_thinking()
+        self.hide_loading()
         self._turns.clear()
         while self._layout.count() > 1:
             item = self._layout.takeAt(0)
@@ -389,6 +428,7 @@ class CommandLog(QFrame):
         self._empty_state = _EmptyState()
         self._layout.insertWidget(0, self._empty_state)
         self._update_header()
+        self._stick_to_bottom = True
 
     def _remove_empty_state(self) -> None:
         if self._empty_state is not None:
@@ -417,9 +457,9 @@ class CommandLog(QFrame):
         for step in turn.steps:
             if step.is_respond:
                 msg = step.args.get("message", "") or step.message
-                self._insert_widget(_AssistantBubble(str(msg)), margin_left=S.lg)
+                self._insert_widget(_AssistantBubble(str(msg)), margin_left=14)
             else:
-                self._insert_widget(_ToolBubble(step), margin_left=S.lg)
+                self._insert_widget(_ToolBubble(step), margin_left=14)
 
         non_respond = [s for s in turn.steps if not s.is_respond]
         if non_respond:
@@ -428,12 +468,23 @@ class CommandLog(QFrame):
             footer = f"{n} action{plural} - {turn.latency_ms:.0f} ms"
         else:
             footer = f"{turn.latency_ms:.0f} ms"
-        self._insert_widget(_TurnFooter(footer), margin_left=S.lg)
+        self._insert_widget(_TurnFooter(footer), margin_left=14)
 
     def _update_header(self) -> None:
+        if self._loading_panel is not None:
+            return
         n = len(self._turns)
         self._header_meta.setText(f"{n} turn{'s' if n != 1 else ''}")
 
     def _scroll_bottom(self) -> None:
         sb = self._scroll.verticalScrollBar()
         sb.setValue(sb.maximum())
+
+    def _on_scroll_range_changed(self, _min: int, _max: int) -> None:
+        if self._stick_to_bottom:
+            sb = self._scroll.verticalScrollBar()
+            sb.setValue(sb.maximum())
+
+    def _on_scroll_value_changed(self, value: int) -> None:
+        sb = self._scroll.verticalScrollBar()
+        self._stick_to_bottom = value >= sb.maximum() - 4
