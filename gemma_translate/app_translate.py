@@ -555,6 +555,10 @@ if __name__ == "__main__":
         help="Path to the Gemma model file (.vmfb for torq, .gguf for llama). "
              "Defaults to HF download for torq or the bundled GGUF for llama.",
     )
+    parser.add_argument(
+        "--non-instruct-model", action="store_true", default=False,
+        help="Not an instruct model",
+    )
     args = parser.parse_args()
 
     # Set NPU clock
@@ -567,6 +571,7 @@ if __name__ == "__main__":
     gemma_backend = load_gemma(
         use_llama=args.use_llama_gemma,
         model_path=gemma_model_path,
+        instruct_model=not args.non_instruct_model,
     )
     trnsl = LanguageTranslation(gemma_backend)
 
