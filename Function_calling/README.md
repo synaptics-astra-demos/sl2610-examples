@@ -271,8 +271,8 @@ via `respond()` instead.
   buzzer on `BUZZERn` (binary GPIO).
 - **Optional Adafruit Mini Sparkle Motion (6314)** running WLED
   firmware, enumerated as `/dev/ttyACM0` over USB-CDC. Drives a
-  36-pixel WS2812B ring (Adafruit 2539). Pass `--wled-port /dev/ttyACM0`
-  to enable.
+  48-pixel WS2812B / SKC6812RV ring (Adafruit 2539). Pass
+  `--wled-port /dev/ttyACM0` to enable.
 
 ### Buzzer wiring note
 

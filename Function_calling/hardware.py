@@ -303,7 +303,11 @@ class HardwareDevice:
     def turn_on_lights(self) -> None:
         self._apply_status_leds("white", 100)
         if self._wled:
-            self._wled.on()
+            # set_solid (not just .on()) — WLED retains the last fx/col across
+            # master power toggles, so a bare `wled.on()` after a previous
+            # set_neopixel_pattern would resume that pattern instead of
+            # producing the white the user asked for.
+            self._wled.set_solid("white", 100)
         log.info("lights ON (white)")
 
     def turn_off_lights(self) -> None:

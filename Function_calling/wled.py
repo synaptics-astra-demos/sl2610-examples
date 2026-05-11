@@ -1,9 +1,14 @@
-"""WLED JSON-over-USB-CDC serial client for the Adafruit Mini Sparkle Motion.
+"""WLED JSON-over-serial client for the Adafruit Mini Sparkle Motion.
 
-WLED accepts the same JSON payload over its USB serial port as it does over
+WLED accepts the same JSON payload over its serial port as it does over
 HTTP (https://kno.wled.ge/interfaces/serial/). One JSON object per line,
-115200 8-N-1 on /dev/ttyACM0 (default for Sparkle Motion CDC-ACM). Baud
-doesn't actually matter on USB-CDC; that's just what WLED docs quote.
+115200 8-N-1 on /dev/ttyACM0.
+
+The Mini Sparkle Motion exposes its UART through an on-board QinHeng CH343
+USB-serial bridge (USB id 1a86:55d3), which enumerates as a standard CDC
+ACM device — hence the /dev/ttyACM0 path on Linux. Baud rate matters on
+this path (115200 is what WLED's serial config defaults to). It is NOT the
+ESP32-S3 native USB-CDC interface that earlier hardware revisions used.
 
 The dispatcher constructs a client only when ``--wled-port`` is passed, so
 this whole module is a no-op when the user runs without the ring.
