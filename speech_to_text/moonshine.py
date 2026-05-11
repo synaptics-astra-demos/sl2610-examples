@@ -21,11 +21,7 @@ from sounddevice import InputStream
 from silero_vad_notorch import VADIterator, load_silero_vad
 from utils.download import download_from_hf
 from utils.log import add_logging_args, configure_logging
-from inference import (
-    format_answer,
-    run_vmfb,
-    load_moonshine
-)
+from utils.moonshine import MoonshineRunner
 # ---------------------- paths ----------------------
 _THIS_DIR = Path(__file__).resolve().parent
 MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "moonshine" ).resolve()
@@ -42,22 +38,15 @@ MIN_REFRESH_SECS = 2
 MIN_SILENCE_DURATION_MS = 400
 
 # ---------------------- moonshine config ----------------------
-INPUT_LEN = 5 # input len in seconds for moonshine model
-TOKENS_PER_SEC = 6
-
 running = False
 
 def start_audio_thread():
 
     class Transcriber(object):
         def __init__(self):
-            max_inp_len: int = INPUT_LEN  * 16_000
-            max_dec_len: int = INPUT_LEN  * TOKENS_PER_SEC
-
             # Initialize Moonshine components
             print("Loading Moonshine model...")
-            self.runner = load_moonshine( MOONSHINE_MODEL_PATH, "tiny", max_inp_len, max_dec_len)
-            #tokenizer_file = "tokenizer.json"
+            self.runner = MoonshineRunner(MOONSHINE_MODEL_PATH)
             tokenizer_file = download_from_hf(f"UsefulSensors/moonshine-tiny", "tokenizer.json")
             self.tokenizer = Tokenizer.from_file(tokenizer_file)
             print("Moonshine model loaded successfully!")
@@ -128,8 +117,6 @@ def start_audio_thread():
 
 
     # function of the audio thread starts here
-    configure_logging("INFO")
-    logger = logging.getLogger("live_caption")
     transcribe = Transcriber()
     global running
 
@@ -229,6 +216,8 @@ def enable_npu_clock():
 # ---------------------- CLI / Entry ----------------------
 
 if __name__ == "__main__":
+    configure_logging("INFO")
+    logger = logging.getLogger("live_caption")
 
     # Set NPU clock
     enable_npu_clock()
@@ -247,7 +236,3 @@ if __name__ == "__main__":
             break
 
     logger.debug("Moonthine Speech-To-Text Example is closed...\n")
-
-
-
-  
