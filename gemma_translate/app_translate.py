@@ -8,7 +8,6 @@ import json
 import re
 from typing import List
 import numpy as np
-from llama_cpp import Llama
 import time
 import threading
 import subprocess
@@ -16,11 +15,8 @@ from queue import Queue
 from tokenizers import Tokenizer
 import logging
 from utils.log import add_logging_args, configure_logging
-from inference import (
-    format_answer,
-    run_vmfb,
-    load_moonshine
-)
+from inference import load_moonshine
+from library.gemma import GemmaBackend, load_gemma
 import sounddevice as sd
 from sounddevice import InputStream
 from silero_vad_notorch import VADIterator, load_silero_vad
@@ -46,7 +42,7 @@ CONF_GATE = 0.7
 
 _THIS_DIR = Path(__file__).resolve().parent
 DEFAULT_PATH = (_THIS_DIR / ".." / "data" / "2610.txt").resolve()
-GEMMA_MODEL_PATH   = (_THIS_DIR / ".." / "models" / "gemma-3-270m-it-Q8_0.gguf").resolve()
+GEMMA_LLAMA_MODEL_PATH = (_THIS_DIR / ".." / "models" / "gemma-3-270m-it-Q8_0.gguf").resolve()
 MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "moonshine" ).resolve()
 
 HINDI_FONT_PATH="./fonts/NotoSansDevanagari-VariableFont_wdth,wght.ttf"
@@ -66,19 +62,11 @@ trnsl = None
 
 # ---------------------- Language Translation ----------------------
 class LanguageTranslation:
-    def __init__(self, model_path: os.PathLike | str = GEMMA_MODEL_PATH):
-        t0 = time.time()
-        self.model_path = Path(model_path)
-        logger.debug(f"Init: Paths in {time.time() - t0:.3f}s")
+    """Wraps a GemmaBackend to build translation prompts and stream responses."""
 
-        t3 = time.time()
-        self.llm = Llama(
-            model_path=str(self.model_path),
-            n_ctx=800,
-            n_threads=2,
-            chat_format="gemma", verbose=False
-        )
-        logger.info(f"LLM loaded in {time.time() - t3:.3f}s")
+    def __init__(self, backend: GemmaBackend):
+        self.backend = backend
+        logger.info("LanguageTranslation ready (backend=%s)", type(backend).__name__)
 
     def stream_response(self, query: str):
         global global_language
@@ -89,37 +77,18 @@ class LanguageTranslation:
         )
         logger.debug(user_prompt)
 
-        n_input_tokens = len(self.llm.tokenize(user_prompt.encode()))
-        answer_parts = []
-        n_output_tokens = 0
-        first_token_time = None
-        t_llm_start = time.time()
-        for chunk in self.llm.create_chat_completion(
-            messages=[
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=100,
-            temperature=0.2,
-            stream=True,
-        ):
-            delta = chunk["choices"][0].get("delta", {})
-            token = delta.get("content")
-            if token:
-                if first_token_time is None:
-                    first_token_time = time.time()
-                    print(f"[Gemma] TTFT: {first_token_time - t_llm_start:.3f}s")
-                n_output_tokens += 1
-                answer_parts.append(token)
-                yield "".join(answer_parts)
+        last_partial = ""
+        for partial in self.backend.stream_response(user_prompt):
+            last_partial = partial
+            yield partial
 
-        t_llm_end = time.time()
-        final_answer = "".join(answer_parts).strip()
-        decode_time = t_llm_end - first_token_time if first_token_time else 0
-        tok_per_sec = n_output_tokens / decode_time if decode_time > 0 else 0
-        total_latency = t_llm_end - t_llm_start
-        yield final_answer
+        yield last_partial.strip()
         if ADD_STATS:
-            window.update_llm_stats(total_latency, n_input_tokens, n_output_tokens)
+            window.update_llm_stats(
+                self.backend.last_infer_time_ms / 1000,
+                self.backend.last_n_input_tokens,
+                self.backend.last_n_output_tokens,
+            )
                                 
 
 def start_llm_input(window):
@@ -166,13 +135,9 @@ def start_audio_thread(window, audio_device):
 
     class Transcriber(object):
         def __init__(self):
-            max_inp_len: int = INPUT_LEN * 16_000
-            max_dec_len: int = INPUT_LEN * TOKENS_PER_SEC
-
             logger.info("Loading Moonshine model...")
-            self.runner = load_moonshine(MOONSHINE_MODEL_PATH, "tiny", max_inp_len, max_dec_len)
-            #tokenizer_file = "tokenizer.json"
-            tokenizer_file = download_from_hf(f"UsefulSensors/moonshine-tiny", "tokenizer.json")
+            self.runner = load_moonshine(MOONSHINE_MODEL_PATH)
+            tokenizer_file = download_from_hf("UsefulSensors/moonshine-tiny", "tokenizer.json")
             self.tokenizer = Tokenizer.from_file(tokenizer_file)
             logger.info("Moonshine model loaded successfully!")
 
@@ -190,16 +155,11 @@ def start_audio_thread(window, audio_device):
 
             tokens = self.runner.run(speech[np.newaxis, :].astype(np.float32))
             infer_time = self.runner.last_infer_time
-            n_tokens_gen = self.runner._n_tokens_gen
+            n_tokens_gen = self.runner.generated_tokens
             text = self.tokenizer.decode_batch(tokens, skip_special_tokens=True)[0]
 
             self.inference_secs += time.time() - start_time
             return text, infer_time, n_tokens_gen
-
-        def close(self):
-            """Release IREE runner objects before interpreter shutdown."""
-            if hasattr(self.runner, 'close'):
-                self.runner.close()
 
     def create_input_callback(q):
         """Callback method for sounddevice InputStream."""
@@ -586,13 +546,29 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Astra Language Translation with Moonshine and Gemma")
     parser.add_argument("--context", type=str, default=str(DEFAULT_PATH))
-    parser.add_argument("--model", type=str, default=str(GEMMA_MODEL_PATH))
+    parser.add_argument(
+        "--use-llama-gemma", action="store_true",
+        help="Use llama.cpp (GGUF) backend instead of the default torq VMFB backend.",
+    )
+    parser.add_argument(
+        "--gemma-model", type=str, default=None,
+        help="Path to the Gemma model file (.vmfb for torq, .gguf for llama). "
+             "Defaults to HF download for torq or the bundled GGUF for llama.",
+    )
     args = parser.parse_args()
 
     # Set NPU clock
     enable_npu_clock()
 
-    trnsl = LanguageTranslation(model_path=args.model)
+    gemma_model_path = args.gemma_model
+    if gemma_model_path is None and args.use_llama_gemma:
+        gemma_model_path = str(GEMMA_LLAMA_MODEL_PATH)
+
+    gemma_backend = load_gemma(
+        use_llama=args.use_llama_gemma,
+        model_path=gemma_model_path,
+    )
+    trnsl = LanguageTranslation(gemma_backend)
 
     # Select audio device before starting keyboard listener (which sets raw terminal mode)
     print("List of Audio input devices:")
