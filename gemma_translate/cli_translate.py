@@ -4,13 +4,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pathlib import Path
-import atexit
 import json
 import re
-import select
-import signal
-import termios
-import tty
 from typing import List
 import numpy as np
 import time
@@ -19,6 +14,7 @@ import subprocess
 from queue import Empty, Queue
 from tokenizers import Tokenizer
 import logging
+from utils.cli import TerminalMode, install_cli_shutdown_handlers
 from utils.log import add_logging_args, configure_logging
 from utils.moonshine import MoonshineRunner
 from utils.gemma import GemmaBackend, load_gemma
@@ -36,20 +32,8 @@ DEFAULT_PATH = (_THIS_DIR / ".." / "data" / "2610.txt").resolve()
 GEMMA_LLAMA_MODEL_PATH = (_THIS_DIR / ".." / "models" / "gemma-3-270m-it-Q8_0.gguf").resolve()
 MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "Synaptics" / "moonshine-tiny-bf16-torq").resolve()
 
-voice_on = 0
-query_processing = 0
-audioQueryQ = Queue()
-audioResponseQ = Queue()
-_shutdown_event = threading.Event()
-_terminal_lock = threading.Lock()
-_terminal_fd = None
-_terminal_settings = None
-
-configure_logging("DEBUG")
+configure_logging("INFO")
 logger = logging.getLogger("Translate App")
-
-global_language = "Spanish"
-trnsl = None
 
 LANGUAGES = {
     "1": "Spanish",
@@ -61,85 +45,76 @@ LANGUAGES = {
 }
 
 
-def restore_terminal():
-    """Restore stdin settings after single-key input mode."""
-    global _terminal_fd, _terminal_settings
-    with _terminal_lock:
-        if _terminal_fd is None or _terminal_settings is None:
-            return
-        try:
-            termios.tcsetattr(_terminal_fd, termios.TCSADRAIN, _terminal_settings)
-        except termios.error:
-            logger.debug("Failed to restore terminal settings", exc_info=True)
-        finally:
-            _terminal_fd = None
-            _terminal_settings = None
+class TranslateCLIAppState:
+    """Thread-safe mutable state shared by the CLI worker threads."""
 
+    def __init__(self, language: str = "Spanish"):
+        self.audio_query_q = Queue()
+        self.shutdown_event = threading.Event()
+        self._lock = threading.RLock()
+        self._language = language
+        self._voice_on = False
+        self._query_processing = False
+        self._translation = None
 
-def request_shutdown():
-    global voice_on
-    voice_on = 0
-    _shutdown_event.set()
-    restore_terminal()
+    @property
+    def language(self):
+        with self._lock:
+            return self._language
 
+    def set_language(self, language: str):
+        with self._lock:
+            self._language = language
 
-def enter_keyboard_mode():
-    global _terminal_fd, _terminal_settings
-    if not sys.stdin.isatty():
-        return False
+    @property
+    def translation(self):
+        with self._lock:
+            return self._translation
 
-    fd = sys.stdin.fileno()
-    with _terminal_lock:
-        if _terminal_settings is None:
-            _terminal_fd = fd
-            _terminal_settings = termios.tcgetattr(fd)
-        tty.setcbreak(fd)
-    return True
+    def set_translation(self, translation):
+        with self._lock:
+            self._translation = translation
 
+    def set_voice_on(self, enabled: bool):
+        with self._lock:
+            self._voice_on = enabled
 
-def install_shutdown_handlers():
-    atexit.register(restore_terminal)
+    def set_query_processing(self, enabled: bool):
+        with self._lock:
+            self._query_processing = enabled
 
-    previous_sigint = signal.getsignal(signal.SIGINT)
-    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    def can_record_audio(self):
+        with self._lock:
+            return (
+                self._voice_on
+                and not self._query_processing
+                and not self.shutdown_event.is_set()
+            )
 
-    def handle_signal(signum, frame):
-        previous = previous_sigint if signum == signal.SIGINT else previous_sigterm
-        request_shutdown()
-        if callable(previous):
-            previous(signum, frame)
-        elif previous == signal.SIG_IGN:
-            return
-        elif signum == signal.SIGINT:
-            raise KeyboardInterrupt
-        else:
-            raise SystemExit(128 + signum)
+    def request_shutdown(self):
+        with self._lock:
+            self._voice_on = False
+            self._query_processing = False
+        self.shutdown_event.set()
 
-    signal.signal(signal.SIGINT, handle_signal)
-    signal.signal(signal.SIGTERM, handle_signal)
+    @property
+    def shutdown_requested(self):
+        return self.shutdown_event.is_set()
 
-    previous_threading_excepthook = threading.excepthook
-
-    def handle_thread_exception(args):
-        request_shutdown()
-        previous_threading_excepthook(args)
-
-    threading.excepthook = handle_thread_exception
 
 # ---------------------- Language Translation ----------------------
 class LanguageTranslation:
     """Wraps a GemmaBackend to build translation prompts and stream responses."""
 
-    def __init__(self, backend: GemmaBackend):
+    def __init__(self, backend: GemmaBackend, state: TranslateCLIAppState):
         self.backend = backend
+        self.state = state
         logger.info("LanguageTranslation ready (backend=%s)", type(backend).__name__)
 
     def stream_response(self, query: str):
-        global global_language
+        language = self.state.language
         user_prompt = (
-            f"Please translate the text in quotes to {global_language}. Limit output to 1 sentence. "
-            f"Important, do not attempt to answer the query, only translate the text provided in quotes. "
-            f"Most important, all output should only be in {global_language}. \"{query}\"\n"
+            f"Translate the text in quotes to {language}. Output only the translated text.\n\"{query}\"\n"
         )
         logger.debug(user_prompt)
 
@@ -149,17 +124,46 @@ class LanguageTranslation:
             yield partial
 
         yield last_partial.strip()
-        window.update_llm_stats(
-            self.backend.last_infer_time_ms / 1000,
-            self.backend.last_n_input_tokens,
-            self.backend.last_n_output_tokens,
-        )
 
 
 # ---------------------- CLI Window ----------------------
 class CliWindow:
     """Minimal CLI replacement for ChatWindow. Provides the same interface
-    so that start_audio_thread and start_llm_input work without modification."""
+    used by the audio and LLM worker threads."""
+
+    def __init__(self, state: TranslateCLIAppState):
+        self.state = state
+        self._terminal = TerminalMode(log=logger)
+
+    def restore_terminal(self):
+        self._terminal.restore()
+
+    def shutdown(self):
+        self.state.request_shutdown()
+        self.restore_terminal()
+
+    def enter_keyboard_mode(self):
+        return self._terminal.enter_cbreak()
+
+    def start_keyboard_listener(self):
+        """Read single keypresses for language switching."""
+        if not self.enter_keyboard_mode():
+            return
+
+        try:
+            while not self.state.shutdown_requested:
+                ch = self._terminal.read_key(timeout=0.1)
+                if ch is None:
+                    continue
+                if ch in LANGUAGES:
+                    self.state.set_language(LANGUAGES[ch])
+                    print(f"\n[Language changed to: {self.state.language}]", flush=True)
+                elif ch == "\x03":  # Ctrl+C
+                    self.shutdown()
+                    os.kill(os.getpid(), 2)
+                    break
+        finally:
+            self.restore_terminal()
 
     def show(self):
         print("\n=== Astra SL2610 Voice Translation Engine ===")
@@ -191,58 +195,39 @@ class CliWindow:
         print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time:.3f}s")
 
 
-def start_keyboard_listener():
-    """Background thread: reads single keypresses (no Enter needed).
-    Press 1-6 to switch the translation target language."""
-    global global_language
-    if not enter_keyboard_mode():
-        return
-
-    try:
-        while not _shutdown_event.is_set():
-            readable, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if not readable:
-                continue
-            ch = sys.stdin.read(1)
-            if ch in LANGUAGES:
-                global_language = LANGUAGES[ch]
-                print(f"\n[Language changed to: {global_language}]", flush=True)
-            elif ch == "\x03":  # Ctrl+C
-                request_shutdown()
-                os.kill(os.getpid(), signal.SIGINT)
-                break
-    finally:
-        restore_terminal()
-
-
-def start_llm_input(window):
-    global voice_on
-    global query_processing
-    voice_on = 1
-    while voice_on and not _shutdown_event.is_set():
+def start_llm_input(state: TranslateCLIAppState, window: CliWindow):
+    state.set_voice_on(True)
+    while not state.shutdown_requested:
         try:
-            query = audioQueryQ.get(timeout=0.1)
+            query = state.audio_query_q.get(timeout=0.1)
         except Empty:
             continue
         if (query != ""):
-            query_processing = 1
+            state.set_query_processing(True)
             #window.update_response_text(" ")
 
             # --- Normal streaming ---
             try:
-                if trnsl is None:
+                translation = state.translation
+                if translation is None:
                     raise RuntimeError("Translation model not loaded")
-                for partial in trnsl.stream_response(query):
+                for partial in translation.stream_response(query):
                     window.update_response_text(str(partial), replace=True)
                 print()  # newline after full response
+                window.update_llm_stats(
+                    translation.backend.last_infer_time_ms / 1000,
+                    translation.backend.last_n_input_tokens,
+                    translation.backend.last_n_output_tokens,
+                )
             except Exception as e:
                 errstr = f"Error: {e}"
                 window.update_response_text(errstr, replace=True)
                 logger.info("response: %s", errstr)
-            query_processing = 0
+            finally:
+                state.set_query_processing(False)
 
 
-def start_audio_thread(window, audio_device):
+def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_device):
     os.environ["PA_ALSA_PLUGHW"] = "1"
 
     SAMPLING_RATE = 16000
@@ -336,9 +321,6 @@ def start_audio_thread(window, audio_device):
     # function of the audio thread starts here
     transcribe = Transcriber()
 
-    global voice_on
-    global query_processing
-
     vad_model = load_silero_vad(onnx=True)
     vad_iterator = VADIterator(
         model=vad_model,
@@ -362,7 +344,7 @@ def start_audio_thread(window, audio_device):
     recording = False
 
     # Start llm listener thread
-    llm_thread = threading.Thread(target=start_llm_input, args=(window,), daemon=True)
+    llm_thread = threading.Thread(target=start_llm_input, args=(state, window), daemon=True)
     llm_thread.start()
 
     logger.info("Audio thread initialized")
@@ -371,13 +353,13 @@ def start_audio_thread(window, audio_device):
         stream.start()
         window.show()
         new_query = 1
-        while not _shutdown_event.is_set():
+        while not state.shutdown_requested:
             try:
                 chunk, status = inputStreamQ.get(timeout=0.1)
                 if status:
                     logger.debug(status)
 
-                if (voice_on and not query_processing):
+                if state.can_record_audio():
                     speech = np.concatenate((speech, chunk))
                     if not recording:
                         speech = speech[-lookback_size:]
@@ -408,7 +390,7 @@ def start_audio_thread(window, audio_device):
                                 try:
                                     if (len(audio_query.split()) >= 3):
                                         logger.debug("Sending query to LLM %s", str(audio_query))
-                                        audioQueryQ.put_nowait(audio_query)
+                                        state.audio_query_q.put_nowait(audio_query)
                                         new_query = 1
                                         for i in range(1, inputStreamQ.qsize()):
                                             inputStreamQ.get()
@@ -426,10 +408,9 @@ def start_audio_thread(window, audio_device):
                                     #Do quick auto-correct on important keywords
                                     audio_query = auto_correct(audio_query)
                                     logger.debug("Sending query to LLM %s", str(audio_query))
-                                    audioQueryQ.put_nowait(audio_query)
-                                    # audioResponseQ.get() removed: nothing ever puts into this queue,
-                                    # so this would block forever. LLM response is handled asynchronously
-                                    # by start_llm_input() via update_response_text().
+                                    state.audio_query_q.put_nowait(audio_query)
+                                    # LLM response is handled asynchronously by
+                                    # start_llm_input() via update_response_text().
                                     logger.debug("flushing %d elements from the queue", inputStreamQ.qsize())
                                     for i in range(1, inputStreamQ.qsize()):
                                         inputStreamQ.get()
@@ -441,7 +422,7 @@ def start_audio_thread(window, audio_device):
             except Empty:
                 continue
             except KeyboardInterrupt:
-                request_shutdown()
+                window.shutdown()
     finally:
         logger.debug("Closing Audio stream...")
         stream.close()
@@ -481,7 +462,9 @@ if __name__ == "__main__":
         help="Not an instruct model",
     )
     args = parser.parse_args()
-    install_shutdown_handlers()
+    state = TranslateCLIAppState()
+    window = CliWindow(state)
+    install_cli_shutdown_handlers(window.shutdown)
 
     # Set NPU clock
     enable_npu_clock()
@@ -495,21 +478,20 @@ if __name__ == "__main__":
         model_path=gemma_model_path,
         instruct_model=not args.non_instruct_model,
     )
-    trnsl = LanguageTranslation(gemma_backend)
+    translation = LanguageTranslation(gemma_backend, state)
+    state.set_translation(translation)
 
     # Select audio device before starting keyboard listener (which sets raw terminal mode)
     print("List of Audio input devices:")
     print(sd.query_devices())
     audio_device = int(input("Enter input device to listen on: "))
 
-    window = CliWindow()
-
     # Start keyboard listener thread for language switching (starts after input() is done)
-    kb_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
+    kb_thread = threading.Thread(target=window.start_keyboard_listener, daemon=True)
     kb_thread.start()
 
     # Start audio listener thread
-    audio_thread = threading.Thread(target=start_audio_thread, args=(window, audio_device))
+    audio_thread = threading.Thread(target=start_audio_thread, args=(state, window, audio_device))
     audio_thread.start()
 
     try:
@@ -517,10 +499,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nExiting.")
     finally:
-        request_shutdown()
-        audioQueryQ.put_nowait("")
+        window.shutdown()
+        state.audio_query_q.put_nowait("")
         audio_thread.join(timeout=2)
-        del trnsl
-        del gemma_backend
-        import gc
-        gc.collect()
+        state.set_translation(None)
