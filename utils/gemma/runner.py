@@ -464,8 +464,6 @@ class GemmaLlama(GemmaBackend):
         yield final
 
 
-_GEMMA_TORQ_HF_REPO: Final[str] = "Synaptics/gemma-3-270m-it-torq"
-
 def load_gemma(
     *,
     use_llama: bool = False,
@@ -498,16 +496,19 @@ def load_gemma(
 
     # Torq backend
     if model_path is None:
-        from ..download import download_from_hf
+        from .download import download_gemma3
 
-        model_path = download_from_hf(_GEMMA_TORQ_HF_REPO, "model.vmfb")
-        # Ensure supporting files are present alongside the model
-        for f in ("config.json", "tokenizer.json", "token_embeddings.npy"):
-            download_from_hf(_GEMMA_TORQ_HF_REPO, f)
-        try:
-            download_from_hf(_GEMMA_TORQ_HF_REPO, "token_id_lut.npy")
-        except Exception:
-            pass
+        dirs = download_gemma3(["instruct"])
+        model_dir = dirs["instruct"]
+        # Prefer model.vmfb, fall back to model.vmfb.trim
+        if (model_dir / "model.vmfb.trim").exists():
+            model_path = model_dir / "model.vmfb.trim"
+        elif (model_dir / "model.vmfb").exists():
+            model_path = model_dir / "model.vmfb"
+        else:
+            raise FileNotFoundError(
+                f"No model.vmfb or model.vmfb.trim found in {model_dir}"
+            )
 
     torq_kw = {
         k: kwargs[k]

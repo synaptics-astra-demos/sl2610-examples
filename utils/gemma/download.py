@@ -4,11 +4,12 @@
 """Download Gemma3 model files from HuggingFace."""
 
 import logging
+from pathlib import Path
 from typing import Final
 
 from huggingface_hub import HfApi
 
-from ..download import download_from_hf
+from ..download import default_models_dir, download_from_hf
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +23,13 @@ _GEMMA3_MODEL_FILENAMES: Final[list[str]] = [
 ]
 
 
-def _download_gemma3_model(repo_id: str) -> None:
+def _download_gemma3_model(repo_id: str, base_dir: Path) -> None:
     """Download model.vmfb and/or model.vmfb.trim as they exist."""
     hf_api = HfApi()
     downloaded_any = False
     for filename in _GEMMA3_MODEL_FILENAMES:
         if hf_api.file_exists(repo_id=repo_id, filename=filename):
-            download_from_hf(repo_id, filename)
+            download_from_hf(repo_id, filename, base_dir=base_dir)
             logger.info("Downloaded %s from %s", filename, repo_id)
             downloaded_any = True
 
@@ -38,30 +39,37 @@ def _download_gemma3_model(repo_id: str) -> None:
         )
 
 
-def download_gemma3(models: list[str] | None = None) -> None:
+def download_gemma3(models: list[str] | None = None) -> dict[str, Path]:
     """Download Gemma3 model files from HuggingFace.
 
     Args:
         models: List of model names (keys in ``GEMMA3_HF_REPO_MAP``)
             or raw HF repo IDs.  Defaults to ``["instruct"]``.
+
+    Returns:
+        A dict mapping each model name to its local directory path.
     """
     if models is None:
         models = ["instruct"]
     logger.info("Downloading Gemma3 models: [%s]", ", ".join(models))
     repos = [GEMMA3_HF_REPO_MAP.get(m, m) for m in models]
+    base_dir = default_models_dir()
 
-    for repo_id in repos:
-        _download_gemma3_model(repo_id)
-        download_from_hf(repo_id, "token_embeddings.npy")
-        download_from_hf(repo_id, "config.json")
-        download_from_hf(repo_id, "tokenizer.json")
+    result: dict[str, Path] = {}
+    for name, repo_id in zip(models, repos):
+        _download_gemma3_model(repo_id, base_dir)
+        download_from_hf(repo_id, "token_embeddings.npy", base_dir=base_dir)
+        download_from_hf(repo_id, "config.json", base_dir=base_dir)
+        download_from_hf(repo_id, "tokenizer.json", base_dir=base_dir)
         # Optional: trimmed vocab LUT
         try:
             hf_api = HfApi()
             if hf_api.file_exists(repo_id=repo_id, filename="token_id_lut.npy"):
-                download_from_hf(repo_id, "token_id_lut.npy")
+                download_from_hf(repo_id, "token_id_lut.npy", base_dir=base_dir)
         except Exception:
             pass
-        logger.info("Downloaded Gemma3 model files from %s", repo_id)
+        result[name] = base_dir / repo_id
+        logger.info("Downloaded Gemma3 model files from %s to '%s'", repo_id, str(result[name]))
 
     logger.info("Gemma3 model download complete.")
+    return result

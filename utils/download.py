@@ -10,6 +10,7 @@ from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
 __all__ = [
+    "default_models_dir",
     "download_from_url",
     "download_from_hf",
 ]
@@ -43,21 +44,31 @@ def download_from_url(url: str, filename: str | os.PathLike, chunk_size: int = 8
     return filename
 
 
-def download_from_hf(repo_id: str, filename: str | os.PathLike):
+def default_models_dir() -> Path:
     _repo_root = Path(__file__).resolve().parent.parent
-    base_dir = os.getenv("MODELS", str(_repo_root / "models"))
-    local_file = os.path.join(base_dir, repo_id, filename)
-    os.makedirs(os.path.dirname(local_file), exist_ok=True)
+    return Path(os.getenv("MODELS", str(_repo_root / "models")))
 
-    if os.path.exists(local_file):
+
+def download_from_hf(
+    repo_id: str,
+    filename: str | os.PathLike,
+    base_dir: str | os.PathLike | None = None,
+) -> Path:
+    if base_dir is None:
+        base_dir = default_models_dir()
+    base_dir = Path(base_dir)
+    local_file = base_dir / repo_id / filename
+    local_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if local_file.exists():
         logger.debug("File found locally at: %s", local_file)
         return local_file
 
     logger.debug("Attempting to download %s from %s...", filename, repo_id)
-    downloaded_file = hf_hub_download(
+    hf_hub_download(
         repo_id=repo_id,
         filename=filename,
-        local_dir=os.path.join(base_dir, repo_id),
+        local_dir=str(base_dir / repo_id),
     )
     logger.debug("Download from HuggingFace completed.")
-    return downloaded_file
+    return local_file
