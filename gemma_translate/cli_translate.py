@@ -188,7 +188,7 @@ def start_audio_thread(window, audio_device):
                 self.tokenizer = Tokenizer.from_file(f"{MOONSHINE_MODEL_PATH}/tokenizer.json")
             except (FileNotFoundError, OSError):
                 tokenizer_file = download_from_hf("UsefulSensors/moonshine-tiny", "tokenizer.json")
-                self.tokenizer = Tokenizer.from_file(tokenizer_file)
+                self.tokenizer = Tokenizer.from_file(str(tokenizer_file))
             logger.info("Moonshine model loaded successfully!")
 
             self.rate = 16000

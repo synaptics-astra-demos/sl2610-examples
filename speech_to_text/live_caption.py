@@ -48,7 +48,7 @@ def start_audio_thread():
             print("Loading Moonshine model...")
             self.runner = MoonshineRunner(MOONSHINE_MODEL_PATH)
             tokenizer_file = download_from_hf(f"UsefulSensors/moonshine-tiny", "tokenizer.json")
-            self.tokenizer = Tokenizer.from_file(tokenizer_file)
+            self.tokenizer = Tokenizer.from_file(str(tokenizer_file))
             print("Moonshine model loaded successfully!")
 
             self.rate = 16000
