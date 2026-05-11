@@ -4,8 +4,11 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pathlib import Path
+import atexit
 import json
 import re
+import select
+import signal
 import termios
 import tty
 from typing import List
@@ -13,7 +16,7 @@ import numpy as np
 import time
 import threading
 import subprocess
-from queue import Queue
+from queue import Empty, Queue
 from tokenizers import Tokenizer
 import logging
 from utils.log import add_logging_args, configure_logging
@@ -37,8 +40,12 @@ voice_on = 0
 query_processing = 0
 audioQueryQ = Queue()
 audioResponseQ = Queue()
+_shutdown_event = threading.Event()
+_terminal_lock = threading.Lock()
+_terminal_fd = None
+_terminal_settings = None
 
-configure_logging("INFO")
+configure_logging("DEBUG")
 logger = logging.getLogger("Translate App")
 
 global_language = "Spanish"
@@ -52,6 +59,72 @@ LANGUAGES = {
     "5": "Hindi",
     "6": "Chinese"
 }
+
+
+def restore_terminal():
+    """Restore stdin settings after single-key input mode."""
+    global _terminal_fd, _terminal_settings
+    with _terminal_lock:
+        if _terminal_fd is None or _terminal_settings is None:
+            return
+        try:
+            termios.tcsetattr(_terminal_fd, termios.TCSADRAIN, _terminal_settings)
+        except termios.error:
+            logger.debug("Failed to restore terminal settings", exc_info=True)
+        finally:
+            _terminal_fd = None
+            _terminal_settings = None
+
+
+def request_shutdown():
+    global voice_on
+    voice_on = 0
+    _shutdown_event.set()
+    restore_terminal()
+
+
+def enter_keyboard_mode():
+    global _terminal_fd, _terminal_settings
+    if not sys.stdin.isatty():
+        return False
+
+    fd = sys.stdin.fileno()
+    with _terminal_lock:
+        if _terminal_settings is None:
+            _terminal_fd = fd
+            _terminal_settings = termios.tcgetattr(fd)
+        tty.setcbreak(fd)
+    return True
+
+
+def install_shutdown_handlers():
+    atexit.register(restore_terminal)
+
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def handle_signal(signum, frame):
+        previous = previous_sigint if signum == signal.SIGINT else previous_sigterm
+        request_shutdown()
+        if callable(previous):
+            previous(signum, frame)
+        elif previous == signal.SIG_IGN:
+            return
+        elif signum == signal.SIGINT:
+            raise KeyboardInterrupt
+        else:
+            raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    previous_threading_excepthook = threading.excepthook
+
+    def handle_thread_exception(args):
+        request_shutdown()
+        previous_threading_excepthook(args)
+
+    threading.excepthook = handle_thread_exception
 
 # ---------------------- Language Translation ----------------------
 class LanguageTranslation:
@@ -122,28 +195,35 @@ def start_keyboard_listener():
     """Background thread: reads single keypresses (no Enter needed).
     Press 1-6 to switch the translation target language."""
     global global_language
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+    if not enter_keyboard_mode():
+        return
+
     try:
-        tty.setcbreak(fd)
-        while True:
+        while not _shutdown_event.is_set():
+            readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if not readable:
+                continue
             ch = sys.stdin.read(1)
             if ch in LANGUAGES:
                 global_language = LANGUAGES[ch]
                 print(f"\n[Language changed to: {global_language}]", flush=True)
             elif ch == "\x03":  # Ctrl+C
-                os.kill(os.getpid(), 2)  # SIGINT
+                request_shutdown()
+                os.kill(os.getpid(), signal.SIGINT)
                 break
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        restore_terminal()
 
 
 def start_llm_input(window):
     global voice_on
     global query_processing
     voice_on = 1
-    while (voice_on):
-        query = audioQueryQ.get()
+    while voice_on and not _shutdown_event.is_set():
+        try:
+            query = audioQueryQ.get(timeout=0.1)
+        except Empty:
+            continue
         if (query != ""):
             query_processing = 1
             #window.update_response_text(" ")
@@ -287,80 +367,84 @@ def start_audio_thread(window, audio_device):
 
     logger.info("Audio thread initialized")
     logger.debug("Starting Audio stream...")
-    stream.start()
-    window.show()
-    new_query = 1
-    while True:
-        try:
-            chunk, status = inputStreamQ.get()
-            if status:
-                logger.debug(status)
+    try:
+        stream.start()
+        window.show()
+        new_query = 1
+        while not _shutdown_event.is_set():
+            try:
+                chunk, status = inputStreamQ.get(timeout=0.1)
+                if status:
+                    logger.debug(status)
 
-            if (voice_on and not query_processing):
-                speech = np.concatenate((speech, chunk))
-                if not recording:
-                    speech = speech[-lookback_size:]
+                if (voice_on and not query_processing):
+                    speech = np.concatenate((speech, chunk))
+                    if not recording:
+                        speech = speech[-lookback_size:]
 
-                speech_dict = vad_iterator(chunk)
-                if speech_dict:
-                    logger.debug("speech_dict returned %s", str(speech_dict))
-                    if "start" in speech_dict and not recording:
-                        recording = True
-                        start_time = time.time()
-                        logger.debug("Started recording at %s", str(start_time))
+                    speech_dict = vad_iterator(chunk)
+                    if speech_dict:
+                        logger.debug("speech_dict returned %s", str(speech_dict))
+                        if "start" in speech_dict and not recording:
+                            recording = True
+                            start_time = time.time()
+                            logger.debug("Started recording at %s", str(start_time))
 
-                    if "end" in speech_dict and recording:
-                        logger.debug("Got end at %s", str(time.time()))
-                        if (time.time() - start_time) > MIN_SPEECH_SECS:
+                        if "end" in speech_dict and recording:
+                            logger.debug("Got end at %s", str(time.time()))
+                            if (time.time() - start_time) > MIN_SPEECH_SECS:
+                                recording = False
+                                audio_query, infer_time, n_tokens_gen = end_recording(speech)
+                                #Do quick auto-correct on important keywords
+                                audio_query = auto_correct(audio_query)
+                                if (new_query == 1):
+                                    window.update_user_text(audio_query)
+                                    if ADD_STATS:
+                                        window.update_stt_stats(infer_time, n_tokens_gen)
+                                    new_query = 0
+                                else:
+                                    window.update_user_text(audio_query, replace=True)
+                                #if there is a valid query, then run gemma
+                                try:
+                                    if (len(audio_query.split()) >= 3):
+                                        logger.debug("Sending query to LLM %s", str(audio_query))
+                                        audioQueryQ.put_nowait(audio_query)
+                                        new_query = 1
+                                        for i in range(1, inputStreamQ.qsize()):
+                                            inputStreamQ.get()
+                                except AttributeError:
+                                    pass
+                    elif recording:
+                        # Possible speech truncation can cause hallucination.
+                        if (len(speech) / SAMPLING_RATE) > MAX_SPEECH_SECS:
+                            logger.debug("Timeout: ended recording at %s", str(time.time()))
                             recording = False
                             audio_query, infer_time, n_tokens_gen = end_recording(speech)
-                            #Do quick auto-correct on important keywords
-                            audio_query = auto_correct(audio_query)
-                            if (new_query == 1):
-                                window.update_user_text(audio_query)
-                                if ADD_STATS:
-                                    window.update_stt_stats(infer_time, n_tokens_gen)
-                                new_query = 0
-                            else:
-                                window.update_user_text(audio_query, replace=True)
                             #if there is a valid query, then run gemma
                             try:
                                 if (len(audio_query.split()) >= 3):
+                                    #Do quick auto-correct on important keywords
+                                    audio_query = auto_correct(audio_query)
                                     logger.debug("Sending query to LLM %s", str(audio_query))
                                     audioQueryQ.put_nowait(audio_query)
-                                    new_query = 1
+                                    # audioResponseQ.get() removed: nothing ever puts into this queue,
+                                    # so this would block forever. LLM response is handled asynchronously
+                                    # by start_llm_input() via update_response_text().
+                                    logger.debug("flushing %d elements from the queue", inputStreamQ.qsize())
                                     for i in range(1, inputStreamQ.qsize()):
                                         inputStreamQ.get()
+                                soft_reset(vad_iterator)
                             except AttributeError:
                                 pass
-                elif recording:
-                    # Possible speech truncation can cause hallucination.
-                    if (len(speech) / SAMPLING_RATE) > MAX_SPEECH_SECS:
-                        logger.debug("Timeout: ended recording at %s", str(time.time()))
-                        recording = False
-                        audio_query, infer_time, n_tokens_gen = end_recording(speech)
-                        #if there is a valid query, then run gemma
-                        try:
-                            if (len(audio_query.split()) >= 3):
-                                #Do quick auto-correct on important keywords
-                                audio_query = auto_correct(audio_query)
-                                logger.debug("Sending query to LLM %s", str(audio_query))
-                                audioQueryQ.put_nowait(audio_query)
-                                # audioResponseQ.get() removed: nothing ever puts into this queue,
-                                # so this would block forever. LLM response is handled asynchronously
-                                # by start_llm_input() via update_response_text().
-                                logger.debug("flushing %d elements from the queue", inputStreamQ.qsize())
-                                for i in range(1, inputStreamQ.qsize()):
-                                    inputStreamQ.get()
-                            soft_reset(vad_iterator)
-                        except AttributeError:
-                            pass
-            else:
-                speech *= 0.0
-        except KeyboardInterrupt:
-            logger.debug("Closing Audio stream...")
-            stream.close()
-            break
+                else:
+                    speech *= 0.0
+            except Empty:
+                continue
+            except KeyboardInterrupt:
+                request_shutdown()
+    finally:
+        logger.debug("Closing Audio stream...")
+        stream.close()
 
     del transcribe
     import gc
@@ -397,6 +481,7 @@ if __name__ == "__main__":
         help="Not an instruct model",
     )
     args = parser.parse_args()
+    install_shutdown_handlers()
 
     # Set NPU clock
     enable_npu_clock()
@@ -432,6 +517,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nExiting.")
     finally:
+        request_shutdown()
+        audioQueryQ.put_nowait("")
+        audio_thread.join(timeout=2)
         del trnsl
         del gemma_backend
         import gc
