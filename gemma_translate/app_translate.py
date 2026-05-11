@@ -43,7 +43,7 @@ CONF_GATE = 0.7
 _THIS_DIR = Path(__file__).resolve().parent
 DEFAULT_PATH = (_THIS_DIR / ".." / "data" / "2610.txt").resolve()
 GEMMA_LLAMA_MODEL_PATH = (_THIS_DIR / ".." / "models" / "gemma-3-270m-it-Q8_0.gguf").resolve()
-MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "moonshine" ).resolve()
+MOONSHINE_MODEL_PATH = (_THIS_DIR / ".." / "models" / "Synaptics" / "moonshine-tiny-bf16-torq").resolve()
 
 HINDI_FONT_PATH="./fonts/NotoSansDevanagari-VariableFont_wdth,wght.ttf"
 CHINESE_FONT_PATH="./fonts/NotoSansSC-VariableFont_wght.ttf"
