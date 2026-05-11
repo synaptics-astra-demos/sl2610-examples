@@ -6,11 +6,6 @@ This example uses the following models:
 
 - [Moonshine](https://github.com/moonshine-ai/moonshine), a modern speech-to-text (automatic speech recognition) model designed specifically for efficient, real-time, and low-latency operation. 
 
-[!WARNING]
-This early-access version has the pre-compiled Moonshine models included. 
-Before cloning, ensure that you have Git LFS installed - in order to handle the large files. 
-In the future they will be downloaded from Huggingface. 
-
 - [Gemma 3 270M](https://deepmind.google/models/gemma/gemma-3/), the most lightweight model in Google’s Gemma 3 family, designed specifically for extreme efficiency. 
 
 - [Silero VAD (Voice Activity Detection)](https://github.com/snakers4/silero-vad), a lightweight, high-performance model designed to detect the presence of human speech in audio streams.
@@ -21,14 +16,14 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 ```
 gemma_translate
 ├── app_translate.py
-├── inference.py
-├── portaudio_libs.tgz
+├── cli_translate.py
+├── download_models.py
 ├── requirements.txt
 ├── README.md
 └── fonts/
 ```
 
-Additionaly, code it used from `../utils/` 
+Additionally, code is used from `../utils/` (including `utils/moonshine/` and `utils/gemma/` subpackages). 
 
 ## 🔧 Hardware Setup
 
@@ -81,20 +76,18 @@ pip install -r requirements.txt
 ```
 
 
-### Other setup
+### Download Models
 
-Download Gemma3 and Moonshine model files
+Download the Moonshine and Gemma3 model files from HuggingFace:
+
+```bash
+python download_models.py
+```
+
+**Optional:** If you plan to use the llama.cpp backend (`--use-llama-gemma`), download the GGUF model as well:
 
 ```bash
 wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf
-
-wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder.vmfb
-
-wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder_with_past.vmfb
-
-wget -P ../models/https://huggingface.co/Synaptics/Moonshine/tree/main/models/bf16/onnx/encoder.onnx
-
-wget https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
 
 Extract the audio libraries

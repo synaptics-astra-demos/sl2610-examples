@@ -6,3 +6,4 @@ silero-vad-notorch
 sounddevice
 soundfile
 ml_dtypes>=0.4.0
+huggingface_hub

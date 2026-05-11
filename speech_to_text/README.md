@@ -6,10 +6,6 @@ This example uses the following models:
 
 - [Moonshine](https://github.com/moonshine-ai/moonshine), a modern speech-to-text (automatic speech recognition) model designed specifically for efficient, real-time, and low-latency operation. 
 
-[!WARNING]
-This early-access version has the pre-compiled Moonshine models included. 
-Before cloning, ensure that you have Git LFS installed - in order to handle the large files. 
-In the future they will be downloaded from Huggingface. 
 
 
 - [Silero VAD (Voice Activity Detection)](https://github.com/snakers4/silero-vad), a lightweight, high-performance model designed to detect the presence of human speech in audio streams.
@@ -19,14 +15,13 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 ## Project Structure
 ```
 speech_to_text
-├── moonshine.py
-├── inference.py
-├── portaudio_libs.tgz
+├── download_models.py
+├── live_caption.py
 ├── README.md
 └── requirements.txt
 ```
 
-Additionaly, code it used from `../utils/` 
+Additionally, code is used from `../utils/` (including `utils/moonshine/` for the Moonshine inference and download backend). 
 
 ## 🔧 Hardware Setup
 
@@ -85,10 +80,18 @@ Now (re)install the torq runtime.
 pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
 ```
 
+### Download Models
+
+Download the Moonshine model files from HuggingFace:
+
+```bash
+python download_models.py
+```
+
 Extract the audio libraries
 
 ```bash
-tar -xvzf library/portaudio_libs.tgz -C /
+tar -xvzf ../library/portaudio_libs.tgz -C /
 ```
 
 Connect a USB or PDM microphone
@@ -97,7 +100,7 @@ Connect a USB or PDM microphone
 
 
 ```bash
-python moonshine.py
+python live_caption.py
 ```
 
 
