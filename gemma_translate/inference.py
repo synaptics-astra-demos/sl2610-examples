@@ -1,7 +1,7 @@
 """Inference helpers for gemma_translate.
 
-This module re-exports the optimized Moonshine runner from ``library.moonshine``
-and the Gemma backends from ``library.gemma``. 
+This module re-exports the optimized Moonshine runner from ``utils.moonshine``
+and the Gemma backends from ``utils.gemma``.
 Provides a compatibility layer between the legacy API and the current backends.
 """
 
@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from typing import Final
 
-from library.moonshine import MoonshineRunner  # noqa: F401
-from library.gemma import (  # noqa: F401
+from utils.moonshine import MoonshineRunner  # noqa: F401
+from utils.gemma import (  # noqa: F401
     GemmaBackend,
     GemmaTorq,
     GemmaLlama,

@@ -16,7 +16,7 @@ from tokenizers import Tokenizer
 import logging
 from utils.log import add_logging_args, configure_logging
 from inference import load_moonshine
-from library.gemma import GemmaBackend, load_gemma
+from utils.gemma import GemmaBackend, load_gemma
 import sounddevice as sd
 from sounddevice import InputStream
 from silero_vad_notorch import VADIterator, load_silero_vad
