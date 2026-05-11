@@ -78,6 +78,7 @@ class GemmaTorq(GemmaBackend):
         max_seq_len: int | None = None,
         max_prompt_tokens: int | None = None,
         n_threads: int | None = None,
+        instruct_model: bool = True,
         cache_keep_n: int | None = None,
         temperature: float = 0.0,
         top_p: float = 1.0,
@@ -140,7 +141,11 @@ class GemmaTorq(GemmaBackend):
         self._max_prompt_tokens = max_prompt_tokens
         self._max_seq_len = max_seq_len
         self._max_user_tokens: int | None = None
-        self._sys_prompt = sys_prompt or DEFAULT_SYS_PROMPT
+        self._instruct_model = instruct_model
+        if instruct_model:
+            self._sys_prompt = sys_prompt or DEFAULT_SYS_PROMPT
+        else:
+            self._sys_prompt = None
         self._cache_keep_n = cache_keep_n
         self._temperature = temperature
         self._top_p = top_p
@@ -162,7 +167,7 @@ class GemmaTorq(GemmaBackend):
             self._emb_buf = None
 
         # Warmup with system prompt
-        self._warmup_len = self._warmup()
+        self._warmup_len = self._warmup() if instruct_model else 0
         if self._warmup_len > 0:
             self._reset_cache_state = self._model.save_kv_state()
         else:
@@ -227,8 +232,10 @@ class GemmaTorq(GemmaBackend):
             self._model.reset_kv()
 
     def _tokenize(self, text: str, role: str | None = None) -> list[int]:
-        if role is None:
+        if not self._instruct_model or role is None:
             return self._tokenizer.encode(text).ids
+        # Gemma 3 chat format: <start_of_turn>role\ntext<end_of_turn>\n
+        # BOS is added once at warmup start; strip auto-prepended BOS here.
         if role == "model":
             ids = self._tokenizer.encode("<start_of_turn>model\n").ids
         else:
@@ -295,6 +302,10 @@ class GemmaTorq(GemmaBackend):
             return True
         if self._end_of_turn_id is not None and token == self._end_of_turn_id:
             return True
+        if not self._instruct_model and len(gen) > 2:
+            if token == self._double_nl_token_id:
+                return True
+            return all(t == self._nl_token_id for t in gen[-2:])
         return False
 
     def _warmup(self) -> int:
@@ -322,7 +333,8 @@ class GemmaTorq(GemmaBackend):
         self._time_to_first_token_ns = 0
 
         tokens = self._tokenize(query, "user")
-        tokens += self._tokenize("", "model")
+        if self._instruct_model:
+            tokens += self._tokenize("", "model")
 
         self._n_input_tokens = len(tokens)
 
@@ -339,14 +351,17 @@ class GemmaTorq(GemmaBackend):
 
         gen: list[int] = []
         start_ns = time.perf_counter_ns()
+        yield_ns = 0  # time spent suspended at yield (consumer time)
         try:
             next_tok, pos = self._prefill(tokens, start=self._warmup_len)
             self._time_to_first_token_ns = time.perf_counter_ns() - start_ns
 
-            prev_text = self._tokenizer.decode([next_tok])
-            yield prev_text
-
             gen = [next_tok]
+            full_text = self._tokenizer.decode(gen)
+            _t = time.perf_counter_ns()
+            yield full_text
+            yield_ns += time.perf_counter_ns() - _t
+
             while not self._stop(next_tok, gen):
                 if pos >= self._max_seq_len:
                     if self._cache_keep_n is not None:
@@ -362,11 +377,12 @@ class GemmaTorq(GemmaBackend):
                 gen.append(next_tok)
                 pos += 1
                 full_text = self._tokenizer.decode(gen)
-                yield full_text[len(prev_text):]
-                prev_text = full_text
+                _t = time.perf_counter_ns()
+                yield full_text
+                yield_ns += time.perf_counter_ns() - _t
         finally:
             self._n_tokens_gen = max(0, len(gen) - 1)
-            self._last_infer_ns = time.perf_counter_ns() - start_ns
+            self._last_infer_ns = (time.perf_counter_ns() - start_ns) - yield_ns
 
 
 class GemmaLlama(GemmaBackend):
@@ -448,7 +464,7 @@ class GemmaLlama(GemmaBackend):
         yield final
 
 
-_GEMMA_TORQ_HF_REPO: Final[str] = "Synaptics/gemma-3-270m-it"
+_GEMMA_TORQ_HF_REPO: Final[str] = "Synaptics/gemma-3-270m-it-torq"
 
 def load_gemma(
     *,
@@ -496,9 +512,9 @@ def load_gemma(
     torq_kw = {
         k: kwargs[k]
         for k in (
-            "max_seq_len", "max_prompt_tokens", "cache_keep_n",
-            "temperature", "top_p", "top_k", "runtime_flags",
-            "sys_prompt", "lm_head_path",
+            "max_seq_len", "max_prompt_tokens", "instruct_model",
+            "cache_keep_n", "temperature", "top_p", "top_k",
+            "runtime_flags", "sys_prompt", "lm_head_path",
         )
         if k in kwargs
     }
