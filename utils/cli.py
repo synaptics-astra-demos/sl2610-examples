@@ -62,6 +62,7 @@ def install_cli_shutdown_handlers(
     shutdown: Callable[[], None],
     *,
     exit_callbacks: Iterable[Callable[[], None]] = (),
+    raise_on_signal: bool = True,
 ):
     """Run ``shutdown`` for process exits, signals, and uncaught thread errors."""
     exit_callbacks = tuple(exit_callbacks)
@@ -72,11 +73,12 @@ def install_cli_shutdown_handlers(
         nonlocal shutdown_started
         with shutdown_lock:
             if shutdown_started:
-                return
+                return False
             shutdown_started = True
         shutdown()
         for callback in exit_callbacks:
             callback()
+        return True
 
     atexit.register(run_shutdown)
 
@@ -85,7 +87,9 @@ def install_cli_shutdown_handlers(
 
     def handle_signal(signum, frame):
         previous = previous_sigint if signum == signal.SIGINT else previous_sigterm
-        run_shutdown()
+        first_shutdown = run_shutdown()
+        if first_shutdown and not raise_on_signal:
+            return
         if callable(previous):
             previous(signum, frame)
         elif previous == signal.SIG_IGN:

@@ -212,6 +212,8 @@ def start_llm_input(state: TranslateCLIAppState, window: CliWindow):
                 if translation is None:
                     raise RuntimeError("Translation model not loaded")
                 for partial in translation.stream_response(query):
+                    if state.shutdown_requested:
+                        break
                     window.update_response_text(str(partial), replace=True)
                 print()  # newline after full response
                 window.update_llm_stats(
@@ -344,7 +346,7 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
     recording = False
 
     # Start llm listener thread
-    llm_thread = threading.Thread(target=start_llm_input, args=(state, window), daemon=True)
+    llm_thread = threading.Thread(target=start_llm_input, args=(state, window))
     llm_thread.start()
 
     logger.info("Audio thread initialized")
@@ -425,11 +427,14 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
                 window.shutdown()
     finally:
         logger.debug("Closing Audio stream...")
+        window.shutdown()
+        state.audio_query_q.put_nowait("")
+        llm_thread.join()
+        try:
+            stream.stop()
+        except Exception:
+            logger.debug("Failed to stop Audio stream", exc_info=True)
         stream.close()
-
-    del transcribe
-    import gc
-    gc.collect()
 
 #  NPU Clock 
 def enable_npu_clock():
@@ -443,7 +448,7 @@ def enable_npu_clock():
 
 # ---------------------- CLI / Entry ----------------------
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Astra Language Translation with Moonshine and Gemma")
@@ -464,42 +469,51 @@ if __name__ == "__main__":
     args = parser.parse_args()
     state = TranslateCLIAppState()
     window = CliWindow(state)
-    install_cli_shutdown_handlers(window.shutdown)
-
-    # Set NPU clock
-    enable_npu_clock()
-
-    gemma_model_path = args.gemma_model
-    if gemma_model_path is None and args.use_llama_gemma:
-        gemma_model_path = str(GEMMA_LLAMA_MODEL_PATH)
-
-    gemma_backend = load_gemma(
-        use_llama=args.use_llama_gemma,
-        model_path=gemma_model_path,
-        instruct_model=not args.non_instruct_model,
-    )
-    translation = LanguageTranslation(gemma_backend, state)
-    state.set_translation(translation)
-
-    # Select audio device before starting keyboard listener (which sets raw terminal mode)
-    print("List of Audio input devices:")
-    print(sd.query_devices())
-    audio_device = int(input("Enter input device to listen on: "))
-
-    # Start keyboard listener thread for language switching (starts after input() is done)
-    kb_thread = threading.Thread(target=window.start_keyboard_listener, daemon=True)
-    kb_thread.start()
-
-    # Start audio listener thread
-    audio_thread = threading.Thread(target=start_audio_thread, args=(state, window, audio_device))
-    audio_thread.start()
+    install_cli_shutdown_handlers(window.shutdown, raise_on_signal=False)
+    audio_thread = None
+    kb_thread = None
 
     try:
+        # Set NPU clock
+        enable_npu_clock()
+
+        gemma_model_path = args.gemma_model
+        if gemma_model_path is None and args.use_llama_gemma:
+            gemma_model_path = str(GEMMA_LLAMA_MODEL_PATH)
+
+        gemma_backend = load_gemma(
+            use_llama=args.use_llama_gemma,
+            model_path=gemma_model_path,
+            instruct_model=not args.non_instruct_model,
+        )
+        translation = LanguageTranslation(gemma_backend, state)
+        state.set_translation(translation)
+
+        # Select audio device before starting keyboard listener (which sets raw terminal mode)
+        print("List of Audio input devices:")
+        print(sd.query_devices())
+        audio_device = int(input("Enter input device to listen on: "))
+
+        # Start keyboard listener thread for language switching (starts after input() is done)
+        kb_thread = threading.Thread(target=window.start_keyboard_listener)
+        kb_thread.start()
+
+        # Start audio listener thread
+        audio_thread = threading.Thread(target=start_audio_thread, args=(state, window, audio_device))
+        audio_thread.start()
+
         audio_thread.join()
     except KeyboardInterrupt:
         print("\nExiting.")
     finally:
         window.shutdown()
         state.audio_query_q.put_nowait("")
-        audio_thread.join(timeout=2)
+        if audio_thread is not None:
+            audio_thread.join()
+        if kb_thread is not None:
+            kb_thread.join(timeout=1)
         state.set_translation(None)
+
+
+if __name__ == "__main__":
+    main()
