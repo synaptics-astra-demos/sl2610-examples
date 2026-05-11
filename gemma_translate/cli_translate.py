@@ -123,8 +123,6 @@ class LanguageTranslation:
             last_partial = partial
             yield partial
 
-        yield last_partial.strip()
-
 
 # ---------------------- CLI Window ----------------------
 class CliWindow:
@@ -184,15 +182,17 @@ class CliWindow:
         else:
             print(f"\n[Translation] {text}")
 
-    def update_stt_stats(self, infer_time, n_tokens_gen):
+    def update_stt_stats(self, infer_time_ms, ttft_ms, n_tokens_gen):
         """Update the stt stats display box with new values."""
-        tokens_per_sec = n_tokens_gen / infer_time
-        print(f"\n\r[Moonshine] {n_tokens_gen} tokens {infer_time:.3f}s {tokens_per_sec:.1f} tok/s")
+        decode_ms = infer_time_ms - ttft_ms
+        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
+        print(f"\n\r[Moonshine] {n_tokens_gen} tokens {infer_time_ms:.1f}ms {tokens_per_sec:.1f} tok/s")
         
-    def update_llm_stats(self, infer_time, n_tokens_in, n_tokens_gen):
+    def update_llm_stats(self, infer_time_ms, ttft_ms, n_tokens_in, n_tokens_gen):
         """Update the llm stats display box with new values."""
-        tokens_per_sec = n_tokens_gen / infer_time
-        print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time:.3f}s")
+        decode_ms = infer_time_ms - ttft_ms
+        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
+        print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time_ms:.1f}ms TTFT={ttft_ms:.1f}ms")
 
 
 def start_llm_input(state: TranslateCLIAppState, window: CliWindow):
@@ -211,13 +211,15 @@ def start_llm_input(state: TranslateCLIAppState, window: CliWindow):
                 translation = state.translation
                 if translation is None:
                     raise RuntimeError("Translation model not loaded")
+                window.update_response_text("...", replace=True)
                 for partial in translation.stream_response(query):
                     if state.shutdown_requested:
                         break
                     window.update_response_text(str(partial), replace=True)
                 print()  # newline after full response
                 window.update_llm_stats(
-                    translation.backend.last_infer_time_ms / 1000,
+                    translation.backend.last_infer_time_ms,
+                    translation.backend.time_to_first_token_ms,
                     translation.backend.last_n_input_tokens,
                     translation.backend.last_n_output_tokens,
                 )
@@ -272,11 +274,12 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
 
             tokens = self.runner.run(speech[np.newaxis, :].astype(np.float32))
             infer_time = self.runner.last_infer_time
+            ttft = self.runner.time_to_first_token
             n_tokens_gen = self.runner.generated_tokens
             text = self.tokenizer.decode_batch(tokens, skip_special_tokens=True)[0]
 
             self.inference_secs += time.time() - start_time
-            return text, infer_time, n_tokens_gen
+            return text, infer_time, ttft, n_tokens_gen
 
     def create_input_callback(q):
         """Callback method for sounddevice InputStream."""
@@ -288,11 +291,11 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
 
     def end_recording(speech, do_print=True):
         """Transcribes, prints and caches the caption then clears speech buffer."""
-        text, infer_time, n_tokens_gen = transcribe(speech)
+        text, infer_time, ttft, n_tokens_gen = transcribe(speech)
         if do_print:
             logger.debug(text)
         speech *= 0.0
-        return text, infer_time, n_tokens_gen
+        return text, infer_time, ttft, n_tokens_gen
 
     def print_captions(text):
         """Prints right justified on same line, prepending cached captions."""
@@ -354,6 +357,7 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
     try:
         stream.start()
         window.show()
+        print("[Ready] Listening...\n", flush=True)
         new_query = 1
         while not state.shutdown_requested:
             try:
@@ -378,13 +382,13 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
                             logger.debug("Got end at %s", str(time.time()))
                             if (time.time() - start_time) > MIN_SPEECH_SECS:
                                 recording = False
-                                audio_query, infer_time, n_tokens_gen = end_recording(speech)
+                                audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
                                 #Do quick auto-correct on important keywords
                                 audio_query = auto_correct(audio_query)
                                 if (new_query == 1):
                                     window.update_user_text(audio_query)
                                     if ADD_STATS:
-                                        window.update_stt_stats(infer_time, n_tokens_gen)
+                                        window.update_stt_stats(infer_time, ttft, n_tokens_gen)
                                     new_query = 0
                                 else:
                                     window.update_user_text(audio_query, replace=True)
@@ -403,7 +407,7 @@ def start_audio_thread(state: TranslateCLIAppState, window: CliWindow, audio_dev
                         if (len(speech) / SAMPLING_RATE) > MAX_SPEECH_SECS:
                             logger.debug("Timeout: ended recording at %s", str(time.time()))
                             recording = False
-                            audio_query, infer_time, n_tokens_gen = end_recording(speech)
+                            audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
                             #if there is a valid query, then run gemma
                             try:
                                 if (len(audio_query.split()) >= 3):

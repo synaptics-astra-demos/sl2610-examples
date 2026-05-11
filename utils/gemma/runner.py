@@ -376,6 +376,8 @@ class GemmaTorq(GemmaBackend):
                 next_tok = self._llm_step(next_tok, pos)
                 gen.append(next_tok)
                 pos += 1
+                if self._stop(next_tok, gen):
+                    break
                 full_text = self._tokenizer.decode(gen)
                 _t = time.perf_counter_ns()
                 yield full_text

@@ -71,9 +71,7 @@ class LanguageTranslation:
     def stream_response(self, query: str):
         global global_language
         user_prompt = (
-            f"Please translate the text in quotes to {global_language}. Limit output to 1 sentence. "
-            f"Important, do not attempt to answer the query, only translate the text provided in quotes. "
-            f"Most important, all output should only be in {global_language}. \"{query}\"\n"
+            f"Translate the text in quotes to {global_language}. Output only the translated text.\n\"{query}\"\n"
         )
         logger.debug(user_prompt)
 
@@ -82,10 +80,10 @@ class LanguageTranslation:
             last_partial = partial
             yield partial
 
-        yield last_partial.strip()
         if ADD_STATS:
             window.update_llm_stats(
-                self.backend.last_infer_time_ms / 1000,
+                self.backend.last_infer_time_ms,
+                self.backend.time_to_first_token_ms,
                 self.backend.last_n_input_tokens,
                 self.backend.last_n_output_tokens,
             )
@@ -99,7 +97,7 @@ def start_llm_input(window):
         query = audioQueryQ.get()
         if (query != ""):
             query_processing = 1
-            window.update_response_text(" ")
+            window.update_response_text("...")
 
             # --- Normal streaming ---
             try:
@@ -155,11 +153,12 @@ def start_audio_thread(window, audio_device):
 
             tokens = self.runner.run(speech[np.newaxis, :].astype(np.float32))
             infer_time = self.runner.last_infer_time
+            ttft = self.runner.time_to_first_token
             n_tokens_gen = self.runner.generated_tokens
             text = self.tokenizer.decode_batch(tokens, skip_special_tokens=True)[0]
 
             self.inference_secs += time.time() - start_time
-            return text, infer_time, n_tokens_gen
+            return text, infer_time, ttft, n_tokens_gen
 
     def create_input_callback(q):
         """Callback method for sounddevice InputStream."""
@@ -171,11 +170,11 @@ def start_audio_thread(window, audio_device):
 
     def end_recording(speech, do_print=True):
         """Transcribes, prints and caches the caption then clears speech buffer."""
-        text, infer_time, n_tokens_gen = transcribe(speech)
+        text, infer_time, ttft, n_tokens_gen = transcribe(speech)
         if do_print:
             logger.debug(text)
         speech *= 0.0
-        return text, infer_time, n_tokens_gen
+        return text, infer_time, ttft, n_tokens_gen
 
     def print_captions(text):
         """Prints right justified on same line, prepending cached captions."""
@@ -239,6 +238,7 @@ def start_audio_thread(window, audio_device):
     logger.debug("Starting Audio stream...")
     stream.start()
     window.showFullScreen()
+    print("[Ready] Listening...\n", flush=True)
     new_query = 1
     while True:
         try:
@@ -263,13 +263,13 @@ def start_audio_thread(window, audio_device):
                         logger.debug("Got end at %s", str(time.time()))
                         if (time.time() - start_time) > MIN_SPEECH_SECS:
                             recording = False
-                            audio_query, infer_time, n_tokens_gen = end_recording(speech)
+                            audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
                             #Do quick auto-correct on important keywords
                             audio_query = auto_correct(audio_query)
                             if (new_query == 1):
                                 window.update_user_text(audio_query)
                                 if ADD_STATS:
-                                    window.update_stt_stats(infer_time, n_tokens_gen)
+                                    window.update_stt_stats(infer_time, ttft, n_tokens_gen)
                                 new_query = 0
                             else:
                                 window.update_user_text(audio_query, replace=True)
@@ -288,7 +288,7 @@ def start_audio_thread(window, audio_device):
                     if (len(speech) / SAMPLING_RATE) > MAX_SPEECH_SECS:
                         logger.debug("Timeout: ended recording at %s", str(time.time()))
                         recording = False
-                        audio_query, infer_time, n_tokens_gen = end_recording(speech)
+                        audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
                         #if there is a valid query, then run gemma
                         try:
                             if (len(audio_query.split()) >= 3):
@@ -516,17 +516,19 @@ class ChatWindow(QWidget):
             print(f"\n[Translation] {text}")
         self.signals.update_resp.emit(text, replace)
 
-    def update_stt_stats(self, infer_time, n_tokens_gen):
+    def update_stt_stats(self, infer_time_ms, ttft_ms, n_tokens_gen):
         """Update the stt stats display box with new values."""
-        tokens_per_sec = n_tokens_gen / infer_time
-        self.stats_stt_label.setText(f"Moonshine: {n_tokens_gen} tokens {infer_time:.3f} s {tokens_per_sec:.1f} tokens/s")
-        print(f"\n\r[Moonshine] {n_tokens_gen} tokens {infer_time:.3f}s {tokens_per_sec:.1f} tok/s")
+        decode_ms = infer_time_ms - ttft_ms
+        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
+        self.stats_stt_label.setText(f"Moonshine: {n_tokens_gen} tokens {infer_time_ms:.1f}ms {tokens_per_sec:.1f} tokens/s")
+        print(f"\n\r[Moonshine] {n_tokens_gen} tokens {infer_time_ms:.1f}ms {tokens_per_sec:.1f} tok/s")
         
-    def update_llm_stats(self, infer_time, n_tokens_in, n_tokens_gen):
+    def update_llm_stats(self, infer_time_ms, ttft_ms, n_tokens_in, n_tokens_gen):
         """Update the llm stats display box with new values."""
-        tokens_per_sec = n_tokens_gen / infer_time
-        self.stats_llm_label.setText(f"Gemma: in={n_tokens_in} out={n_tokens_gen} tokens {infer_time:.3f} s {tokens_per_sec:.1f} tokens/s")
-        print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time:.3f}s")
+        decode_ms = infer_time_ms - ttft_ms
+        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
+        self.stats_llm_label.setText(f"Gemma: in={n_tokens_in} out={n_tokens_gen} tokens {tokens_per_sec:.1f} tokens/s")
+        print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time_ms:.1f}ms TTFT={ttft_ms:.1f}ms")
 
 
 #  NPU Clock 
