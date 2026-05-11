@@ -17,7 +17,7 @@ import numpy as np
 
 from torq.runtime import VMFBInferenceRunner
 
-from .inference import ORTInferenceRunner, ManagedEncDecCacheRunner
+from ..inference import ORTInferenceRunner, ManagedEncDecCacheRunner
 
 _START_TOKEN_ID: Final[int] = 1
 _END_TOKEN_ID: Final[int] = 2

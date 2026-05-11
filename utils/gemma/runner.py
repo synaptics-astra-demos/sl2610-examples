@@ -86,7 +86,7 @@ class GemmaTorq(GemmaBackend):
         sys_prompt: str | None = None,
         lm_head_path: str | os.PathLike | None = None,
     ):
-        from .inference import ManagedSelfAttnCacheRunner, SplitLMHeadRunner
+        from ..inference import ManagedSelfAttnCacheRunner, SplitLMHeadRunner
 
         self._logger = logging.getLogger(self.__class__.__name__)
 
@@ -482,7 +482,7 @@ def load_gemma(
 
     # Torq backend
     if model_path is None:
-        from utils.download import download_from_hf
+        from ..download import download_from_hf
 
         model_path = download_from_hf(_GEMMA_TORQ_HF_REPO, "model.vmfb")
         # Ensure supporting files are present alongside the model

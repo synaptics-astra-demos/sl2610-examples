@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
 
-"""Download Moonshine and Gemma3 model files from HuggingFace.
+"""Download Moonshine model files from HuggingFace.
 
 Usage::
 
@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import logging
 
 from utils.moonshine import download_moonshine
-from utils.gemma import download_gemma3
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ if __name__ == "__main__":
     from utils.log import add_logging_args, configure_logging
 
     parser = argparse.ArgumentParser(
-        description="Download Moonshine and Gemma3 model files.",
+        description="Download Moonshine model files.",
     )
     parser.add_argument(
         "--moonshine-models",
@@ -34,19 +33,12 @@ if __name__ == "__main__":
         default=None,
         help="Moonshine model names or HF repo IDs.",
     )
-    parser.add_argument(
-        "--gemma3-models",
-        nargs="*",
-        default=None,
-        help="Gemma3 model names or HF repo IDs.",
-    )
     add_logging_args(parser)
     args = parser.parse_args()
     configure_logging(args.logging)
 
     try:
         download_moonshine(args.moonshine_models)
-        download_gemma3(args.gemma3_models)
     except Exception as e:
         logger.error("%s", e)
         if e.__cause__:
