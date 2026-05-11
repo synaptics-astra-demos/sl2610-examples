@@ -17,7 +17,7 @@ from queue import Queue
 from tokenizers import Tokenizer
 import logging
 from utils.log import add_logging_args, configure_logging
-from inference import load_moonshine
+from utils.moonshine import MoonshineRunner
 from utils.gemma import GemmaBackend, load_gemma
 import sounddevice as sd
 from sounddevice import InputStream
@@ -183,7 +183,7 @@ def start_audio_thread(window, audio_device):
     class Transcriber(object):
         def __init__(self):
             logger.info("Loading Moonshine model...")
-            self.runner = load_moonshine(MOONSHINE_MODEL_PATH)
+            self.runner = MoonshineRunner(MOONSHINE_MODEL_PATH)
             try:
                 self.tokenizer = Tokenizer.from_file(f"{MOONSHINE_MODEL_PATH}/tokenizer.json")
             except (FileNotFoundError, OSError):
