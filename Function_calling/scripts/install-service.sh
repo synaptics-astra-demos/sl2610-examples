@@ -8,9 +8,16 @@
 #   - on stop / crash, drives BUZZERn HIGH so the buzzer can never
 #     latch ON across a service exit
 #
+# WLED auto-detect:
+#   If --wled-port is NOT passed explicitly and /dev/ttyACM0 exists at
+#   install time (i.e. an Adafruit Mini Sparkle Motion is plugged in),
+#   the installer adds `--wled-port /dev/ttyACM0` automatically so the
+#   Neopixel ring works out of the box. If you plug Sparkle Motion in
+#   AFTER installing, re-run this script to pick it up.
+#
 # Usage:
-#   sudo bash scripts/install-service.sh                       # default flags
-#   sudo bash scripts/install-service.sh --wled-port /dev/ttyACM0
+#   sudo bash scripts/install-service.sh                       # default flags (+ WLED auto-detect)
+#   sudo bash scripts/install-service.sh --wled-port /dev/ttyACM0   # force WLED port
 #   sudo bash scripts/install-service.sh --voice stub
 #   sudo bash scripts/install-service.sh --no-enable           # install but don't enable
 #   sudo bash scripts/install-service.sh --no-start            # enable but don't start now
@@ -63,6 +70,24 @@ if [ ! -f "${FC_DIR}/app_pyqt.py" ]; then
 fi
 
 EXEC_ARGS="--fullscreen"
+
+# WLED auto-detect: if the user didn't pass --wled-port and /dev/ttyACM0
+# is present, default to driving the Mini Sparkle Motion. Otherwise the
+# unit would silently no-op every neopixel command (hardware.HardwareDevice
+# gates every WLED call on `self._wled is not None`).
+HAS_USER_WLED=0
+for a in "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"; do
+    case "$a" in
+        --wled-port|--wled-port=*) HAS_USER_WLED=1 ;;
+    esac
+done
+if [ "${HAS_USER_WLED}" -eq 0 ] && [ -e /dev/ttyACM0 ]; then
+    log "auto-detected /dev/ttyACM0 → adding --wled-port /dev/ttyACM0"
+    EXEC_ARGS="${EXEC_ARGS} --wled-port /dev/ttyACM0"
+elif [ "${HAS_USER_WLED}" -eq 0 ]; then
+    log "no /dev/ttyACM0 present → installing without --wled-port (re-run after plugging Sparkle Motion in)"
+fi
+
 if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
     # quote each extra arg for systemd (semi-naive: assumes no embedded quotes)
     for a in "${EXTRA_ARGS[@]}"; do

@@ -255,6 +255,13 @@ class HardwareDevice:
             "yes" if _HAS_GPIOD else "no",
             f"{_BUZZER_LINE[0]} {_BUZZER_LINE[1]}" if _BUZZER_LINE else "absent",
         )
+        if wled is None:
+            log.warning(
+                "no WLED client — every neopixel-ring command "
+                "(turn_on_lights, turn_off_lights, set_led_color target=strip, "
+                "blink_lights, set_neopixel_pattern) will silently no-op on "
+                "the ring. Pass --wled-port to drive it."
+            )
 
     def cleanup(self) -> None:
         """Cancel timers, silence buzzer, kill LEDs, close WLED.

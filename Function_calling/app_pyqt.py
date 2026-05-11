@@ -10,6 +10,7 @@ Run (after exporting the wayland env vars listed in README.md):
 from __future__ import annotations
 
 import argparse
+import glob
 import logging
 import sys
 from pathlib import Path
@@ -84,8 +85,20 @@ def main() -> int:
     print(f"Loading model from {args.model}")
     model = FunctionGemmaModel(str(args.model))
 
-    wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud) \
-        if args.wled_port else None
+    if args.wled_port:
+        wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud)
+    else:
+        wled = None
+        # Catch the "plugged Sparkle Motion in after installing the systemd
+        # unit" footgun: a serial device is present but we won't drive it.
+        present = sorted(glob.glob("/dev/ttyACM*"))
+        if present:
+            logging.warning(
+                "found %s but --wled-port was not passed; the WLED ring will "
+                "be ignored. Re-run with `--wled-port %s` (or re-install the "
+                "systemd unit) to drive it.",
+                ", ".join(present), present[0],
+            )
     hardware = HardwareDevice(wled=wled)
     dispatcher = Dispatcher(hardware)
 
