@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import atexit
+from contextlib import contextmanager
 import logging
+import os
 import select
 import signal
 import sys
@@ -15,6 +17,9 @@ from collections.abc import Callable, Iterable
 from typing import TextIO
 
 logger = logging.getLogger(__name__)
+
+_native_atexit_lock = threading.Lock()
+_native_atexit_suppression_registered = False
 
 
 class TerminalMode:
@@ -109,3 +114,66 @@ def install_cli_shutdown_handlers(
         previous_threading_excepthook(args)
 
     threading.excepthook = handle_thread_exception
+
+
+@contextmanager
+def suppress_native_stderr(enabled: bool = True):
+    """Temporarily redirect process-level stderr to ``/dev/null``.
+
+    Python logging levels do not affect native C/C++ libraries that write
+    directly to file descriptor 2. Use this for short native-library
+    startup/shutdown sections.
+    """
+
+    if not enabled:
+        yield
+        return
+
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+    saved_stderr_fd = os.dup(2)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stderr_fd)
+        os.close(devnull_fd)
+
+
+def suppress_native_stderr_at_exit():
+    """Keep native atexit handlers quiet.
+
+    Some native libraries emit shutdown diagnostics from their own atexit hooks
+    after the Python application has already cleaned up. Registering this after
+    those libraries are imported makes it run first because atexit handlers are
+    last-in-first-out.
+    """
+
+    global _native_atexit_suppression_registered
+    with _native_atexit_lock:
+        if _native_atexit_suppression_registered:
+            return
+        _native_atexit_suppression_registered = True
+
+    def redirect_stderr_to_devnull():
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+        try:
+            devnull_fd = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull_fd, 2)
+            os.close(devnull_fd)
+        except Exception:
+            pass
+
+    atexit.register(redirect_stderr_to_devnull)
