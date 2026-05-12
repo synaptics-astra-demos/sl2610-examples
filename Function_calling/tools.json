@@ -1,95 +1,84 @@
 {
-  "version": "0.2.0",
-  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. v7: 10 tools (list_alarms removed; out-of-scope alarm-query prompts route via respond()).",
+  "version": "0.3.0",
+  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. v8: 8 tools — replaces v7's surface-ambiguous LED tools (turn_on_lights, turn_off_lights, set_led_color, blink_lights) with surface-specific tools (set_status_led, blink_status_led for HAT; set_neopixel_effect for the ring, renamed from set_neopixel_pattern and extended with palette + intensity). Surface routing keyword: 'neopixels' (literal) for the ring; 'LED' / 'light' / 'red light' / 'green light' / 'blue light' for the HAT status LEDs.",
   "tools": [
     {
       "function": {
-        "name": "turn_on_lights",
-        "description": "Turn on all RGB LEDs and the Neopixel strip to default white.",
-        "parameters": {
-          "type": "OBJECT",
-          "properties": {}
-        }
-      }
-    },
-    {
-      "function": {
-        "name": "turn_off_lights",
-        "description": "Turn off all RGB LEDs and the Neopixel strip.",
-        "parameters": {
-          "type": "OBJECT",
-          "properties": {}
-        }
-      }
-    },
-    {
-      "function": {
-        "name": "set_led_color",
-        "description": "Set the color of RGB LEDs on the HAT or Neopixel strip.",
+        "name": "set_status_led",
+        "description": "Turn one or all of the HAT status LEDs on or off. The HAT has three individual LEDs (red, green, blue), each independently addressable. Invoke when the user mentions 'LED', 'LEDs', or 'the <color> light'.",
         "parameters": {
           "type": "OBJECT",
           "properties": {
-            "color": {
+            "led": {
               "type": "STRING",
-              "description": "Color name (e.g. 'red', 'green', 'blue', 'white', 'orange', 'purple') or 6-digit hex (e.g. '#FF8800')."
+              "description": "Which LED: 'red', 'green', 'blue', or 'all'."
             },
-            "target": {
+            "state": {
               "type": "STRING",
-              "description": "Which lights to set: 'all' (default), 'hat' (RGB LEDs on HAT), or 'strip' (Neopixels)."
+              "description": "'on' or 'off'."
             },
             "brightness": {
               "type": "INTEGER",
-              "description": "Brightness 0-100. Optional, default 100."
+              "description": "Brightness 0-100. Optional, default 100. Ignored when state is 'off'."
             }
           },
-          "required": ["color"]
+          "required": ["led", "state"]
         }
       }
     },
     {
       "function": {
-        "name": "blink_lights",
-        "description": "Blink LEDs a given number of times, optionally in a specific color and speed.",
+        "name": "blink_status_led",
+        "description": "Blink one or all HAT status LEDs a given number of times. Invoke for 'blink/flash the <color> light' or 'blink the LEDs' style requests.",
         "parameters": {
           "type": "OBJECT",
           "properties": {
+            "led": {
+              "type": "STRING",
+              "description": "Which LED: 'red', 'green', 'blue', or 'all'."
+            },
             "count": {
               "type": "INTEGER",
               "description": "Number of blinks. Default 3."
             },
-            "color": {
-              "type": "STRING",
-              "description": "Color to blink. Default current color or white."
-            },
-            "speed": {
-              "type": "STRING",
-              "description": "One of 'slow', 'normal', 'fast'. Default 'normal'."
-            }
-          }
-        }
-      }
-    },
-    {
-      "function": {
-        "name": "set_neopixel_pattern",
-        "description": "Play an animated pattern on the Neopixel strip.",
-        "parameters": {
-          "type": "OBJECT",
-          "properties": {
-            "pattern": {
-              "type": "STRING",
-              "description": "One of 'rainbow', 'chase', 'fade', 'pulse', 'sparkle', 'solid'."
-            },
-            "color": {
-              "type": "STRING",
-              "description": "Color for patterns that need one (chase/fade/pulse/solid). Ignored for rainbow."
-            },
             "speed": {
               "type": "STRING",
               "description": "One of 'slow', 'normal', 'fast'. Default 'normal'."
             }
           },
-          "required": ["pattern"]
+          "required": ["led"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "set_neopixel_effect",
+        "description": "Play a visual effect on the neopixel ring (48-pixel WS2812B ring around the 7\" display, driven by WLED). Only invoke when the user explicitly mentions 'neopixels'. Use effect='off' to turn the ring off.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "effect": {
+              "type": "STRING",
+              "description": "One of: 'solid', 'pulse', 'fade', 'chase', 'rainbow', 'sparkle', 'off', 'aurora', 'plasma', 'comet', 'twinkle', 'fireworks', 'police', 'heartbeat', 'loading', 'lightning', 'glitter', 'fire', 'sunrise'."
+            },
+            "color": {
+              "type": "STRING",
+              "description": "Color name (e.g. 'red', 'teal', 'amber', 'gold', 'violet') or 6-digit hex like '#FF8800'. Used by effects that take a primary color (solid, pulse, fade, chase, sparkle, comet). Ignored for rainbow and palette-driven effects."
+            },
+            "palette": {
+              "type": "STRING",
+              "description": "Color palette: 'auto', 'ocean', 'lava', 'forest', 'sunset', 'party', 'sherbet', 'c9', 'aurora', 'beach', 'fire', 'sakura', 'splash', 'pastel'. Most useful with aurora, plasma, fire, twinkle, comet."
+            },
+            "speed": {
+              "type": "STRING",
+              "description": "One of 'slow', 'normal', 'fast'. Default 'normal'."
+            },
+            "intensity": {
+              "type": "STRING",
+              "description": "One of 'low', 'medium', 'high'. Default 'medium'. Controls effect density / depth (sparkle density, fire height, comet tail length, aurora width)."
+            }
+          },
+          "required": ["effect"]
         }
       }
     },
@@ -165,7 +154,7 @@
     {
       "function": {
         "name": "respond",
-        "description": "Reply to the user in natural language without taking any physical action. Use this when the request is out of scope (no matching tool), ambiguous (needs clarification), purely conversational (greetings, thanks), or impossible on this device. Do NOT use this when any physical-action tool fits the request.",
+        "description": "Reply to the user in natural language without taking any physical action. Use this when the request is out of scope (no matching tool), ambiguous (needs clarification — e.g. surface keyword missing for LED requests), purely conversational (greetings, thanks), or impossible on this device. Do NOT use this when any physical-action tool fits the request.",
         "parameters": {
           "type": "OBJECT",
           "properties": {
