@@ -2,12 +2,8 @@
 # SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
 
 import os
-import requests
 import logging
 from pathlib import Path
-
-from huggingface_hub import hf_hub_download
-from tqdm import tqdm
 
 __all__ = [
     "default_models_dir",
@@ -25,6 +21,9 @@ def download_from_url(url: str, filename: str | os.PathLike, chunk_size: int = 8
         return filename
 
     filename.parent.mkdir(exist_ok=True, parents=True)
+
+    import requests
+    from tqdm import tqdm
 
     logger.debug("Attempting download from %s...", url)
     response = requests.get(url, stream=True)
@@ -63,6 +62,8 @@ def download_from_hf(
     if local_file.exists():
         logger.debug("File found locally at: %s", local_file)
         return local_file
+
+    from huggingface_hub import hf_hub_download
 
     logger.debug("Attempting to download %s from %s...", filename, repo_id)
     hf_hub_download(

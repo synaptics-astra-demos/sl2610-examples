@@ -64,6 +64,15 @@ class GemmaBackend(ABC):
     def last_n_output_tokens(self) -> int:
         ...
 
+    @property
+    def last_n_prefill_tokens(self) -> int:
+        return self.last_n_input_tokens
+
+    @property
+    def last_prefill_tps(self) -> float:
+        ttft_s = self.time_to_first_token_ms / 1000
+        return self.last_n_prefill_tokens / ttft_s if ttft_s > 0 else 0.0
+
 
 class GemmaTorq(GemmaBackend):
     """Gemma inference via torq.runtime VMFB models.
@@ -175,6 +184,7 @@ class GemmaTorq(GemmaBackend):
 
         # Stats
         self._n_input_tokens: int = 0
+        self._n_prefill_tokens: int = 0
         self._n_tokens_gen: int = 0
         self._last_infer_ns: int = 0
         self._time_to_first_token_ns: int = 0
@@ -196,6 +206,15 @@ class GemmaTorq(GemmaBackend):
     @property
     def last_n_output_tokens(self) -> int:
         return self._n_tokens_gen
+
+    @property
+    def last_n_prefill_tokens(self) -> int:
+        return self._n_prefill_tokens
+
+    @property
+    def last_prefill_tps(self) -> float:
+        ttft_s = self.time_to_first_token_ms / 1000
+        return self._n_prefill_tokens / ttft_s if ttft_s > 0 else 0.0
 
     @property
     def max_seq_len(self) -> int:
@@ -329,6 +348,7 @@ class GemmaTorq(GemmaBackend):
     def stream_response(self, query: str) -> Generator[str, None, None]:
         self._reset_cache()
         self._n_tokens_gen = 0
+        self._n_prefill_tokens = 0
         self._last_infer_ns = 0
         self._time_to_first_token_ns = 0
 
@@ -348,6 +368,7 @@ class GemmaTorq(GemmaBackend):
                 tokens = tokens[:limit]
             elif len(tokens) < limit:
                 tokens += [self._pad_token_id] * (limit - len(tokens))
+        self._n_prefill_tokens = len(tokens)
 
         gen: list[int] = []
         start_ns = time.perf_counter_ns()
@@ -480,7 +501,8 @@ def load_gemma(
             the torq VMFB backend (default).
         model_path: Path to the model file/directory. For torq this is
             the ``.vmfb`` file; for llama this is the ``.gguf`` file.
-            When ``None``, the torq backend downloads from HuggingFace.
+            When ``None``, the torq backend uses the managed
+            ``model.vmfb.trim`` path.
         n_threads: Thread count for inference.
         **kwargs: Forwarded to the chosen backend constructor.
 
@@ -498,18 +520,17 @@ def load_gemma(
 
     # Torq backend
     if model_path is None:
-        from .download import download_gemma3
+        from .download import default_models_dir, gemma3_repo_id
 
-        dirs = download_gemma3(["instruct"])
-        model_dir = dirs["instruct"]
-        # Prefer model.vmfb, fall back to model.vmfb.trim
-        if (model_dir / "model.vmfb.trim").exists():
-            model_path = model_dir / "model.vmfb.trim"
-        elif (model_dir / "model.vmfb").exists():
-            model_path = model_dir / "model.vmfb"
-        else:
+        model_path = (
+            default_models_dir()
+            / gemma3_repo_id("instruct")
+            / "model.vmfb.trim"
+        )
+        if not model_path.exists():
             raise FileNotFoundError(
-                f"No model.vmfb or model.vmfb.trim found in {model_dir}"
+                "Default Gemma model not found at "
+                f"'{model_path}'. Pass --gemma-model to use a different VMFB."
             )
 
     torq_kw = {

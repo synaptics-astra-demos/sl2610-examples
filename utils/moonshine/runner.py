@@ -70,6 +70,7 @@ class MoonshineRunner:
 
     __slots__ = (
         "_logger",
+        "_model_dir",
         "_preprocessor",
         "_encoder",
         "_decoder",
@@ -92,6 +93,7 @@ class MoonshineRunner:
     ):
         self._logger = logging.getLogger(self.__class__.__name__)
         model_dir = Path(model_dir)
+        self._model_dir = model_dir
 
         components = _find_models(model_dir)
         for req in ("encoder", "decoder", "decoder_with_past"):
@@ -140,6 +142,10 @@ class MoonshineRunner:
         self._logger.info("Loaded Moonshine models from '%s'", model_dir)
 
     @property
+    def model_dir(self) -> Path:
+        return self._model_dir
+
+    @property
     def last_infer_time(self) -> float:
         """Total inference time of the last ``run()`` call, in milliseconds."""
         return self._last_infer_ns / 1e6
@@ -183,7 +189,7 @@ class MoonshineRunner:
         """Pad or truncate audio to ``max_inp_len``."""
         if self._max_inp_len is None:
             return audio
-        audio = audio.flatten()
+        audio = np.ravel(audio)
         if len(audio) > self._max_inp_len:
             self._logger.debug(
                 "Truncating input from %d to %d", len(audio), self._max_inp_len
@@ -207,7 +213,7 @@ class MoonshineRunner:
             audio = self._preprocessor.infer([audio])[0]
         enc_info = self._encoder.inputs_info
         if enc_info:
-            audio = audio.astype(np.dtype(enc_info[0].dtype))
+            audio = audio.astype(np.dtype(enc_info[0].dtype), copy=False)
         enc_out = self._encoder.infer([audio])[0]
         self._logger.debug(
             "Encoder infer: %.3f ms", self._encoder.infer_time_ms
@@ -240,12 +246,14 @@ class MoonshineRunner:
         encoder_out = self._run_encoder(audio)
         dec_info = self._decoder.inputs_info
         if dec_info and len(dec_info) > 1:
-            encoder_out = encoder_out.astype(np.dtype(dec_info[1].dtype))
+            encoder_out = encoder_out.astype(
+                np.dtype(dec_info[1].dtype), copy=False
+            )
 
         # first decoder step -> initial cache
         token_emb = self._get_token_input(_START_TOKEN_ID)
         if dec_info:
-            token_emb = token_emb.astype(np.dtype(dec_info[0].dtype))
+            token_emb = token_emb.astype(np.dtype(dec_info[0].dtype), copy=False)
 
         results = self._decoder.infer([token_emb, encoder_out])
         self._logger.debug(
@@ -268,8 +276,12 @@ class MoonshineRunner:
             token_emb = self._get_token_input(next_token)
             seq_len = np.array([[i + 1]], dtype=np.int32)
             if dec_cached_info:
-                token_emb = token_emb.astype(np.dtype(dec_cached_info[0].dtype))
-                seq_len = seq_len.astype(np.dtype(dec_cached_info[1].dtype))
+                token_emb = token_emb.astype(
+                    np.dtype(dec_cached_info[0].dtype), copy=False
+                )
+                seq_len = seq_len.astype(
+                    np.dtype(dec_cached_info[1].dtype), copy=False
+                )
             [logits] = self._decoder_cached.infer([token_emb, seq_len])
             self._logger.debug(
                 "Cached decoder infer: %.3f ms",
@@ -281,3 +293,41 @@ class MoonshineRunner:
 
         self._last_infer_ns = perf_counter_ns() - start_ns
         return np.array([tokens])
+
+
+def load_moonshine(
+    model_path: str | os.PathLike | None = None,
+    *,
+    model_name: str = "tiny-en",
+    input_freq: int = _DEFAULT_INPUT_FREQ,
+    n_threads: int | None = None,
+    runtime_flags: list[str] | None = None,
+) -> MoonshineRunner:
+    """Instantiate a Moonshine runner.
+
+    Args:
+        model_path: Local model directory. When ``None``, downloads/discovers
+            the default Moonshine model via ``download_moonshine``.
+        model_name: Model key for default download/discovery.
+        input_freq: Input audio frequency.
+        n_threads: Thread count for inference backends.
+        runtime_flags: Runtime flags forwarded to inference backends.
+
+    Returns:
+        A ``MoonshineRunner`` instance.
+    """
+
+    if model_path is None:
+        from .download import download_moonshine, local_moonshine_model_dir
+
+        model_path = local_moonshine_model_dir(model_name)
+        if model_path is None:
+            dirs = download_moonshine([model_name])
+            model_path = dirs[model_name]
+
+    return MoonshineRunner(
+        model_path,
+        input_freq=input_freq,
+        n_threads=n_threads,
+        runtime_flags=runtime_flags,
+    )
