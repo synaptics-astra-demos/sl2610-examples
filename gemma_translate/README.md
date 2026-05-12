@@ -136,7 +136,7 @@ Enter input device to listen on:
 
 In the command-line-only version, it will ask you to choose the language. You can change it by pressing a number key at any time. 
 ```bash
-Press 1-6 to change language at any time:
+Press 1-2 to change language at any time:
   1: Spanish
   2: French
 Speak to translate. Press Ctrl+C to exit.
