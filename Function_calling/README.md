@@ -6,9 +6,11 @@ that drive real HAT hardware on the Coral Dev Board: status LEDs, a
 piezo buzzer, the MIPI camera, and an optional Adafruit Mini Sparkle
 Motion driving a WS2812B Neopixel ring over USB serial.
 
-The model emits compact tool calls (`<tool_N>(args)<end>`) which decode
-~5x faster on the 2-core A55 CPU than canonical JSON tool calls,
-putting each turn comfortably under one second after the first.
+The model is fine-tuned **Octopus v2** style — a compact functional token
+per tool (`<tool_N>(args)<end>`) with **no tool schema in the prompt**.
+Combined with a ~13-token user-only prompt, cold first-turn prefill drops
+from ~57 s (schema-in-prompt baseline) to **~0.5 s** on the 2-core A55,
+and every turn after that is also sub-second.
 
 Everything the demo needs — wheels, the portaudio library, the GGUF
 model, the Moonshine VMFBs, the vendored ASR runtime — is fetched into
@@ -74,7 +76,7 @@ Function_calling/
 ├── tests/                 # pytest (unit tests for voice/)
 ├── requirements.txt
 └── models/                # populated by setup.sh
-    ├── functiongemma-physical-ai-v7-Q5_K_M.gguf      # core demo
+    ├── functiongemma-physical-ai-v9-Q5_K_M.gguf      # core demo
     └── moonshine/                                    # only with --voice
         ├── encoder.onnx
         ├── decoder.vmfb
@@ -84,10 +86,10 @@ Function_calling/
 
 ## Running the demo manually
 
-The first model invocation prefills the tool-declaration prompt and
-takes ~45-50 s on the 2-core A55 CPU. The interactive REPL pays this
-cost once at start-up so every subsequent turn is sub-second; one-shot
-mode pays it on every invocation. Default to the REPL.
+The first model invocation prefills the user-only prompt (~13 tokens for
+v9, vs ~1088 tokens for schema-in-prompt builds) and takes ~0.5 s on the
+2-core A55 CPU. With model-load (~2.3 s), the first response from a fresh
+process arrives in ~3 s; subsequent turns are pure decode.
 
 For interactive runs of the **PyQt UI** from a terminal, export the
 Wayland env vars first so Qt can find the OOBE image's weston
@@ -217,8 +219,8 @@ The unit:
   (`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `QT_QPA_PLATFORM`,
   `WESTON_DISABLE_GBM_MODIFIERS`)
 - runs as `root` from `Function_calling/` with the venv's `python3`
-- restarts on failure (5 s back-off, 120 s start timeout — the model
-  takes ~50 s to cold-prefill)
+- restarts on failure (5 s back-off, 30 s start timeout — v9 cold start
+  is ~3 s end-to-end, but we leave headroom)
 - on stop drives `gpioset $(gpiofind BUZZERn)=1` so the buzzer is
   silenced even after SIGKILL
 
@@ -235,8 +237,7 @@ sudo bash scripts/uninstall-service.sh    # remove
 ## Expected output
 
 ```text
-Loading model from functiongemma-physical-ai-v8-Q5_K_M.gguf done in 4.6s.
-Warming up (one-time ~50s prefill on the 2-core A55) done in 48.3s.
+Loading model from functiongemma-physical-ai-v9-Q5_K_M.gguf done in 2.3s.
 Ready. /help for commands, Ctrl-D or /exit to leave.
 >>> Set the red light on and play aurora on the neopixels
   set_status_led: led=red state=on
@@ -245,7 +246,7 @@ Ready. /help for commands, Ctrl-D or /exit to leave.
 >>>
 ```
 
-## Tool schema (8 functions, v8)
+## Tool schema (8 functions, v9)
 
 | Tool | Args | Effect |
 |---|---|---|
@@ -258,10 +259,13 @@ Ready. /help for commands, Ctrl-D or /exit to leave.
 | `get_system_status` | metric? | CPU / memory / temperature / NPU |
 | `respond` | message | Natural-language reply when no tool fits |
 
-The full schema with descriptions lives in `tools.json`. v8 replaces v7's
-surface-ambiguous LED tools (`turn_on_lights`, `turn_off_lights`,
-`set_led_color`, `blink_lights`) with surface-specific tools so the
-model never has to guess which surface the user meant.
+The full schema with descriptions lives in `tools.json`. v9 keeps the v8
+8-tool surface (surface-specific LED tools, no `turn_on_lights` /
+`set_led_color` ambiguity) and switches the training pipeline to Octopus
+v2 — functional tokens with **no tool schema in the prompt**. The schema
+file is still the source of truth for dispatcher arg validation and is
+embedded as GGUF metadata for schema-drift checks; it is **not** injected
+into the inference prompt.
 
 ### Surface keyword routing
 
@@ -374,13 +378,13 @@ the buzzer can never latch ON across an unclean restart.
 ## Model information
 
 `huggingface.co/BrinqAI/functiongemma-270m-physical-ai` —
-`functiongemma-physical-ai-v7-Q5_K_M.gguf`. Base model
-`google/functiongemma-270m-it`, fine-tuned on 2000 train / 250 eval
-examples covering all 10 tools and multi-tool routines (250 row eval
-on the Q5_K_M GGUF: overall **86.8%**, single-tool **92.8%**,
-multi-tool exact-match **75.0%**, parse failure **0.0%**). Compact
-output format (`<tool_N>(args)<end>`) for ~5x faster decode on the
-2-core A55 CPU.
+`functiongemma-physical-ai-v9-Q5_K_M.gguf`. Base model
+`google/functiongemma-270m-it`, fine-tuned **Octopus v2** style on 6,127
+train / 1,339 eval examples (8 tools, plus multi-tool routines) drawn
+from Haiku-authored phrasing templates × deterministic entity pools, with
+light Moonshine-flavored ASR-noise augmentation. Held-out smoke test:
+**100 % (29 / 29)** routing on board, **0.55 s** cold prefill (down from
+57.3 s for the v7 schema-in-prompt build — 105× faster).
 
 The same HF repo also hosts the Moonshine VMFB artifacts under
 `moonshine/` for the optional voice path.

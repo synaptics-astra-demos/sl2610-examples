@@ -28,7 +28,7 @@ DEFAULT_PORT = "/dev/ttyACM0"
 DEFAULT_BAUD = 115200
 DEFAULT_TIMEOUT_S = 0.2
 
-# Color names cover the v8 trained palette. Unknown names fall back to white
+# Color names cover the v9 trained palette. Unknown names fall back to white
 # via resolve_color (with a fuzzy-match attempt first).
 COLOR_NAMES: dict[str, tuple[int, int, int]] = {
     "white":       (255, 255, 255),

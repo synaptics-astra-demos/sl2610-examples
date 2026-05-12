@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. v8: 8 tools — replaces v7's surface-ambiguous LED tools (turn_on_lights, turn_off_lights, set_led_color, blink_lights) with surface-specific tools (set_status_led, blink_status_led for HAT; set_neopixel_effect for the ring, renamed from set_neopixel_pattern and extended with palette + intensity). Surface routing keyword: 'neopixels' (literal) for the ring; 'LED' / 'light' / 'red light' / 'green light' / 'blue light' for the HAT status LEDs.",
+  "version": "0.4.0",
+  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. v9: same 8-tool surface as v8, but the model is trained Octopus v2 style — functional tokens (<tool_0>..<tool_7>) emitted directly from a minimal user-only prompt with NO tool schema in the context. This shrinks the cold prefill from ~1088 prompt tokens (v7/v8 with the FunctionGemma developer turn) to ~13, taking on-board cold first-turn from ~57s to ~0.5s on a 2-core A55. The schema in this file is purely a developer/runtime contract (dispatcher arg validation, GGUF metadata, documentation) — it is NOT injected into the inference prompt. Surface routing keyword: 'neopixels' (literal) for the ring; 'LED' / 'light' / 'red light' / 'green light' / 'blue light' for the HAT status LEDs.",
   "tools": [
     {
       "function": {

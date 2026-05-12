@@ -38,7 +38,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
+    / "models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
 )
 
 

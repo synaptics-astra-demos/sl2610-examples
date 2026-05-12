@@ -1,0 +1,38 @@
+{
+  "version": "0.4.0",
+  "description": "Compressed token map for FunctionGemma CPU inference on SL2619. v9: 8 tools (set_status_led, blink_status_led, set_neopixel_effect, play_buzzer, set_alarm, cancel_alarm, get_system_status, respond) + <end> terminator. Trained Octopus v2 style — functional tokens are the entire output vocabulary the model uses for routing; the tool schema (tools.json) is NOT loaded into the inference prompt. v9 drops the unused <tool_none> sentinel that v8's training pipeline reserved but never emitted.",
+  "tokens": {
+    "set_status_led": "<tool_0>",
+    "blink_status_led": "<tool_1>",
+    "set_neopixel_effect": "<tool_2>",
+    "play_buzzer": "<tool_3>",
+    "set_alarm": "<tool_4>",
+    "cancel_alarm": "<tool_5>",
+    "get_system_status": "<tool_6>",
+    "respond": "<tool_7>"
+  },
+  "reverse": {
+    "<tool_0>": "set_status_led",
+    "<tool_1>": "blink_status_led",
+    "<tool_2>": "set_neopixel_effect",
+    "<tool_3>": "play_buzzer",
+    "<tool_4>": "set_alarm",
+    "<tool_5>": "cancel_alarm",
+    "<tool_6>": "get_system_status",
+    "<tool_7>": "respond"
+  },
+  "special_tokens": [
+    "<tool_0>",
+    "<tool_1>",
+    "<tool_2>",
+    "<tool_3>",
+    "<tool_4>",
+    "<tool_5>",
+    "<tool_6>",
+    "<tool_7>",
+    "<end>"
+  ],
+  "output_format": "<tool_N>(\"arg1\",\"arg2\",...)<end>",
+  "prompt_format": "<start_of_turn>user\\n{user_text}<end_of_turn>\\n<start_of_turn>model\\n",
+  "notes": "Argument order positional per canonical schema's required-first then optional declaration order. v9 trains Octopus v2 pure (no schema in prompt) — see prompt_format. set_neopixel_effect routing keyword: 'neopixels' (literal substring, case-insensitive) required in user prompt; otherwise the model routes to respond() asking the user to disambiguate (HAT status LEDs vs. neopixel ring)."
+}

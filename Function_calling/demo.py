@@ -49,7 +49,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
+    / "models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"
 HISTORY_LIMIT = 1000
@@ -75,7 +75,7 @@ Slash commands:
 Anything else is sent to the model as a prompt."""
 
 _TOOLS_TEXT = """\
-Available tools (v8, 8 functions):
+Available tools (v9, 8 functions):
   set_status_led <led> <state>    HAT LED on/off (led: red|green|blue|all)
   blink_status_led <led>          Blink HAT LED N times (count/speed optional)
   set_neopixel_effect <effect>    Ring effect: solid, pulse, fade, chase,
