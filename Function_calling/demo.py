@@ -23,12 +23,16 @@ from __future__ import annotations
 import argparse
 import atexit
 import logging
+import os
 import readline
 import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+# Make the shared utils/ package importable from Function_calling/.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 logging.basicConfig(
     level=logging.INFO,

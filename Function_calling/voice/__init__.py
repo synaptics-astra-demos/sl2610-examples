@@ -1,7 +1,7 @@
 """Voice input pipeline — mic → VAD → ASR → text.
 
 Public API:
-    - VoicePipeline: thread-managed orchestrator (mic + VAD + ASR)
+    - VoicePipeline: thread-managed orchestrator (start/stop/callback)
     - ASR (Protocol), StubASR, MoonshineASR
     - make_voice_pipeline(on_text, mode, mic_device, moonshine_dir): factory
 
@@ -11,8 +11,8 @@ Voice modes (passed via the demo's --voice flag):
     moonshine - real mic + VAD + Moonshine ASR on the Torq NPU
 """
 
-from .asr import ASR, StubASR, MoonshineASR
-from .pipeline import VoicePipeline, VoiceUnavailable, make_voice_pipeline
+from .asr import ASR, StubASR, MoonshineASR, VoiceUnavailable
+from .pipeline import VoicePipeline, make_voice_pipeline
 
 __all__ = [
     "ASR",

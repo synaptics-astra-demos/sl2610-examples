@@ -1,7 +1,8 @@
 """Tests for voice/ — only the parts that work without sounddevice / silero-vad-notorch / numpy.
 
-The mic stream and VAD are exercised on-device; here we sanity-check the ASR
-Protocol, the StubASR rotation, and the pipeline factory's fall-through paths.
+Audio capture and VAD are handled by the shared utils.speech module;
+here we sanity-check the ASR Protocol, the StubASR rotation, and the
+pipeline factory's fall-through paths.
 """
 
 from __future__ import annotations
