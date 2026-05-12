@@ -597,10 +597,10 @@ def build_speech_recognizer(
 
 
 def configure_qt_environment():
-    os.environ.setdefault("XDG_RUNTIME_DIR", "/var/run/user/0")
-    os.environ.setdefault("WESTON_DISABLE_GBM_MODIFIERS", "true")
-    os.environ.setdefault("WAYLAND_DISPLAY", "wayland-1")
-    os.environ.setdefault("QT_QPA_PLATFORM", "wayland")
+    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+    os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"
+    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    os.environ["QT_QPA_PLATFORM"] = "wayland"
 
 
 def main() -> int:
