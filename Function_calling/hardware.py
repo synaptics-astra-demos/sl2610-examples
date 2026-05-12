@@ -391,15 +391,29 @@ class HardwareDevice:
                 cancelled = []
         return {"cancelled": cancelled}
 
+    _ALARM_FIRE_CYCLES = 3
+
     def _fire_alarm(self, label: str) -> None:
+        # Emit the UI callback before the blocking hardware sequence so the
+        # screen updates the instant the timer trips, not 5s later when the
+        # buzzer + LED loop finishes.
         if self._on_async_event is not None:
             self._on_async_event(f"ALARM FIRED: {label}")
         else:
             log.warning("ALARM FIRED: %s", label)
-        self.play_buzzer(pattern="alarm")
-        self.blink_lights(count=5, color="red", speed="fast")
-        with self._alarm_lock:
-            self._alarms.pop(label, None)
+        try:
+            for _ in range(self._ALARM_FIRE_CYCLES):
+                self.play_buzzer(pattern="alarm")
+                self.blink_lights(count=5, color="red", speed="fast")
+        finally:
+            _all_status_leds_off()
+            if self._wled is not None:
+                try:
+                    self._wled.off()
+                except Exception:  # noqa: BLE001 — serial is an external boundary
+                    log.exception("WLED off after alarm failed")
+            with self._alarm_lock:
+                self._alarms.pop(label, None)
 
     # ---------------------------------------------------------- System status
 

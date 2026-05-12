@@ -273,6 +273,18 @@ class WarmupSignals(QObject):
     failed = pyqtSignal(str)
 
 
+class AlarmSignals(QObject):
+    """Marshal alarm-fire events from the daemon Timer thread to Qt.
+
+    HardwareDevice._fire_alarm runs on a threading.Timer worker; we cannot
+    touch widgets there. The owner of this object wires
+    ``hardware.on_async_event = alarm_signals.fired.emit`` and ChatWindow
+    connects ``fired`` to its UI handler.
+    """
+
+    fired = pyqtSignal(str)  # event text (e.g. "ALARM FIRED: <label>")
+
+
 class ChatWindow(QMainWindow):
     def __init__(
         self,
@@ -280,6 +292,7 @@ class ChatWindow(QMainWindow):
         dispatcher: Dispatcher,
         voice: VoicePipeline | None = None,
         screenshot_dir: str | Path = "/tmp",
+        alarm_signals: AlarmSignals | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("FunctionGemma Physical AI Demo")
@@ -392,6 +405,10 @@ class ChatWindow(QMainWindow):
         self.worker = InferenceWorker(model, dispatcher)
         self.worker.finished.connect(self._on_turn_done)
         self.worker.failed.connect(self._on_failed)
+
+        self._alarm_signals = alarm_signals
+        if alarm_signals is not None:
+            alarm_signals.fired.connect(self._on_alarm_fired)
 
         # Loading state is shown during the one-time ~50s warmup so the user
         # sees what's happening instead of facing a frozen Send button.
@@ -526,6 +543,13 @@ class ChatWindow(QMainWindow):
         self._set_status("Last action failed - see log.", "error")
         self.send_btn.setEnabled(True)
         self._set_chips_enabled(True)
+
+    def _on_alarm_fired(self, event: str) -> None:
+        # Hardware emits "ALARM FIRED: <label>"; show just the label in the
+        # bubble and status line — the chip already says "ALARM".
+        label = event.split(": ", 1)[1] if ": " in event else event
+        self.log.append_alarm(label)
+        self._set_status(f"ALARM: {label}", "error")
 
     def _screenshot(self) -> None:
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

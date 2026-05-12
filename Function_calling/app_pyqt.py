@@ -22,7 +22,7 @@ logging.basicConfig(
 
 from PyQt5.QtWidgets import QApplication
 
-from chat_window import ChatWindow
+from chat_window import AlarmSignals, ChatWindow
 from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
 from hardware import HardwareDevice
@@ -99,7 +99,8 @@ def main() -> int:
                 "systemd unit) to drive it.",
                 ", ".join(present), present[0],
             )
-    hardware = HardwareDevice(wled=wled)
+    alarm_signals = AlarmSignals()
+    hardware = HardwareDevice(wled=wled, on_async_event=alarm_signals.fired.emit)
     dispatcher = Dispatcher(hardware)
 
     voice = None
@@ -116,6 +117,7 @@ def main() -> int:
         dispatcher=dispatcher,
         voice=voice,
         screenshot_dir=args.screenshot_dir,
+        alarm_signals=alarm_signals,
     )
     if args.fullscreen:
         win.showFullScreen()
