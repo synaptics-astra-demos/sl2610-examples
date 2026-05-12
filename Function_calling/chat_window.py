@@ -45,26 +45,25 @@ from theme import PALETTE, TYPE
 from voice import VoicePipeline
 
 PROMPT_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("lights", (
-        "turn on the lights",
-        "lights off",
-        "turn off all the lights",
-        "set the lights to red",
-        "make the lights green",
-        "set the led to blue",
-        "blink the lights twice",
-        "blink the led three times red",
-        "flash the lights",
-        "dim the lights",
+    ("status LEDs", (
+        "set the red light on",
+        "turn the green LED on",
+        "turn all LEDs off",
+        "blue LED at 50%",
+        "blink the green light",
+        "flash the red light 5 times fast",
+        "blink all LEDs twice slowly",
     )),
     ("neopixels", (
-        "play rainbow",
-        "rainbow cycle",
-        "show a fire pattern",
-        "do a comet effect",
+        "aurora on the neopixels",
+        "plasma the neopixels with ocean palette",
+        "fireworks on the neopixels",
+        "comet on the neopixels in red",
         "pulse the neopixels blue",
-        "play sparkle",
-        "neopixel chase green",
+        "police effect on the neopixels",
+        "twinkle the neopixels softly",
+        "intense fire on the neopixels",
+        "turn off the neopixels",
     )),
     ("status", (
         "system status",

@@ -235,34 +235,93 @@ sudo bash scripts/uninstall-service.sh    # remove
 ## Expected output
 
 ```text
-Loading model from functiongemma-physical-ai-v7-Q5_K_M.gguf done in 4.6s.
+Loading model from functiongemma-physical-ai-v8-Q5_K_M.gguf done in 4.6s.
 Warming up (one-time ~50s prefill on the 2-core A55) done in 48.3s.
 Ready. /help for commands, Ctrl-D or /exit to leave.
->>> Turn the lights red and beep twice
-  set_led_color: color=red
-  play_buzzer: pattern=double_beep
+>>> Set the red light on and play aurora on the neopixels
+  set_status_led: led=red state=on
+  set_neopixel_effect: effect=aurora
   (2 tool calls · 612 ms)
 >>>
 ```
 
-## Tool schema (10 functions, v7)
+## Tool schema (8 functions, v8)
 
 | Tool | Args | Effect |
 |---|---|---|
-| `turn_on_lights` | - | All status LEDs + ring to default white |
-| `turn_off_lights` | - | All lights off |
-| `set_led_color` | color, target?, brightness? | RGB color set |
-| `blink_lights` | count?, color?, speed? | Discrete blink |
-| `set_neopixel_pattern` | pattern, color?, speed? | Animated ring effect (rainbow, chase, fade, pulse, sparkle, solid) |
+| `set_status_led` | led, state, brightness? | Drive one HAT status LED (red / green / blue / all) on or off |
+| `blink_status_led` | led, count?, speed? | Blink one HAT status LED N times |
+| `set_neopixel_effect` | effect, color?, palette?, speed?, intensity? | Play an effect on the 48-pixel ring (see effect & palette tables below) |
 | `play_buzzer` | pattern | Named pattern on the binary-GPIO buzzer (beep, double_beep, chirp, siren, alarm, success, error) |
 | `set_alarm` | duration\|time, label? | Schedule alarm (buzzer + flashing) |
 | `cancel_alarm` | label? | Cancel one or all alarms |
 | `get_system_status` | metric? | CPU / memory / temperature / NPU |
 | `respond` | message | Natural-language reply when no tool fits |
 
-The full schema with descriptions lives in `tools.json`. v7 dropped
-`list_alarms` — alarm-query prompts ("what alarms do I have?") route
-via `respond()` instead.
+The full schema with descriptions lives in `tools.json`. v8 replaces v7's
+surface-ambiguous LED tools (`turn_on_lights`, `turn_off_lights`,
+`set_led_color`, `blink_lights`) with surface-specific tools so the
+model never has to guess which surface the user meant.
+
+### Surface keyword routing
+
+| Prompt contains... | Routes to... |
+|---|---|
+| literal `"neopixels"` | `set_neopixel_effect` |
+| `"LED"` / `"LEDs"` / `"the <color> light"` | `set_status_led` or `blink_status_led` |
+| `"ring"` / `"strip"` without `"neopixels"` | `respond()` clarification |
+| Generic `"lights"` with no surface keyword | `respond()` clarification |
+
+The model is fine-tuned with this rule baked in — any `set_neopixel_effect`
+call whose source prompt lacks `"neopixels"` is a routing failure.
+
+### Effects (`set_neopixel_effect.effect`)
+
+| Effect | WLED fx | Visual role | Notes |
+|---|---|---|---|
+| `solid` | 0 | static color | uses `color` |
+| `pulse` | 2 (Breathe) | voice activity / breathing | uses `color` |
+| `fade` | 12 | gentle fade | uses `color` |
+| `chase` | 28 | runners on dim trail | uses `color`; secondary is auto-dimmed |
+| `rainbow` | 9 | spectrum spread | `color` ignored |
+| `sparkle` | 20 | random twinkle on solid bg | uses `color` |
+| `off` | — | turn ring off | sends `on: false` |
+| `aurora` | 38 | Northern Lights ambient | palette-driven |
+| `plasma` | 97 | plasma lamp | palette-driven |
+| `comet` | 41 (Lighthouse) | trailing dot — "thinking" | uses `color` |
+| `twinkle` | 80 (TwinkleFox) | gentle random twinkle | palette-friendly |
+| `fireworks` | 42 | random color blobs | celebration |
+| `police` | 49 | red/blue alternating | alert / alarm |
+| `heartbeat` | 100 | biological pulse | voice activity |
+| `loading` | 47 | sawtooth fill | "processing" indicator |
+| `lightning` | 57 | white random flash | storm alert |
+| `glitter` | 87 | rainbow + white sparkles | celebration |
+| `fire` | 66 (Fire 2012) | flickering fire | palette-friendly |
+| `sunrise` | 104 | gradual sunrise | slow ambient |
+
+### Palettes (`set_neopixel_effect.palette`)
+
+| Palette | WLED pal | Mood |
+|---|---|---|
+| `auto` | 0 | effect default |
+| `ocean` | 9 | blue/teal/white |
+| `lava` | 8 | dark red, yellow, white |
+| `forest` | 10 | yellow + green |
+| `sunset` | 13 | dark blue → purple → red → yellow |
+| `party` | 6 | rainbow w/o green |
+| `sherbet` | 27 | white, pink, mint |
+| `c9` | 48 | Christmas lights (red/amber/green/blue) |
+| `aurora` | 50 | greens on dark blue |
+| `beach` | 22 | light blue shades |
+| `fire` | 35 | white, yellow, fading red |
+| `sakura` | 49 | pink and rose |
+| `splash` | 19 | vibrant pink and magenta |
+| `pastel` | 20 | desaturated hues |
+
+### Intensity (`set_neopixel_effect.intensity`)
+
+`low` / `medium` / `high` controls effect density per WLED's `ix` knob
+(sparkle density, fire height, comet tail length, aurora width, etc.).
 
 ## Hardware
 
@@ -302,7 +361,7 @@ state on every exit path that the Python interpreter can observe:
 - `SIGHUP` (terminal close, parent process death)
 - a fresh demo loading `hardware.py` after a crashed prior process
 
-Layered as `try/finally` inside `play_buzzer` + `blink_lights`, a
+Layered as `try/finally` inside `play_buzzer` + `blink_status_led`, a
 `HardwareDevice.cleanup()` called from a `finally` block in `main()`,
 signal handlers for `SIGTERM`/`SIGHUP`, and an `atexit` net.
 

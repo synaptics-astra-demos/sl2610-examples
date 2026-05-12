@@ -71,12 +71,15 @@ Slash commands:
 Anything else is sent to the model as a prompt."""
 
 _TOOLS_TEXT = """\
-Available tools (v7, 10 functions):
-  turn_on_lights                  Turn all LEDs on (default white)
-  turn_off_lights                 Turn all LEDs off
-  set_led_color <color>           Set RGB color (target / brightness optional)
-  blink_lights [count] [color]    Discrete blink pattern
-  set_neopixel_pattern <pattern>  Animated ring (rainbow, chase, fade, pulse, sparkle, solid)
+Available tools (v8, 8 functions):
+  set_status_led <led> <state>    HAT LED on/off (led: red|green|blue|all)
+  blink_status_led <led>          Blink HAT LED N times (count/speed optional)
+  set_neopixel_effect <effect>    Ring effect: solid, pulse, fade, chase,
+                                    rainbow, sparkle, off, aurora, plasma,
+                                    comet, twinkle, fireworks, police,
+                                    heartbeat, loading, lightning, glitter,
+                                    fire, sunrise. color/palette/speed/
+                                    intensity optional.
   play_buzzer <pattern>           beep, double_beep, chirp, siren, alarm, success, error
   set_alarm <duration|time>       Schedule alarm (label optional)
   cancel_alarm [label]            Cancel one or all alarms
