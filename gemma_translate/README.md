@@ -62,6 +62,11 @@ If online
 pip install -r requirements.txt
 ```
 
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
 
 #### Install example-specific dependencies
 
@@ -73,6 +78,11 @@ Now install the additional dependencies for this specific example.
 
 ```bash
 pip install -r requirements.txt
+```
+
+If offline
+```bash
+pip install --no-index --find-links=../wheelhouse -r requirements.txt
 ```
 
 
@@ -129,10 +139,6 @@ In the command-line-only version, it will ask you to choose the language. You ca
 Press 1-6 to change language at any time:
   1: Spanish
   2: French
-  3: Russian
-  4: Thai
-  5: Hindi
-  6: Chinese
 Speak to translate. Press Ctrl+C to exit.
 ```
 
