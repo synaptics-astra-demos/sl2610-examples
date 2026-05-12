@@ -4,3 +4,9 @@ websockets>=12.0
 
 # YouTube livestream support (optional — falls back to local video)
 yt-dlp
+
+# cv2 - Use headless to avoid X11/XCB dependencies on Wayland/Weston
+opencv-python-headless<4.10
+
+# Sound
+pygame
