@@ -125,13 +125,6 @@ class SoundDeviceAudioSource:
                 finally:
                     self._stream.close()
                     self._stream = None
-            if self.suppress_native_logs:
-                terminate = getattr(sd, "_terminate", None)
-                if callable(terminate):
-                    try:
-                        terminate()
-                    except Exception:
-                        logger.debug("Failed to terminate PortAudio", exc_info=True)
         finally:
             self._restore_native_stderr()
 
