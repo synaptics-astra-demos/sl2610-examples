@@ -5,7 +5,7 @@
 # pre-built aarch64 wheels rather than building from source.
 
 # --- Core demo (always required) ---------------------------------------------
-./wheels/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
+../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 numpy<2.0
 Pillow
 PyQt5>=5.15

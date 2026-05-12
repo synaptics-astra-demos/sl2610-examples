@@ -67,7 +67,7 @@ class MoonshineASR:
 
     Resolution order for ``model_dir``:
       1. explicit constructor arg (e.g. from ``--moonshine-dir``)
-      2. ``Function_calling/models/moonshine/`` (default; populated by
+      2. ``Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/`` (default; populated by
          ``scripts/setup.sh --voice``)
 
     Heavy deps (torq.runtime, onnxruntime, ml_dtypes, tokenizers, etc.)
@@ -86,7 +86,7 @@ class MoonshineASR:
             raise FileNotFoundError(
                 f"Moonshine model dir not found: {resolved}. Pass "
                 "--moonshine-dir, or stage the artifacts under "
-                "Function_calling/models/moonshine/ (run "
+                "Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/ (run "
                 "`scripts/setup.sh --voice` to fetch from HuggingFace)."
             )
 
@@ -117,8 +117,8 @@ class MoonshineASR:
     def _resolve_model_dir(model_dir: str | os.PathLike | None) -> Path:
         if model_dir is not None:
             return Path(model_dir)
-        # voice/asr.py → Function_calling/models/moonshine/
-        return Path(__file__).resolve().parent.parent / "models" / "moonshine"
+        # voice/asr.py → Function_calling/models/Synaptics/moonshine-tiny-bf16-torq
+        return Path(__file__).resolve().parent.parent / "../models" / "Synaptics/moonshine-tiny-bf16-torq"
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if sample_rate != self._sample_rate:

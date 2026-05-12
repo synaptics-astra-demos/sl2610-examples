@@ -49,7 +49,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
+    / "../models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"
 HISTORY_LIMIT = 1000
@@ -258,7 +258,7 @@ def main() -> None:
         "--moonshine-dir",
         type=Path,
         help="Directory holding Moonshine VMFB artifacts. Defaults to "
-             "<repo>/models/moonshine/ when --voice=moonshine.",
+             "<repo>/models/Synaptics/moonshine-tiny-bf16-torq/ when --voice=moonshine.",
     )
     args = p.parse_args()
 

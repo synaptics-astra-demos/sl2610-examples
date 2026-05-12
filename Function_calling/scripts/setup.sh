@@ -7,7 +7,7 @@
 # Steps:
 #   1. Create the venv at Function_calling/.venv (--system-site-packages so the
 #      OOBE image's PyQt5/numpy/etc. carry through).
-#   2. Install requirements.txt from PyPI (or --offline, from wheels/).
+#   2. Install requirements.txt from PyPI (or --offline, from wheelhouse/).
 #   3. Download the v7 GGUF from HuggingFace into models/.
 #   4. With --voice: install torq_runtime wheel (--no-deps), extract
 #      library/portaudio_libs.tgz into /, and download the four Moonshine
@@ -15,7 +15,7 @@
 #
 # Usage (from anywhere):
 #   bash Function_calling/scripts/setup.sh                  # online install, no voice
-#   bash Function_calling/scripts/setup.sh --offline        # use Function_calling/wheels/
+#   bash Function_calling/scripts/setup.sh --offline        # use python packages from wheelhouse/
 #   bash Function_calling/scripts/setup.sh --voice          # online + voice + Moonshine
 #   bash Function_calling/scripts/setup.sh --offline --voice
 
@@ -24,24 +24,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# requirements.txt references wheels/...whl as a relative path, which pip
+# requirements.txt references wheelhouse/...whl as a relative path, which pip
 # resolves against cwd (not against the requirements file). Anchor cwd to
 # Function_calling/ so the script is invokable from any directory.
 cd "${FC_DIR}"
 
 VENV_DIR="${FC_DIR}/.venv"
-MODELS_DIR="${FC_DIR}/models"
-MOONSHINE_DIR="${MODELS_DIR}/moonshine"
-WHEELS_DIR="${FC_DIR}/wheels"
-LIBRARY_DIR="${FC_DIR}/library"
+MODELS_DIR="${FC_DIR}/../models"
+MOONSHINE_DIR="${MODELS_DIR}/Synaptics/moonshine-tiny-bf16-torq"
+WHEELS_DIR="${FC_DIR}/../wheelhouse"
+LIBRARY_DIR="${FC_DIR}/../library"
 REQS="${FC_DIR}/requirements.txt"
 
 GGUF_FILENAME="functiongemma-physical-ai-v7-Q5_K_M.gguf"
 HF_BASE="https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main"
 GGUF_URL="${HF_BASE}/${GGUF_FILENAME}"
-MOONSHINE_FILES=(encoder.onnx decoder.vmfb decoder_with_past.vmfb decoder_token_embeddings.npy)
+MOONSHINE_HF_BASE="https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq/resolve/main"
+MOONSHINE_FILES=(encoder.vmfb decoder.vmfb decoder_with_past.vmfb decoder_token_embeddings.npy tokenizer.json)    
 
-TORQ_WHEEL="${WHEELS_DIR}/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl"
+TORQ_WHEEL="${WHEELS_DIR}/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl"
 PORTAUDIO_TGZ="${LIBRARY_DIR}/portaudio_libs.tgz"
 
 OFFLINE=0
@@ -94,10 +95,10 @@ python3 -m pip install --upgrade pip >/dev/null
 # --- 2. requirements ---------------------------------------------------------
 PIP_ARGS=()
 if [ "${OFFLINE}" -eq 1 ]; then
-    log "installing from wheels/ (offline)"
+    log "installing from wheelhouse/ (offline)"
     PIP_ARGS+=(--no-index --find-links "${WHEELS_DIR}")
 else
-    log "installing from PyPI (online; wheels/ used as a local fallback)"
+    log "installing from PyPI (online; wheelhouse/ used as a local fallback)"
     PIP_ARGS+=(--find-links "${WHEELS_DIR}")
 fi
 pip install "${PIP_ARGS[@]}" -r "${REQS}"
@@ -138,7 +139,7 @@ if [ "${VOICE}" -eq 1 ]; then
             log "  ${f} already present (skip)"
         else
             log "  fetching ${f}"
-            download "${HF_BASE}/moonshine/${f}" "${MOONSHINE_DIR}/${f}"
+            download "${MOONSHINE_HF_BASE}/moonshine/${f}" "${MOONSHINE_DIR}/${f}"
         fi
     done
 fi
