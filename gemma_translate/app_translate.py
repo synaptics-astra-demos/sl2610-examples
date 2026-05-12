@@ -22,6 +22,7 @@ from sounddevice import InputStream
 from silero_vad_notorch import VADIterator, load_silero_vad
 
 from utils.download import download_from_hf
+from utils.stats import InferenceStats, MoonshineInferenceStats, Gemma3InferenceStats
 
 # UI constants
 BUBBLE_FONT_SIZE = 24  # px
@@ -79,14 +80,6 @@ class LanguageTranslation:
         for partial in self.backend.stream_response(user_prompt):
             last_partial = partial
             yield partial
-
-        if ADD_STATS:
-            window.update_llm_stats(
-                self.backend.last_infer_time_ms,
-                self.backend.time_to_first_token_ms,
-                self.backend.last_n_input_tokens,
-                self.backend.last_n_output_tokens,
-            )
                                 
 
 def start_llm_input(window):
@@ -105,7 +98,18 @@ def start_llm_input(window):
                     raise RuntimeError("Translation model not loaded")
                 for partial in trnsl.stream_response(query):
                     window.update_response_text(str(partial), replace=True)
-                print()  # newline after full response
+                b = trnsl.backend
+                llm_stats = Gemma3InferenceStats(
+                    total_time_ms=b.last_infer_time_ms,
+                    ttft_ms=b.time_to_first_token_ms,
+                    n_tokens=b.last_n_output_tokens,
+                    n_input_tokens=b.last_n_input_tokens,
+                )
+                window.update_response_text(str(partial), stats=llm_stats, replace=True)
+                if ADD_STATS:
+                    window.update_llm_stats(llm_stats)
+                print()  # end the line
+                print()  # blank separator
             except Exception as e:
                 errstr = f"Error: {e}"
                 window.update_response_text(errstr, replace=True)
@@ -148,7 +152,8 @@ def start_audio_thread(window, audio_device):
         def __call__(self, speech):
             """Returns string containing Moonshine transcription of speech."""
             self.number_inferences += 1
-            self.speech_secs += len(speech) / self.rate
+            audio_dur = len(speech) / self.rate
+            self.speech_secs += audio_dur
             start_time = time.time()
 
             tokens = self.runner.run(speech[np.newaxis, :].astype(np.float32))
@@ -158,7 +163,13 @@ def start_audio_thread(window, audio_device):
             text = self.tokenizer.decode_batch(tokens, skip_special_tokens=True)[0]
 
             self.inference_secs += time.time() - start_time
-            return text, infer_time, ttft, n_tokens_gen
+            stats = MoonshineInferenceStats(
+                total_time_ms=infer_time,
+                ttft_ms=ttft,
+                n_tokens=n_tokens_gen,
+                audio_duration_s=audio_dur,
+            )
+            return text, stats
 
     def create_input_callback(q):
         """Callback method for sounddevice InputStream."""
@@ -170,11 +181,11 @@ def start_audio_thread(window, audio_device):
 
     def end_recording(speech, do_print=True):
         """Transcribes, prints and caches the caption then clears speech buffer."""
-        text, infer_time, ttft, n_tokens_gen = transcribe(speech)
+        text, stats = transcribe(speech)
         if do_print:
             logger.debug(text)
         speech *= 0.0
-        return text, infer_time, ttft, n_tokens_gen
+        return text, stats
 
     def print_captions(text):
         """Prints right justified on same line, prepending cached captions."""
@@ -263,13 +274,13 @@ def start_audio_thread(window, audio_device):
                         logger.debug("Got end at %s", str(time.time()))
                         if (time.time() - start_time) > MIN_SPEECH_SECS:
                             recording = False
-                            audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
+                            audio_query, stt_stats = end_recording(speech)
                             #Do quick auto-correct on important keywords
                             audio_query = auto_correct(audio_query)
                             if (new_query == 1):
-                                window.update_user_text(audio_query)
+                                window.update_user_text(audio_query, stats=stt_stats if ADD_STATS else None)
                                 if ADD_STATS:
-                                    window.update_stt_stats(infer_time, ttft, n_tokens_gen)
+                                    window.update_stt_stats(stt_stats)
                                 new_query = 0
                             else:
                                 window.update_user_text(audio_query, replace=True)
@@ -288,7 +299,7 @@ def start_audio_thread(window, audio_device):
                     if (len(speech) / SAMPLING_RATE) > MAX_SPEECH_SECS:
                         logger.debug("Timeout: ended recording at %s", str(time.time()))
                         recording = False
-                        audio_query, infer_time, ttft, n_tokens_gen = end_recording(speech)
+                        audio_query, stt_stats = end_recording(speech)
                         #if there is a valid query, then run gemma
                         try:
                             if (len(audio_query.split()) >= 3):
@@ -500,35 +511,32 @@ class ChatWindow(QWidget):
         # Reset processing flags
         global query_processing
         query_processing = 0
-    def update_user_text(self, text, replace=False):
+    def update_user_text(self, text, stats: InferenceStats | None = None, replace=False):
         """Call to add or replace the latest User bubble."""
+        suffix = f"  ({stats.fmt()})" if stats else ""
         if replace:
-            print(f"\r[You] {text:<80}", end="", flush=True)
+            print(f"\r[You] {text}{suffix}", end="", flush=True)
         else:
-            print(f"\n[You] {text}")
+            print(f"[You] {text}{suffix}")
         self.signals.update_user.emit(text, replace)
 
-    def update_response_text(self, text, replace=False):
+    def update_response_text(self, text, stats: InferenceStats | None = None, replace=False):
         """Call to add or replace the latest Response bubble."""
+        suffix = f"  ({stats.fmt()})" if stats else ""
         if replace:
-            print(f"\r[Translation] {text:<80}", end="", flush=True)
+            line = f"[Translation] {text}{suffix}"
+            print(f"\r{line:<120}", end="", flush=True)
         else:
-            print(f"\n[Translation] {text}")
+            print(f"[Translation] {text}{suffix}")
         self.signals.update_resp.emit(text, replace)
 
-    def update_stt_stats(self, infer_time_ms, ttft_ms, n_tokens_gen):
-        """Update the stt stats display box with new values."""
-        decode_ms = infer_time_ms - ttft_ms
-        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
-        self.stats_stt_label.setText(f"Moonshine: {n_tokens_gen} tokens {infer_time_ms:.1f}ms {tokens_per_sec:.1f} tokens/s")
-        print(f"\n\r[Moonshine] {n_tokens_gen} tokens {infer_time_ms:.1f}ms {tokens_per_sec:.1f} tok/s")
-        
-    def update_llm_stats(self, infer_time_ms, ttft_ms, n_tokens_in, n_tokens_gen):
-        """Update the llm stats display box with new values."""
-        decode_ms = infer_time_ms - ttft_ms
-        tokens_per_sec = n_tokens_gen / (decode_ms / 1000) if decode_ms > 0 else 0
-        self.stats_llm_label.setText(f"Gemma: in={n_tokens_in} out={n_tokens_gen} tokens {tokens_per_sec:.1f} tokens/s")
-        print(f"\n\r[Gemma] input={n_tokens_in} output={n_tokens_gen} tokens | {tokens_per_sec:.1f} tok/s | total={infer_time_ms:.1f}ms TTFT={ttft_ms:.1f}ms")
+    def update_stt_stats(self, stats: InferenceStats):
+        """Update the STT stats label in the GUI."""
+        self.stats_stt_label.setText(f"Moonshine: {stats.fmt()}")
+
+    def update_llm_stats(self, stats: InferenceStats):
+        """Update the LLM stats label in the GUI."""
+        self.stats_llm_label.setText(f"Gemma: {stats.fmt()}")
 
 
 #  NPU Clock 
