@@ -5,9 +5,7 @@ ASR is a Protocol: any object with `transcribe(audio: np.ndarray, sample_rate: i
 Two impls:
     - StubASR: rotates canned phrases (one per utterance). Useful for end-to-end
       pipeline verification without loading a real ASR model.
-    - MoonshineASR: loads Moonshine ONNX/VMFB on the Torq NPU via the vendored
-      runtime under ``voice/_runtime/``. Mirrors the Transcriber in the
-      standalone Moonshine example.
+    - MoonshineASR: loads Moonshine on the Torq NPU.
 """
 
 from __future__ import annotations
@@ -19,15 +17,14 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from .mic import VoiceUnavailable
-
 
 logger = logging.getLogger(__name__)
 
 
-# Mirrors astra-2610-assistant-UI-app/src/app_voice_pyqt.py:417-421.
-_MOONSHINE_INPUT_SECS: int = 5
-_MOONSHINE_TOKENS_PER_SEC: int = 6
+class VoiceUnavailable(RuntimeError):
+    """Raised when a voice dependency (sounddevice / silero-vad-notorch / model) is missing."""
+
+
 _MOONSHINE_SAMPLE_RATE: int = 16_000
 
 
@@ -66,26 +63,23 @@ class StubASR:
 
 
 class MoonshineASR:
-    """Moonshine ASR on the Torq NPU via the vendored runtime under
-    ``voice/_runtime/``.
+    """Moonshine ASR on the Torq NPU.
 
     Resolution order for ``model_dir``:
       1. explicit constructor arg (e.g. from ``--moonshine-dir``)
       2. ``Function_calling/models/moonshine/`` (default; populated by
          ``scripts/setup.sh --voice``)
 
-    Heavy deps (onnxruntime, iree.runtime, ml_dtypes, tokenizers, plus
-    requests/tqdm/huggingface_hub pulled in transitively) are imported
-    lazily inside ``__init__`` so a host without them keeps the rest of
-    the demo importable. The factory in ``voice/pipeline.py`` catches
-    the resulting VoiceUnavailable + FileNotFoundError so voice degrades
-    to "disabled" rather than crashing the app.
+    Heavy deps (torq.runtime, onnxruntime, ml_dtypes, tokenizers, etc.)
+    are imported lazily inside ``__init__`` so a host without them keeps
+    the rest of the demo importable. The factory in ``voice/pipeline.py``
+    catches the resulting VoiceUnavailable + FileNotFoundError so voice
+    degrades to "disabled" rather than crashing the app.
     """
 
     def __init__(
         self,
         model_dir: str | os.PathLike | None = None,
-        model_size: str = "tiny",
     ) -> None:
         resolved = self._resolve_model_dir(model_dir)
         if not resolved.is_dir():
@@ -97,41 +91,26 @@ class MoonshineASR:
             )
 
         try:
-            from tokenizers import Tokenizer  # type: ignore[import-not-found]
-
-            from ._runtime.moonshine import load_moonshine
-            from ._runtime.download import download_from_hf
+            from utils.speech import MoonshineTranscriber
         except ImportError as e:
             raise VoiceUnavailable(
                 f"moonshine deps not available: {e}. The Moonshine voice "
-                "path requires onnxruntime, ml_dtypes, tokenizers, "
-                "huggingface_hub, requests, tqdm, and torq_runtime to be "
-                "installed."
+                "path requires torq_runtime, onnxruntime, ml_dtypes, "
+                "tokenizers, and sounddevice to be installed."
             ) from e
 
-        tokenizer_path = resolved / "tokenizer.json"
-        if tokenizer_path.is_file():
-            tokenizer = Tokenizer.from_file(str(tokenizer_path))
-        else:
-            tokenizer = Tokenizer.from_file(
-                download_from_hf("UsefulSensors/moonshine-tiny", "tokenizer.json")
+        logger.info("loading Moonshine via shared MoonshineTranscriber from %s", resolved)
+        try:
+            self._transcriber = MoonshineTranscriber(
+                resolved,
+                sample_rate=_MOONSHINE_SAMPLE_RATE,
+                warmup=True,
             )
-
-        max_inp_len = _MOONSHINE_INPUT_SECS * _MOONSHINE_SAMPLE_RATE
-        max_dec_len = _MOONSHINE_INPUT_SECS * _MOONSHINE_TOKENS_PER_SEC
-
-        logger.info("loading Moonshine artifacts from %s", resolved)
-        self._runner = load_moonshine(
-            resolved, model_size, max_inp_len, max_dec_len,
-        )
-        self._tokenizer = tokenizer
+        except Exception as e:
+            raise VoiceUnavailable(
+                f"failed to initialize MoonshineTranscriber: {e}"
+            ) from e
         self._sample_rate = _MOONSHINE_SAMPLE_RATE
-
-        # Warm-up pass on silence so the first user utterance hits a
-        # primed graph (mirrors the Transcriber in the standalone
-        # Moonshine example).
-        warmup = np.zeros(self._sample_rate, dtype=np.float32)
-        self._runner.run(warmup[np.newaxis, :])
         logger.info("Moonshine warm-up complete")
 
     @staticmethod
@@ -146,10 +125,9 @@ class MoonshineASR:
             raise ValueError(
                 f"Moonshine expects {self._sample_rate} Hz, got {sample_rate}"
             )
-        tokens = self._runner.run(audio[np.newaxis, :].astype(np.float32))
-        text = self._tokenizer.decode_batch(tokens, skip_special_tokens=True)[0]
-        return text.strip()
+        text, _stats = self._transcriber.transcribe_audio(audio)
+        return text
 
     @property
     def last_infer_time(self) -> float:
-        return self._runner.last_infer_time
+        return self._transcriber.runner.last_infer_time

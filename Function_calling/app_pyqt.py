@@ -12,8 +12,12 @@ from __future__ import annotations
 import argparse
 import glob
 import logging
+import os
 import sys
 from pathlib import Path
+
+# Make the shared utils/ package importable from Function_calling/.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 logging.basicConfig(
     level=logging.INFO,
