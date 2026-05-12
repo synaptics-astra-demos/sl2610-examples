@@ -28,7 +28,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, Callable
 
-from wled import WLEDSerialClient, resolve_color
+from wled import WLEDSerialClient
 
 log = logging.getLogger("functiongemma.hardware")
 
@@ -63,6 +63,12 @@ def _write_sysfs(path: Path, value: str) -> None:
         path.write_text(value)
     except OSError:
         log.exception("sysfs write failed: %s <- %s", path, value)
+
+
+def _scale_pct_to_byte(pct: int) -> int:
+    """Clamp 0-100 percent and scale to 0-255 sysfs brightness."""
+    pct = max(0, min(100, int(pct)))
+    return int(round(pct * 255 / 100))
 
 
 def _run(cmd: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[str]:
@@ -257,10 +263,8 @@ class HardwareDevice:
         )
         if wled is None:
             log.warning(
-                "no WLED client — every neopixel-ring command "
-                "(turn_on_lights, turn_off_lights, set_led_color target=strip, "
-                "blink_lights, set_neopixel_pattern) will silently no-op on "
-                "the ring. Pass --wled-port to drive it."
+                "no WLED client — set_neopixel_effect will silently no-op "
+                "on the ring. Pass --wled-port to drive it."
             )
 
     def cleanup(self) -> None:
@@ -285,67 +289,61 @@ class HardwareDevice:
             except Exception:  # noqa: BLE001 — serial close is a boundary
                 log.exception("WLED close failed")
 
-    # ------------------------------------------------------------------ LEDs
+    # -------------------------------------------------- HAT status LEDs (3x)
 
-    def _apply_status_leds(self, color: str, brightness_pct: int) -> None:
-        r, g, b = resolve_color(color)
-        scale = max(0, min(100, brightness_pct)) / 100.0
-        threshold = 80
-        channels = {
-            "red":   int(r * scale) if r >= threshold else 0,
-            "green": int(g * scale) if g >= threshold else 0,
-            "blue":  int(b * scale) if b >= threshold else 0,
-        }
-        for name, path in STATUS_LEDS.items():
-            if path.exists():
-                _write_sysfs(path, str(channels[name]))
+    def _hat_led_targets(self, led: str) -> list[str]:
+        if led == "all":
+            return ["red", "green", "blue"]
+        return [led]
 
-    def turn_on_lights(self) -> None:
-        self._apply_status_leds("white", 100)
-        if self._wled:
-            # set_solid (not just .on()) — WLED retains the last fx/col across
-            # master power toggles, so a bare `wled.on()` after a previous
-            # set_neopixel_pattern would resume that pattern instead of
-            # producing the white the user asked for.
-            self._wled.set_solid("white", 100)
-        log.info("lights ON (white)")
+    def set_status_led(self, led: str, state: str,
+                       brightness: int = 100) -> None:
+        """Set one or all HAT status LEDs on/off.
 
-    def turn_off_lights(self) -> None:
-        for path in STATUS_LEDS.values():
-            if path.exists():
-                _write_sysfs(path, "0")
-        if self._wled:
-            self._wled.off()
-        log.info("lights OFF")
+        ``led`` is one of {red, green, blue, all}. ``state`` is 'on' or 'off'.
+        Each LED is a physically distinct fixed-color emitter — no color
+        mixing happens here, just channel-level on/off with a brightness
+        scale that maps 0-100 → 0-255 sysfs values.
+        """
+        val = _scale_pct_to_byte(brightness) if state == "on" else 0
+        for name in self._hat_led_targets(led):
+            path = STATUS_LEDS.get(name)
+            if path and path.exists():
+                _write_sysfs(path, str(val))
+        log.info("status_led led=%s state=%s brightness=%d", led, state, brightness)
 
-    def set_led_color(self, color: str, target: str = "all", brightness: int = 100) -> None:
-        target = (target or "all").lower()
-        if target in ("all", "hat"):
-            self._apply_status_leds(color, brightness)
-        if target in ("all", "strip") and self._wled:
-            self._wled.set_solid(color, brightness)
-        log.info("color=%s target=%s brightness=%d", color, target, brightness)
-
-    def blink_lights(self, count: int = 3, color: str = "white", speed: str = "normal") -> None:
-        if self._wled:
-            self._wled.blink(count=count, color=color, speed=speed)
+    def blink_status_led(self, led: str, count: int = 3,
+                         speed: str = "normal") -> None:
+        """Blink one or all HAT status LEDs ``count`` times."""
         period = {"slow": 0.40, "normal": 0.20, "fast": 0.08}.get(speed, 0.20)
+        targets = self._hat_led_targets(led)
+        paths = [STATUS_LEDS[n] for n in targets if STATUS_LEDS[n].exists()]
         try:
             for _ in range(max(1, int(count))):
-                self._apply_status_leds(color, 100)
+                for p in paths:
+                    _write_sysfs(p, "255")
                 time.sleep(period)
-                _all_status_leds_off()
+                for p in paths:
+                    _write_sysfs(p, "0")
                 time.sleep(period)
         finally:
-            _all_status_leds_off()
+            for p in paths:
+                _write_sysfs(p, "0")
+        log.info("blink_status_led led=%s count=%d speed=%s", led, count, speed)
 
-    def set_neopixel_pattern(self, pattern: str, color: str | None = None,
-                             speed: str = "normal") -> None:
+    # ----------------------------------------------------- Neopixel ring (WLED)
+
+    def set_neopixel_effect(self, effect: str, color: str | None = None,
+                            palette: str | None = None,
+                            speed: str = "normal",
+                            intensity: str | None = None) -> None:
         if self._wled is None:
-            log.info("set_neopixel_pattern %r ignored (no --wled-port)", pattern)
+            log.info("set_neopixel_effect %r ignored (no --wled-port)", effect)
             return
-        self._wled.set_pattern(pattern=pattern, color=color, speed=speed)
-        log.info("pattern=%s color=%s speed=%s", pattern, color, speed)
+        self._wled.set_effect(effect=effect, color=color, palette=palette,
+                              speed=speed, intensity=intensity)
+        log.info("effect=%s color=%s palette=%s speed=%s intensity=%s",
+                 effect, color, palette, speed, intensity)
 
     # ---------------------------------------------------------------- Buzzer
 
@@ -404,7 +402,13 @@ class HardwareDevice:
         try:
             for _ in range(self._ALARM_FIRE_CYCLES):
                 self.play_buzzer(pattern="alarm")
-                self.blink_lights(count=5, color="red", speed="fast")
+                # Flash the red status LED + drive the ring red, both five times.
+                if self._wled is not None:
+                    try:
+                        self._wled.blink(count=5, color="red", speed="fast")
+                    except Exception:  # noqa: BLE001 — serial boundary
+                        log.exception("WLED alarm blink failed")
+                self.blink_status_led(led="red", count=5, speed="fast")
         finally:
             _all_status_leds_off()
             if self._wled is not None:

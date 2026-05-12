@@ -16,8 +16,10 @@ this whole module is a no-op when the user runs without the ring.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
+import time
 from typing import Any
 
 log = logging.getLogger("functiongemma.wled")
@@ -26,48 +28,115 @@ DEFAULT_PORT = "/dev/ttyACM0"
 DEFAULT_BAUD = 115200
 DEFAULT_TIMEOUT_S = 0.2
 
+# Color names cover the v8 trained palette. Unknown names fall back to white
+# via resolve_color (with a fuzzy-match attempt first).
 COLOR_NAMES: dict[str, tuple[int, int, int]] = {
-    "white": (255, 255, 255),
-    "warm_white": (255, 200, 140),
-    "cool_white": (220, 235, 255),
-    "red": (255, 0, 0),
-    "orange": (255, 120, 0),
-    "yellow": (255, 220, 0),
-    "green": (0, 255, 0),
-    "cyan": (0, 255, 200),
-    "blue": (0, 60, 255),
-    "purple": (160, 0, 255),
-    "pink": (255, 80, 180),
-    "magenta": (255, 0, 200),
-    "off": (0, 0, 0),
+    "white":       (255, 255, 255),
+    "warm_white":  (255, 200, 140),
+    "cool_white":  (220, 235, 255),
+    "soft_white":  (255, 240, 200),
+    "red":         (255, 0, 0),
+    "dark_red":    (140, 0, 0),
+    "orange":      (255, 120, 0),
+    "amber":       (255, 150, 30),
+    "gold":        (255, 200, 40),
+    "yellow":      (255, 220, 0),
+    "lime":        (180, 255, 30),
+    "green":       (0, 255, 0),
+    "mint":        (140, 255, 200),
+    "cyan":        (0, 255, 200),
+    "turquoise":   (60, 220, 200),
+    "sky_blue":    (120, 200, 255),
+    "blue":        (0, 60, 255),
+    "indigo":      (90, 30, 255),
+    "violet":      (180, 80, 255),
+    "purple":      (160, 0, 255),
+    "magenta":     (255, 0, 200),
+    "pink":        (255, 80, 180),
+    "hot_pink":    (255, 80, 160),
+    "peach":       (255, 180, 140),
+    "teal":        (0, 180, 180),
+    "gray":        (160, 160, 160),
+    "grey":        (160, 160, 160),
+    "black":       (0, 0, 0),
+    "off":         (0, 0, 0),
 }
 
 SPEED_MAP: dict[str, int] = {"slow": 60, "normal": 128, "fast": 220}
 
-# Pattern -> WLED effect id + default intensity. Effect ids per
+INTENSITY_MAP: dict[str, int] = {"low": 64, "medium": 128, "high": 220}
+
+# Effect name -> WLED effect id + default intensity. Effect IDs per
 # https://kno.wled.ge/features/effects/
-PATTERN_EFFECTS: dict[str, dict[str, int]] = {
-    "solid":   {"fx":  0, "ix": 128},
-    "pulse":   {"fx":  2, "ix": 128},  # Breathe
-    "fade":    {"fx": 12, "ix": 128},
-    "chase":   {"fx": 28, "ix": 180},
-    "rainbow": {"fx":  9, "ix": 128},
-    "sparkle": {"fx": 20, "ix": 200},
+EFFECT_MAP: dict[str, dict[str, int]] = {
+    "solid":     {"fx":   0, "ix": 128},
+    "pulse":     {"fx":   2, "ix": 128},  # Breathe
+    "fade":      {"fx":  12, "ix": 128},
+    "chase":     {"fx":  28, "ix": 180},
+    "rainbow":   {"fx":   9, "ix": 128},
+    "sparkle":   {"fx":  20, "ix": 200},
+    "aurora":    {"fx":  38, "ix": 128},  # Aurora Borealis
+    "plasma":    {"fx":  97, "ix": 128},  # Plasma lamp
+    "comet":     {"fx":  41, "ix": 160},  # Lighthouse — single trailing dot
+    "twinkle":   {"fx":  80, "ix": 128},  # Twinklefox — slow fade
+    "fireworks": {"fx":  42, "ix": 200},
+    "police":    {"fx":  49, "ix": 255},
+    "heartbeat": {"fx": 100, "ix": 128},
+    "loading":   {"fx":  47, "ix": 180},
+    "lightning": {"fx":  57, "ix": 200},
+    "glitter":   {"fx":  87, "ix": 200},  # Rainbow + white sparkles
+    "fire":      {"fx":  66, "ix": 180},  # Fire 2012
+    "sunrise":   {"fx": 104, "ix": 128},
 }
+
+# Palette name -> WLED palette id. IDs per
+# https://kno.wled.ge/features/palettes/
+PALETTE_MAP: dict[str, int] = {
+    "auto":    0,
+    "ocean":   9,
+    "lava":    8,
+    "forest":  10,
+    "sunset":  13,
+    "party":   6,
+    "sherbet": 27,
+    "c9":      48,
+    "aurora":  50,
+    "beach":   22,
+    "fire":    35,
+    "sakura":  49,
+    "splash":  19,
+    "pastel":  20,
+}
+
+# Effects whose visible result depends on col[0] being the user's primary
+# color. Chase additionally consumes col[1] as the trail.
+_PRIMARY_COLOR_EFFECTS = {"solid", "pulse", "fade", "chase", "sparkle", "comet"}
+_TRAIL_COLOR_EFFECTS = {"chase"}
+
+
+def _normalize(color: str) -> str:
+    return color.strip().lower().replace(" ", "_").replace("-", "_")
 
 
 def resolve_color(color: str | None) -> tuple[int, int, int]:
     """Map a color name or '#RRGGBB' hex string to an (R, G, B) triple."""
     if not color:
         return COLOR_NAMES["white"]
-    color = color.strip().lower().replace(" ", "_").replace("-", "_")
-    if color in COLOR_NAMES:
-        return COLOR_NAMES[color]
-    if color.startswith("#") and len(color) == 7:
+    norm = _normalize(color)
+    if norm in COLOR_NAMES:
+        return COLOR_NAMES[norm]
+    if norm.startswith("#") and len(norm) == 7:
         try:
-            return (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+            return (int(norm[1:3], 16), int(norm[3:5], 16), int(norm[5:7], 16))
         except ValueError:
             pass
+    # Fuzzy match before giving up — catches typos like "purpel" -> "purple".
+    # 0.8 cutoff is permissive enough for one-letter swaps without matching
+    # truly unrelated names.
+    near = difflib.get_close_matches(norm, COLOR_NAMES.keys(), n=1, cutoff=0.8)
+    if near:
+        log.info("color %r matched %r via fuzzy lookup", color, near[0])
+        return COLOR_NAMES[near[0]]
     log.warning("unknown color %r, defaulting to white", color)
     return COLOR_NAMES["white"]
 
@@ -129,36 +198,67 @@ class WLEDSerialClient:
             "seg": [{"id": 0, "col": [[r, g, b]], "fx": 0}],
         })
 
-    def set_pattern(self, pattern: str, color: str | None = None, speed: str = "normal") -> None:
-        effect = PATTERN_EFFECTS.get(pattern.lower(), PATTERN_EFFECTS["solid"])
-        sx = SPEED_MAP.get(speed.lower(), SPEED_MAP["normal"])
-        r, g, b = resolve_color(color) if color else COLOR_NAMES["white"]
-        self._send({
-            "on": True,
-            "bri": 255,
-            "seg": [{
-                "id": 0,
-                "col": [[r, g, b]],
-                "fx": effect["fx"],
-                "sx": sx,
-                "ix": effect["ix"],
-            }],
-        })
+    def set_effect(self, effect: str, color: str | None = None,
+                   palette: str | None = None, speed: str = "normal",
+                   intensity: str | None = None) -> None:
+        effect_l = effect.lower()
+        # "off" is a no-effect sentinel: just power the segment down.
+        if effect_l == "off":
+            self.off()
+            return
 
-    def blink(self, count: int, color: str = "white", speed: str = "normal") -> None:
+        meta = EFFECT_MAP.get(effect_l, EFFECT_MAP["solid"])
+        fx = meta["fx"]
+        ix = INTENSITY_MAP.get((intensity or "").lower(), meta["ix"])
         sx = SPEED_MAP.get(speed.lower(), SPEED_MAP["normal"])
-        r, g, b = resolve_color(color)
-        self._send({
-            "on": True,
-            "bri": 255,
-            "seg": [{
-                "id": 0,
-                "col": [[r, g, b]],
-                "fx": 23,  # Strobe — handled in firmware, deterministic
-                "sx": sx,
-                "ix": max(32, min(255, 32 * max(1, int(count)))),
-            }],
-        })
+
+        seg: dict[str, Any] = {"id": 0, "fx": fx, "sx": sx, "ix": ix}
+
+        if palette:
+            pal_id = PALETTE_MAP.get(palette.lower())
+            if pal_id is not None:
+                seg["pal"] = pal_id
+            else:
+                log.warning("unknown palette %r, ignoring", palette)
+
+        # Rainbow doesn't use a primary color (it spans the spectrum); omit
+        # `col` entirely so any residual color from a prior call doesn't bleed
+        # through. Other effects get the resolved primary; chase also gets a
+        # dim version of the primary as a trail color (col[1]).
+        if effect_l == "rainbow":
+            pass
+        elif effect_l in _PRIMARY_COLOR_EFFECTS:
+            r, g, b = resolve_color(color) if color else COLOR_NAMES["white"]
+            cols: list[list[int]] = [[r, g, b]]
+            if effect_l in _TRAIL_COLOR_EFFECTS:
+                cols.append([r // 6, g // 6, b // 6])
+            seg["col"] = cols
+        elif color:
+            # Palette-driven effects (aurora, plasma, fire, etc.) tolerate
+            # a primary color hint; pass it through but don't require it.
+            r, g, b = resolve_color(color)
+            seg["col"] = [[r, g, b]]
+
+        self._send({"on": True, "bri": 255, "seg": [seg]})
+
+    def blink(self, count: int, color: str = "white",
+              speed: str = "normal") -> None:
+        """Discrete blink: N solid frames + N off frames.
+
+        WLED's continuous Strobe effect was used previously but never
+        respected ``count`` — the ring would strobe forever while the HAT
+        loop terminated cleanly. We drive the ring in software so HAT + ring
+        blink together.
+        """
+        period = {"slow": 0.40, "normal": 0.20, "fast": 0.08}.get(speed, 0.20)
+        try:
+            for _ in range(max(1, int(count))):
+                self.set_solid(color, brightness_pct=100)
+                time.sleep(period)
+                self.off()
+                time.sleep(period)
+        finally:
+            self.off()
 
     def close(self) -> None:
         if self._serial is not None and getattr(self._serial, "is_open", False):
@@ -167,3 +267,28 @@ class WLEDSerialClient:
             except Exception:  # noqa: BLE001
                 log.exception("wled serial close failed")
         self._serial = None
+
+
+class NullWLEDClient:
+    """Stand-in client used off-device (no Sparkle Motion attached).
+
+    Mirrors the public surface of ``WLEDSerialClient`` so the dispatcher
+    can be wired up the same way on the dev laptop.
+    """
+
+    def on(self) -> None: ...
+    def off(self) -> None: ...
+    def set_solid(self, color: str, brightness_pct: int = 100) -> None: ...
+    def set_effect(self, effect: str, color: str | None = None,
+                   palette: str | None = None, speed: str = "normal",
+                   intensity: str | None = None) -> None: ...
+    def blink(self, count: int, color: str = "white",
+              speed: str = "normal") -> None: ...
+    def close(self) -> None: ...
+
+
+def make_wled_client(port: str | None = None) -> WLEDSerialClient | NullWLEDClient:
+    """Construct a real serial client if a port is configured, else null."""
+    if not port:
+        return NullWLEDClient()
+    return WLEDSerialClient(port=port)
