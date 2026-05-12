@@ -10,6 +10,7 @@ render status, transcripts, and errors themselves.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 import logging
 import os
@@ -201,20 +202,22 @@ class SileroSpeechSegmenter:
             threshold=threshold,
             min_silence_duration_ms=min_silence_duration_ms,
         )
-        self._speech = np.empty(0, dtype=np.float32)
+        self._chunks: deque[np.ndarray] = deque()
+        self._sample_count = 0
         self._recording = False
 
     def reset(self):
-        self._speech = np.empty(0, dtype=np.float32)
+        self._chunks.clear()
+        self._sample_count = 0
         self._recording = False
         self._reset_vad_iterator()
 
     def feed(self, chunk: np.ndarray) -> SpeechSegment | None:
         chunk = np.asarray(chunk, dtype=np.float32).reshape(-1)
-        self._speech = np.concatenate((self._speech, chunk))
+        self._append_chunk(chunk)
 
         if not self._recording:
-            self._speech = self._speech[-self.lookback_size :]
+            self._trim_to_last(self.lookback_size)
 
         speech_event = self.vad_iterator(chunk)
         if speech_event:
@@ -232,10 +235,15 @@ class SileroSpeechSegmenter:
 
     @property
     def _recorded_duration_s(self) -> float:
-        return len(self._speech) / self.sample_rate
+        return self._sample_count / self.sample_rate
 
     def _finish_segment(self, reason: str) -> SpeechSegment | None:
-        audio = self._speech
+        if not self._chunks:
+            audio = np.empty(0, dtype=np.float32)
+        elif len(self._chunks) == 1:
+            audio = self._chunks[0]
+        else:
+            audio = np.concatenate(tuple(self._chunks))
         segment = SpeechSegment(
             audio=audio,
             sample_rate=self.sample_rate,
@@ -251,6 +259,25 @@ class SileroSpeechSegmenter:
             )
             return None
         return segment
+
+    def _append_chunk(self, chunk: np.ndarray):
+        if len(chunk) == 0:
+            return
+        self._chunks.append(chunk)
+        self._sample_count += len(chunk)
+
+    def _trim_to_last(self, max_samples: int):
+        max_samples = max(0, int(max_samples))
+        while self._sample_count > max_samples and self._chunks:
+            excess = self._sample_count - max_samples
+            first = self._chunks[0]
+            if len(first) <= excess:
+                self._chunks.popleft()
+                self._sample_count -= len(first)
+            else:
+                self._chunks[0] = first[excess:]
+                self._sample_count -= excess
+                break
 
     def _reset_vad_iterator(self):
         reset_states = getattr(self.vad_iterator, "reset_states", None)
