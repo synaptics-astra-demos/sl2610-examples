@@ -66,7 +66,7 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 Some demos require kernel modules, native libraries, or display configuration to be installed on the device. A unified installer script is provided:
 
 ```bash
-sudo ./configs/install_configs.sh <target> [target ...]
+./configs/install_configs.sh <target> [target ...]
 ```
 
 | Target | Description |
@@ -79,12 +79,12 @@ sudo ./configs/install_configs.sh <target> [target ...]
 
 Examples:
 ```bash
-sudo ./configs/install_configs.sh kernel
-sudo ./configs/install_configs.sh usb_cdc portaudio portrait_setup
-sudo ./configs/install_configs.sh all
+./configs/install_configs.sh kernel
+./configs/install_configs.sh usb_cdc portaudio portrait_setup
+./configs/install_configs.sh all
 ```
 
-The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `sudo ./configs/patch_usb_cdc.sh`).
+The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `./configs/patch_usb_cdc.sh`).
 
 ## Object Detection
 

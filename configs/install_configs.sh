@@ -5,7 +5,7 @@
 # Install device configurations for sl2610-examples.
 #
 # Usage:
-#   sudo ./install_configs.sh <target> [target ...]
+#   ./install_configs.sh <target> [target ...]
 #
 # Targets:
 #   kernel          - Install NPU kernel module (patch_kernel.sh)
@@ -15,9 +15,9 @@
 #   all             - Install all of the above
 #
 # Examples:
-#   sudo ./install_configs.sh kernel
-#   sudo ./install_configs.sh usb_cdc portaudio portrait_setup
-#   sudo ./install_configs.sh all
+#   ./install_configs.sh kernel
+#   ./install_configs.sh usb_cdc portaudio portrait_setup
+#   ./install_configs.sh all
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ ALL_TARGETS=(kernel usb_cdc portaudio portrait_setup)
 # --- helpers ----------------------------------------------------------------
 
 usage() {
-    echo "Usage: sudo $0 <target> [target ...]"
+    echo "Usage: $0 <target> [target ...]"
     echo ""
     echo "Targets:"
     echo "  kernel          Install NPU kernel module"
@@ -41,7 +41,7 @@ usage() {
 
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo "ERROR: This script must be run as root (sudo)."
+        echo "ERROR: This script must be run as root."
         exit 1
     fi
 }
