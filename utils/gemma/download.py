@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Final
 
-from ..download import default_models_dir, download_from_hf
+from ..download import default_models_dir, download_from_hf, verify_manifest, write_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +36,14 @@ def local_gemma3_model_dir(
     *,
     base_dir: str | Path | None = None,
 ) -> Path | None:
-    """Return the managed local model directory if required files exist."""
+    """Return the managed local model directory if manifest is valid."""
 
     if base_dir is None:
         base_dir = default_models_dir()
     model_dir = Path(base_dir) / gemma3_repo_id(model)
-    if not all((model_dir / filename).exists() for filename in _GEMMA3_REQUIRED_FILES):
-        return None
-    if local_gemma3_model_path(model, base_dir=base_dir) is None:
-        return None
-    return model_dir
+    if verify_manifest(model_dir):
+        return model_dir
+    return None
 
 
 def local_gemma3_model_path(
@@ -62,26 +60,32 @@ def local_gemma3_model_path(
     return model_path if model_path.exists() else None
 
 
-def _download_gemma3_model(repo_id: str, base_dir: Path) -> None:
-    """Download model.vmfb and/or model.vmfb.trim as they exist."""
+def _download_gemma3_model(repo_id: str, base_dir: Path) -> list[str]:
+    """Download model.vmfb and/or model.vmfb.trim as they exist.
+
+    Returns:
+        List of model filenames that are present locally after this call.
+    """
     local_dir = base_dir / repo_id
-    if any((local_dir / filename).exists() for filename in _GEMMA3_MODEL_FILENAMES):
-        return
+    existing = [f for f in _GEMMA3_MODEL_FILENAMES if (local_dir / f).exists()]
+    if existing:
+        return existing
 
     from huggingface_hub import HfApi
 
     hf_api = HfApi()
-    downloaded_any = False
+    downloaded: list[str] = []
     for filename in _GEMMA3_MODEL_FILENAMES:
         if hf_api.file_exists(repo_id=repo_id, filename=filename):
             download_from_hf(repo_id, filename, base_dir=base_dir)
             logger.info("Downloaded %s from %s", filename, repo_id)
-            downloaded_any = True
+            downloaded.append(filename)
 
-    if not downloaded_any:
+    if not downloaded:
         raise FileNotFoundError(
             f"Neither model.vmfb nor model.vmfb.trim found in {repo_id}"
         )
+    return downloaded
 
 
 def download_gemma3(models: list[str] | None = None) -> dict[str, Path]:
@@ -108,10 +112,15 @@ def download_gemma3(models: list[str] | None = None) -> dict[str, Path]:
             logger.info("Using local Gemma3 model files from '%s'", str(local_dir))
             continue
 
-        _download_gemma3_model(repo_id, base_dir)
-        download_from_hf(repo_id, "token_embeddings.npy", base_dir=base_dir)
-        download_from_hf(repo_id, "config.json", base_dir=base_dir)
-        download_from_hf(repo_id, "tokenizer.json", base_dir=base_dir)
+        downloaded_files: list[str] = []
+
+        model_filenames = _download_gemma3_model(repo_id, base_dir)
+        downloaded_files.extend(model_filenames)
+
+        for filename in _GEMMA3_REQUIRED_FILES:
+            download_from_hf(repo_id, filename, base_dir=base_dir)
+            downloaded_files.append(filename)
+
         # Optional: trimmed vocab LUT
         try:
             from huggingface_hub import HfApi
@@ -119,18 +128,14 @@ def download_gemma3(models: list[str] | None = None) -> dict[str, Path]:
             hf_api = HfApi()
             if hf_api.file_exists(repo_id=repo_id, filename=_GEMMA3_TRIM_LUT_FILENAME):
                 download_from_hf(repo_id, _GEMMA3_TRIM_LUT_FILENAME, base_dir=base_dir)
+                downloaded_files.append(_GEMMA3_TRIM_LUT_FILENAME)
         except Exception:
             pass
-        local_dir = local_gemma3_model_dir(name, base_dir=base_dir)
-        if local_dir is None:
-            model_dir = base_dir / repo_id
-            raise FileNotFoundError(
-                "Incomplete local Gemma3 model directory at "
-                f"'{model_dir}'. Expected a Gemma VMFB plus tokenizer, "
-                "config, and token embeddings."
-            )
-        result[name] = base_dir / repo_id
-        logger.info("Downloaded Gemma3 model files from %s to '%s'", repo_id, str(result[name]))
+
+        model_dir = base_dir / repo_id
+        write_manifest(model_dir, repo_id, downloaded_files)
+        result[name] = model_dir
+        logger.info("Downloaded Gemma3 model files from %s to '%s'", repo_id, str(model_dir))
 
     logger.info("Gemma3 model download complete.")
     return result
