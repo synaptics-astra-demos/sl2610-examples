@@ -261,7 +261,8 @@ def main() -> None:
         "--moonshine-dir",
         type=Path,
         help="Directory holding Moonshine VMFB artifacts. Defaults to "
-             "<repo>/models/moonshine/ when --voice=moonshine.",
+             "<repo>/models/Synaptics/moonshine-tiny-bf16-torq/ when "
+             "--voice=moonshine.",
     )
     args = p.parse_args()
 
@@ -284,8 +285,9 @@ def main() -> None:
         if voice is None:
             print(_dim(
                 f"voice unavailable: --voice={args.voice} requires "
-                "sounddevice + silero-vad-notorch (and libportaudio.so.2 — "
-                "extract library/portaudio_libs.tgz). Continuing text-only."
+                "sounddevice + silero-vad-notorch and libportaudio.so.2 "
+                "(install with ../configs/install_configs.sh portaudio). "
+                "Continuing text-only."
             ))
 
     try:

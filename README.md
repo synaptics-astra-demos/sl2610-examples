@@ -100,7 +100,9 @@ See [/Function_calling/README.md](Function_calling/README.md) for the on-device 
 
 ```bash
 cd Function_calling
-bash scripts/setup.sh [--voice]                  # venv + deps + GGUF (+ voice toolchain)
+pip install -r requirements.txt
+python setup_demo.py                             # GGUF + Moonshine model files
+../configs/install_configs.sh portaudio     # needed for voice input
 bash scripts/install-service.sh                  # systemd autostart of the PyQt UI
 ```
 

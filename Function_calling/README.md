@@ -51,7 +51,7 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 - Synaptics **Coral Dev Board (SL2619)** with the Grinn Coral HAT (RGB status LEDs + piezo buzzer)
 - **Astra SDK OOBE image** — ships with `git`, `python3`, `gstreamer`, `gpiod`, and `weston`
 - ~500 MB free disk for the model and Python venv
-- Network access for `setup.sh` to fetch wheels and the GGUF (or pre-populate `wheelhouse/` and `models/` offline)
+- Network access for `setup_demo.py` to fetch model files (or pre-populate `models/` offline)
 
 **Optional**
 - **Adafruit Mini Sparkle Motion (6314)** running WLED firmware over USB-CDC — for the Neopixel ring
@@ -67,11 +67,18 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
 cd sl2610-examples/Function_calling
 
-# 2. One-liner setup: venv + Python deps + GGUF model
-bash scripts/setup.sh
-
-# 3. Run it
+# 2. Shared venv + Python deps
+cd ..
+python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
+pip install -r requirements.txt
+cd Function_calling
+pip install -r requirements.txt
+
+# 3. Download FunctionGemma + Moonshine model files
+python setup_demo.py
+
+# 4. Run it
 python3 demo.py                # CLI REPL (works in any terminal)
 
 # For the PyQt UI on the 7" panel, install as a systemd service —
@@ -81,9 +88,9 @@ bash scripts/install-service.sh
 
 The model loads in ~3.6 s, then you're at a prompt. To run the PyQt UI from a fresh terminal without systemd, see [Running the demo](#running-the-demo) for the Wayland env vars.
 
-To enable voice (Moonshine ASR on the Torq NPU): `bash scripts/setup.sh --voice` instead, then `bash scripts/install-service.sh --voice moonshine`.
+To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../configs/install_configs.sh portaudio`, then run `bash scripts/install-service.sh --voice moonshine`.
 
-The setup script is idempotent — re-run it anytime to repair a broken install. Add `--offline` to use bundled wheels instead of PyPI.
+`setup_demo.py` is idempotent — re-run it anytime to repair missing model files. For offline Python dependency installs, use `pip install --no-index --find-links=../wheelhouse -r requirements.txt`.
 
 ---
 
@@ -233,7 +240,7 @@ The PyQt UI grows a **Mic** button when voice is enabled, and the REPL accepts s
 |---|---|
 | `--voice off` (default) | No voice. Mic button hidden, spoken input ignored. |
 | `--voice stub` | Real mic + VAD; ASR returns rotating canned phrases. Use to validate the mic → VAD → dispatcher path without a real ASR model. |
-| `--voice moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU. Reads VMFB artifacts from `--moonshine-dir` (default `models/Synaptics/moonshine-tiny-bf16-torq/`, populated by `scripts/setup.sh --voice`). |
+| `--voice moonshine` | Real mic + VAD + Moonshine ASR on the Torq NPU. Reads VMFB artifacts from `--moonshine-dir` (default `models/Synaptics/moonshine-tiny-bf16-torq/`, populated by `setup_demo.py`). |
 
 ```bash
 # Validate plumbing with stubbed ASR
@@ -246,7 +253,7 @@ python3 app_pyqt.py --voice moonshine
 python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-`scripts/setup.sh --voice` installs the entire voice toolchain in one shot: `sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, the `torq_runtime` wheel, five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer — fetched from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace), and `libportaudio.so.2` (extracted from the repo-root `../library/portaudio_libs.tgz` shared across examples — the OOBE image doesn't ship it).
+`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). `setup_demo.py` downloads the five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_configs.sh portaudio`; the OOBE image doesn't ship it.
 
 If `tokenizer.json` is ever missing at runtime, the ASR worker falls back to fetching it from `UsefulSensors/moonshine-tiny`. For fully offline use after a partial install:
 
@@ -280,7 +287,7 @@ Without the WLED hardware, `set_neopixel_effect` calls log to the command pane b
 
 ## Auto-start on boot (systemd)
 
-After `scripts/setup.sh` has populated the venv and downloaded the model, install the systemd service to launch the PyQt demo full-screen at boot:
+After the venv has the requirements installed and `setup_demo.py` has downloaded the model files, install the systemd service to launch the PyQt demo full-screen at boot:
 
 ```bash
 bash scripts/install-service.sh
@@ -454,7 +461,7 @@ Hosted on HuggingFace: [`BrinqAI/functiongemma-270m-physical-ai`](https://huggin
 - **Held-out smoke test:** 29/29 (100%) on a curated routing benchmark; real-world prompt distribution is wider — see [Known model behaviors](#known-model-behaviors)
 - **Cold prefill:** 0.55 s on the SL2619 2-core A55 (synthetic benchmark)
 
-The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [`Synaptics/moonshine-tiny-bf16-torq`](https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq) under the `moonshine/` subdir, fetched automatically by `scripts/setup.sh --voice`.
+The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [`Synaptics/moonshine-tiny-bf16-torq`](https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq), fetched automatically by `setup_demo.py`.
 
 ---
 
@@ -464,6 +471,7 @@ The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [
 Function_calling/
 ├── app_pyqt.py            # PyQt5 entrypoint (the UI demo)
 ├── demo.py                # CLI / REPL entrypoint
+├── setup_demo.py          # model download/setup check
 ├── chat_window.py         # main UI window
 ├── command_log.py         # scrolling tool-call log widget
 ├── compact_codec.py       # <tool_N>(args)<end> ↔ ToolCall
@@ -481,7 +489,6 @@ Function_calling/
 │   ├── pipeline.py        # start/stop/callback API on top of utils.speech
 │   └── __init__.py        # make_voice_pipeline factory
 ├── scripts/
-│   ├── setup.sh           # first-time install
 │   ├── install-service.sh # systemd autostart installer
 │   └── uninstall-service.sh
 ├── tests/                 # pytest: alarms, dispatcher, voice, wled-serial
@@ -489,9 +496,10 @@ Function_calling/
 
 # Shared with the rest of the repo:
 ../utils/speech.py         # mic capture + silero VAD + Moonshine transcriber
-../library/                # shared native libs (portaudio_libs.tgz, etc.)
-../wheelhouse/             # pre-built aarch64 wheels (populated by setup.sh)
-../models/                 # GGUF + Moonshine artifacts (populated by setup.sh)
+../configs/                # device/native library installers
+../library/                # shared native archives (portaudio_libs.tgz, etc.)
+../wheelhouse/             # pre-built aarch64 wheels
+../models/                 # GGUF + Moonshine artifacts (populated by setup_demo.py)
   functiongemma-physical-ai-v9-Q5_K_M.gguf       # core demo
   Synaptics/moonshine-tiny-bf16-torq/            # only with --voice
     encoder.vmfb
@@ -604,10 +612,10 @@ python3 app_pyqt.py --voice moonshine --mic USB         # USB mic by substring
 <details>
 <summary><strong>Moonshine VMFBs missing / "decoder.vmfb not found"</strong></summary>
 
-Re-run setup with the voice flag:
+Re-run the model setup:
 
 ```bash
-bash scripts/setup.sh --voice
+python setup_demo.py
 ```
 
 For offline boards, manually fetch from `huggingface.co/Synaptics/moonshine-tiny-bf16-torq/tree/main/moonshine` and drop into `../models/Synaptics/moonshine-tiny-bf16-torq/`.
