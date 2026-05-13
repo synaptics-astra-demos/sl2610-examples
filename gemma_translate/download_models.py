@@ -18,12 +18,13 @@ import logging
 from utils.moonshine import download_moonshine
 from utils.gemma import download_gemma3
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("gemma_translate.setup")
 
 
 if __name__ == "__main__":
     import argparse
     from utils.log import add_logging_args, configure_logging
+    from pathlib import Path
 
     parser = argparse.ArgumentParser(
         description="Download Moonshine and Gemma3 model files.",
@@ -42,7 +43,8 @@ if __name__ == "__main__":
     )
     add_logging_args(parser)
     args = parser.parse_args()
-    configure_logging(args.logging)
+    configure_logging(args.logging, args.log_file)
+    requirements_txt = Path(__file__).parent / "requirements.txt"
 
     try:
         download_moonshine(args.moonshine_models)

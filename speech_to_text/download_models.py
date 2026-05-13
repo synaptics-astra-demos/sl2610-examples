@@ -35,7 +35,7 @@ if __name__ == "__main__":
     )
     add_logging_args(parser)
     args = parser.parse_args()
-    configure_logging(args.logging)
+    configure_logging(args.logging, args.log_file)
 
     try:
         download_moonshine(args.moonshine_models)
