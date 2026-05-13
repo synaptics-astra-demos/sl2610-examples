@@ -159,10 +159,10 @@ The setup script asks which mode to enable:
 
 | Mode | What It Does | Launch |
 |------|-------------|--------|
-| **Kiosk** | Fullscreen on DSI/HDMI display, standalone | `python3 kiosk_dsi.py` |
+| **Display App** | Fullscreen on DSI/HDMI display, standalone | `python3 app.py` |
 | **Server** | Headless, stream to browser for monitoring | `python3 server.py` |
 
-#### Kiosk Mode (Standalone Installation)
+#### Display Mode (Standalone Installation)
 
 Renders directly to the attached DSI. Audio plays through the USB DAC. No laptop needed.
 
@@ -237,6 +237,16 @@ python3 server.py --video rtsp://192.168.1.100:554/stream
 python3 server.py --video /path/to/your/video.mp4
 ```
 
+### Seamless Looping (H.264 Elementary Streams)
+
+For a looping application, using standard MP4 files requires the entire application pipeline to briefly restart when the video ends. For perfectly seamless, infinite hardware looping with zero black frames, convert your MP4 to a raw H.264 elementary stream:
+
+```bash
+ffmpeg -i your_video.mp4 -vcodec copy -bsf h264_mp4toannexb your_video.h264
+```
+
+Then update `DEFAULT_LOCAL_VIDEO` in `app.py` to point to the `.h264` file. GStreamer will continuously loop the raw stream without ever restarting the compositor or dropping a frame.
+
 
 ### Swapping the Detection Model
 
@@ -262,9 +272,9 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 ## Manual Usage
 
 ```bash
-# Kiosk mode (DSI display, fullscreen)
-python3 kiosk_dsi.py
-python3 kiosk_dsi.py --video ../samples/jellyfish.mp4
+# Display mode (DSI display, fullscreen)
+python3 app.py
+python3 app.py --video ../samples/jellyfish.mp4
 
 # Server mode (headless, MJPEG stream)
 python3 server.py
@@ -282,7 +292,7 @@ python3 server.py --audio-driver alsa --alsa-device hw:0,0
 
 # Disable AI accompaniment
 python3 server.py --no-ai
-python3 kiosk_dsi.py --no-ai
+python3 app.py --no-ai
 
 ```
 
@@ -293,7 +303,7 @@ python3 kiosk_dsi.py --no-ai
 ```
 jellectronica
 ├── server.py                 # Headless server (MJPEG + WebSocket)
-├── kiosk_dsi.py              # Standalone DSI/HDMI kiosk display
+├── app.py                    # Standalone DSI/HDMI display
 ├── detector.py               # YOLOv8 — Torq NPU (primary) + ONNX CPU (fallback)
 ├── tracker.py                # Multi-object tracker with grid mapping
 ├── music_engine.py           # Audio engine (5 channels + effects)

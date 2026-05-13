@@ -135,7 +135,7 @@ When a tracked jellyfish moves from one cell to another, the corresponding note 
 
 ## Display Modes
 
-### Kiosk Mode (`kiosk_dsi.py`)
+### Display Mode (`app.py`)
 - Renders to the Waveshare 7" DSI display via GStreamer `waylandsink`
 - OpenCV draws detection overlay, converts to BGRx, pipes to GStreamer
 - AI Accompaniment visualization bar at the bottom of the display

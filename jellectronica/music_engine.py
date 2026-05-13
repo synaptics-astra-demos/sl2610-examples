@@ -69,6 +69,42 @@ NOTE_DURATIONS = {
     3: 2.0,     # Bass — sustained
 }
 
+import heapq
+from concurrent.futures import ThreadPoolExecutor
+
+class Scheduler:
+    """Lightweight centralized event scheduler to avoid thread creation overhead."""
+    def __init__(self):
+        self.events = []
+        self.lock = threading.Lock()
+        self.running = True
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def schedule(self, delay: float, func):
+        with self.lock:
+            heapq.heappush(self.events, (time.time() + delay, id(func), func))
+
+    def _run(self):
+        while self.running:
+            now = time.time()
+            task = None
+            with self.lock:
+                if self.events and self.events[0][0] <= now:
+                    task = heapq.heappop(self.events)[2]
+            if task:
+                try:
+                    task()
+                except Exception:
+                    pass
+            else:
+                time.sleep(0.01)
+
+    def stop(self):
+        self.running = False
+        self.thread.join(timeout=1.0)
+
+
 class MusicEngine:
     """Ambient music engine using SoftSynth (pure Python/NumPy).
 
@@ -83,7 +119,8 @@ class MusicEngine:
                  **kwargs):
         self.fs = None
         self._ready = False
-        self._note_off_timers: list[threading.Timer] = []
+        self._scheduler = Scheduler()
+        self._executor = ThreadPoolExecutor(max_workers=2)
         self._audio_driver = audio_driver
         self._alsa_device = alsa_device
         self._ai_enabled = ai_enabled
@@ -157,20 +194,24 @@ class MusicEngine:
         note = NOTE_GRID[row][col]
         duration = NOTE_DURATIONS.get(row, 0.5)
 
-        if row == 0:
-            self._play_arpeggio(col, duration)
-        elif row == 2:
-            self._play_chord(col, duration)
-        elif row == 3:
-            velocity = int(40 + 15 * (col / GRID_COLS))
-            self._play_note(2, note, velocity, duration)
-        else:
-            velocity = int(50 + 20 * (1 - row / GRID_ROWS))
-            self._play_note(0, note, velocity, duration)
+        def _do_trigger():
+            if not self._ready: return
+            if row == 0:
+                self._play_arpeggio(col, duration)
+            elif row == 2:
+                self._play_chord(col, duration)
+            elif row == 3:
+                velocity = int(40 + 15 * (col / GRID_COLS))
+                self._play_note(2, note, velocity, duration)
+            else:
+                velocity = int(50 + 20 * (1 - row / GRID_ROWS))
+                self._play_note(0, note, velocity, duration)
 
-        # Feed note to MelodyRNN for AI accompaniment
-        if self._jammer:
-            self._jammer.feed_note(note)
+            # Feed note to MelodyRNN for AI accompaniment
+            if self._jammer:
+                self._jammer.feed_note(note)
+
+        self._executor.submit(_do_trigger)
 
         return {
             "row": row, "col": col, "note": note,
@@ -216,19 +257,20 @@ class MusicEngine:
             self._clash_triggers_left = random.randint(2, 4) - 1
             self._clash_cooldown_end = now + random.uniform(3.0, 5.0)
 
-        # A quick glissando/chord in the pentatonic scale
-        base = random.choice([84, 88, 91]) # C6, E6, G6 approx
-        for i, val in enumerate([0, 4, 7]):
-            delay = i * 0.04
-            def play_hit(n=base+val, v=23-i*3):
-                self._play_note(4, n, v, 2.0)
-            if delay > 0:
-                t = threading.Timer(delay, play_hit)
-                t.daemon = True
-                t.start()
-                self._note_off_timers.append(t)
-            else:
-                play_hit()
+        def _do_clash():
+            if not self._ready: return
+            # A quick glissando/chord in the pentatonic scale
+            base = random.choice([84, 88, 91]) # C6, E6, G6 approx
+            for i, val in enumerate([0, 4, 7]):
+                delay = i * 0.04
+                def play_hit(n=base+val, v=23-i*3):
+                    self._play_note(4, n, v, 2.0)
+                if delay > 0:
+                    self._scheduler.schedule(delay, play_hit)
+                else:
+                    play_hit()
+        
+        self._executor.submit(_do_clash)
 
     def _play_note(self, channel: int, note: int, velocity: int, duration: float) -> None:
         """Play a note with automatic note-off after duration."""
@@ -241,10 +283,7 @@ class MusicEngine:
             if self.fs is not None:
                 self.fs.noteoff(channel, note)
 
-        timer = threading.Timer(duration, off)
-        timer.daemon = True
-        timer.start()
-        self._note_off_timers.append(timer)
+        self._scheduler.schedule(duration, off)
 
     def _play_arpeggio(self, col: int, base_duration: float) -> None:
         """Play arpeggiated pattern for top row."""
@@ -273,10 +312,7 @@ class MusicEngine:
                 self._play_note(1, n, v, 0.1)
 
             if delay > 0:
-                t = threading.Timer(delay, play)
-                t.daemon = True
-                t.start()
-                self._note_off_timers.append(t)
+                self._scheduler.schedule(delay, play)
             else:
                 play()
 
@@ -297,11 +333,9 @@ class MusicEngine:
             self._jammer = None
         if hasattr(self, '_evolver'):
             self._evolver.stop()
-        for timer in self._note_off_timers:
-            timer.cancel()
-        self._note_off_timers.clear()
+        self._scheduler.stop()
         if self.fs:
-            self.fs.delete()
+            self.fs.dispose()
             self.fs = None
         self._ready = False
 
