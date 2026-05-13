@@ -29,7 +29,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VENV_PY="${FC_DIR}/.venv/bin/python3"
+PARENT_DIR="$(cd "${FC_DIR}/.." && pwd)"
+VENV_PY="${PARENT_DIR}/.venv/bin/python3"
 SERVICE_NAME="functiongemma-demo.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 
@@ -60,7 +61,7 @@ fi
 
 if [ ! -x "${VENV_PY}" ]; then
     echo "venv python not found at ${VENV_PY}" >&2
-    echo "run scripts/setup.sh first to create the venv and install deps" >&2
+    echo "create the shared venv at ${PARENT_DIR}/.venv and run scripts/setup.sh first" >&2
     exit 1
 fi
 
