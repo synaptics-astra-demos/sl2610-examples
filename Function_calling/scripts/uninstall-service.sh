@@ -9,7 +9,7 @@ SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 log() { printf '\033[1;32m[uninstall-service]\033[0m %s\n' "$*"; }
 
 if [ "$(id -u)" -ne 0 ]; then
-    echo "must run as root (or under sudo)" >&2
+    echo "must run as root" >&2
     exit 1
 fi
 

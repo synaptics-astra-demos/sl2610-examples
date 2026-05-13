@@ -36,7 +36,7 @@ WHEELS_DIR="${FC_DIR}/../wheelhouse"
 LIBRARY_DIR="${FC_DIR}/../library"
 REQS="${FC_DIR}/requirements.txt"
 
-GGUF_FILENAME="functiongemma-physical-ai-v7-Q5_K_M.gguf"
+GGUF_FILENAME="functiongemma-physical-ai-v9-Q5_K_M.gguf"
 HF_BASE="https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main"
 GGUF_URL="${HF_BASE}/${GGUF_FILENAME}"
 MOONSHINE_HF_BASE="https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq/resolve/main"
@@ -122,12 +122,8 @@ if [ "${VOICE}" -eq 1 ]; then
     fi
 
     if [ -f "${PORTAUDIO_TGZ}" ]; then
-        log "extracting portaudio libs into / (needs sudo or root)"
-        if [ "$(id -u)" -eq 0 ]; then
-            tar -xzf "${PORTAUDIO_TGZ}" -C /
-        else
-            sudo tar -xzf "${PORTAUDIO_TGZ}" -C /
-        fi
+        log "extracting portaudio libs into / (needs root)"
+        tar -xzf "${PORTAUDIO_TGZ}" -C /
     else
         warn "portaudio_libs.tgz missing at ${PORTAUDIO_TGZ}; mic stream will fail unless libportaudio.so.2 is installed system-wide"
     fi

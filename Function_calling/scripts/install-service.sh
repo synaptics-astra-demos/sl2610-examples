@@ -16,11 +16,11 @@
 #   AFTER installing, re-run this script to pick it up.
 #
 # Usage:
-#   sudo bash scripts/install-service.sh                       # default flags (+ WLED auto-detect)
-#   sudo bash scripts/install-service.sh --wled-port /dev/ttyACM0   # force WLED port
-#   sudo bash scripts/install-service.sh --voice stub
-#   sudo bash scripts/install-service.sh --no-enable           # install but don't enable
-#   sudo bash scripts/install-service.sh --no-start            # enable but don't start now
+#   bash scripts/install-service.sh                       # default flags (+ WLED auto-detect)
+#   bash scripts/install-service.sh --wled-port /dev/ttyACM0   # force WLED port
+#   bash scripts/install-service.sh --voice stub
+#   bash scripts/install-service.sh --no-enable           # install but don't enable
+#   bash scripts/install-service.sh --no-start            # enable but don't start now
 #
 # Re-running overwrites the existing unit. To remove the service, use
 # scripts/uninstall-service.sh.
@@ -54,7 +54,7 @@ done
 log() { printf '\033[1;32m[install-service]\033[0m %s\n' "$*"; }
 
 if [ "$(id -u)" -ne 0 ]; then
-    echo "must run as root (or under sudo) to write ${SERVICE_PATH}" >&2
+    echo "must run as root to write ${SERVICE_PATH}" >&2
     exit 1
 fi
 

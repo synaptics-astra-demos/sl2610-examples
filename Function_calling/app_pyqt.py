@@ -26,7 +26,7 @@ logging.basicConfig(
 
 from PyQt5.QtWidgets import QApplication
 
-from chat_window import ChatWindow
+from chat_window import AlarmSignals, ChatWindow
 from cpu_governor import ensure_performance_governor
 from dispatcher import Dispatcher
 from hardware import HardwareDevice
@@ -38,7 +38,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "../models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
+    / "../models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
 )
 
 
@@ -73,7 +73,7 @@ def main() -> int:
         "--moonshine-dir",
         type=Path,
         help="Directory holding Moonshine VMFB artifacts. Defaults to "
-             "<repo>/models/Synaptics/moonshine-tiny-bf16-torq/ when --voice=moonshine.",
+             "<repo>/models/moonshine/ when --voice=moonshine.",
     )
     p.add_argument(
         "--screenshot-dir",
@@ -103,7 +103,8 @@ def main() -> int:
                 "systemd unit) to drive it.",
                 ", ".join(present), present[0],
             )
-    hardware = HardwareDevice(wled=wled)
+    alarm_signals = AlarmSignals()
+    hardware = HardwareDevice(wled=wled, on_async_event=alarm_signals.fired.emit)
     dispatcher = Dispatcher(hardware)
 
     voice = None
@@ -120,6 +121,7 @@ def main() -> int:
         dispatcher=dispatcher,
         voice=voice,
         screenshot_dir=args.screenshot_dir,
+        alarm_signals=alarm_signals,
     )
     if args.fullscreen:
         win.showFullScreen()

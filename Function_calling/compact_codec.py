@@ -3,9 +3,9 @@
 The model was fine-tuned to emit tool calls in a compact form (~10-20 tokens
 per call, ~5x faster decode than canonical JSON on the 2-core A55):
 
-    <tool_2>("red")<end>          -> set_led_color(color="red")
-    <tool_5>("beep")<end>         -> play_buzzer(pattern="beep")
-    <tool_9>("hello there")<end>  -> respond(message="hello there")
+    <tool_0>("red","on")<end>     -> set_status_led(led="red", state="on")
+    <tool_3>("beep")<end>         -> play_buzzer(pattern="beep")
+    <tool_7>("hello there")<end>  -> respond(message="hello there")
 
 Argument order is positional: required params first, then optional params in
 schema declaration order. Trailing nulls are trimmed.
@@ -22,16 +22,14 @@ from typing import Any
 TOOLS_PATH = Path(__file__).resolve().parent / "tools.json"
 
 TOKEN_TO_NAME: dict[str, str | None] = {
-    "<tool_0>": "turn_on_lights",
-    "<tool_1>": "turn_off_lights",
-    "<tool_2>": "set_led_color",
-    "<tool_3>": "blink_lights",
-    "<tool_4>": "set_neopixel_pattern",
-    "<tool_5>": "play_buzzer",
-    "<tool_6>": "set_alarm",
-    "<tool_7>": "cancel_alarm",
-    "<tool_8>": "get_system_status",
-    "<tool_9>": "respond",
+    "<tool_0>": "set_status_led",
+    "<tool_1>": "blink_status_led",
+    "<tool_2>": "set_neopixel_effect",
+    "<tool_3>": "play_buzzer",
+    "<tool_4>": "set_alarm",
+    "<tool_5>": "cancel_alarm",
+    "<tool_6>": "get_system_status",
+    "<tool_7>": "respond",
     "<tool_none>": None,
 }
 
