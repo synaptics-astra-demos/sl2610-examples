@@ -61,6 +61,30 @@ If offline
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
+## Device Configuration
+
+Some demos require kernel modules or display configuration to be installed on the device. A unified installer script is provided:
+
+```bash
+sudo ./configs/install_configs.sh <target> [target ...]
+```
+
+| Target | Description |
+|--------|-------------|
+| `kernel` | Update the NPU kernel module (`syna_npu.ko`) |
+| `usb_cdc` | Install USB CDC/serial modules (`cdc-acm`, `usbserial`, `ch341`) |
+| `portrait_setup` | Configure portrait display orientation (weston) |
+| `all` | Install all of the above |
+
+Examples:
+```bash
+sudo ./configs/install_configs.sh kernel
+sudo ./configs/install_configs.sh usb_cdc portrait_setup
+sudo ./configs/install_configs.sh all
+```
+
+The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `sudo ./configs/patch_usb_cdc.sh`).
+
 ## Object Detection
 
 Follow the steps in /object_detection/README.md to see how to perform object detection using YoloV8 on a single image. 
