@@ -17,7 +17,7 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 gemma_translate
 ├── app_translate.py
 ├── cli_translate.py
-├── download_models.py
+├── setup_demo.py
 ├── requirements.txt
 ├── README.md
 └── fonts/
@@ -91,7 +91,7 @@ pip install --no-index --find-links=../wheelhouse -r requirements.txt
 Download the Moonshine and Gemma3 model files from HuggingFace:
 
 ```bash
-python download_models.py
+python setup_demo.py
 ```
 
 **Optional:** If you plan to use the llama.cpp backend (`--use-llama-gemma`), download the GGUF model as well:

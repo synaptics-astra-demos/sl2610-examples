@@ -5,7 +5,7 @@
 
 Usage::
 
-    python download_models.py
+    python setup_demo.py
 """
 
 import sys
@@ -16,13 +16,26 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import logging
 
 from utils.moonshine import download_moonshine
+from utils.demo_utils import run_demo_setup_cli
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speech_to_text.setup")
+
+
+def setup_speech_to_text(
+    moonshine_models: list[str] | None = None,
+):
+
+    def _download_models():
+        download_moonshine(moonshine_models)
+
+    requirements_txt = Path(__file__).parent / "requirements.txt"
+    run_demo_setup_cli(_download_models, requirements_txt, logger)
 
 
 if __name__ == "__main__":
     import argparse
     from utils.log import add_logging_args, configure_logging
+    from pathlib import Path
 
     parser = argparse.ArgumentParser(
         description="Download Moonshine model files.",
@@ -36,11 +49,4 @@ if __name__ == "__main__":
     add_logging_args(parser)
     args = parser.parse_args()
     configure_logging(args.logging, args.log_file)
-
-    try:
-        download_moonshine(args.moonshine_models)
-    except Exception as e:
-        logger.error("%s", e)
-        if e.__cause__:
-            logger.error("Caused by: %s", e.__cause__)
-        sys.exit(1)
+    setup_speech_to_text(args.moonshine_models)

@@ -15,7 +15,7 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 ## Project Structure
 ```
 speech_to_text
-├── download_models.py
+├── setup_demo.py
 ├── live_caption.py
 ├── README.md
 └── requirements.txt
@@ -85,7 +85,7 @@ pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_2
 Download the Moonshine model files from HuggingFace:
 
 ```bash
-python download_models.py
+python setup_demo.py
 ```
 
 Extract the audio libraries
