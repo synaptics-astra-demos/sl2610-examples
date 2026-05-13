@@ -8,10 +8,10 @@
 #   1. Create the venv at Function_calling/.venv (--system-site-packages so the
 #      OOBE image's PyQt5/numpy/etc. carry through).
 #   2. Install requirements.txt from PyPI (or --offline, from wheelhouse/).
-#   3. Download the v7 GGUF from HuggingFace into models/.
+#   3. Download the FunctionGemma GGUF from HuggingFace into models/.
 #   4. With --voice: install torq_runtime wheel (--no-deps), extract
-#      library/portaudio_libs.tgz into /, and download the four Moonshine
-#      VMFB artifacts from HuggingFace into models/moonshine/.
+#      library/portaudio_libs.tgz into /, and download the Moonshine
+#      artifacts from HuggingFace into models/Synaptics/moonshine-tiny-bf16-torq/.
 #
 # Usage (from anywhere):
 #   bash Function_calling/scripts/setup.sh                  # online install, no voice

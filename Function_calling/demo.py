@@ -3,10 +3,10 @@
 Two modes:
 
     # One-shot
-    python3 demo.py --prompt "Turn the lights red and beep twice"
+    python3 demo.py --prompt "Turn the red light on"
 
-    # Interactive REPL (model stays loaded; turn 2+ is sub-second after the
-    # first turn pays the one-time tool-declaration prefill of ~45-50 s)
+    # Interactive REPL (model loads in ~3.6s, warmup ~1.1s, then every
+    # turn — including the first — settles to ~1-2s.)
     python3 demo.py
 
 By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``

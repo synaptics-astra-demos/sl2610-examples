@@ -1,6 +1,6 @@
 """llama-cpp-python runtime for the fine-tuned FunctionGemma 270M model.
 
-v9 Octopus v2 inference. No tool schema is injected into the prompt — the
+Octopus v2 inference. No tool schema is injected into the prompt — the
 model routes from its learned functional-token weights. The prompt for each
 turn is just::
 
@@ -12,14 +12,12 @@ and the model emits::
 
     <tool_N>(arg1,arg2,...)<end>
 
-which the compact codec parses back into ``ToolCall`` objects.
+which the compact codec parses back into ``ToolCall`` objects. The on-device
+prompt is ~13 tokens, keeping cold prefill on the 2-core A55 around 0.5 s.
 
-Why no schema in the prompt: v7 shipped the FunctionGemma developer turn
-(~1088 prompt tokens) into every request, which cost ~57s of cold prefill
-on the 2-core A55. v9 retraining drops that prefill to ~0.5s by training
-the model to route without the schema present (SmartPanel pattern). The
-schema in ``tools.json`` is still the source of truth for the dispatcher's
-arg validation and is embedded as GGUF metadata for schema-drift checks.
+``tools.json`` is the source of truth for the dispatcher's arg validation
+and is embedded as GGUF metadata for schema-drift checks. It is not loaded
+into the inference prompt.
 """
 
 from __future__ import annotations

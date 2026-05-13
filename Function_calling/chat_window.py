@@ -409,8 +409,8 @@ class ChatWindow(QMainWindow):
         if alarm_signals is not None:
             alarm_signals.fired.connect(self._on_alarm_fired)
 
-        # Loading state is shown during the one-time ~50s warmup so the user
-        # sees what's happening instead of facing a frozen Send button.
+        # Loading state is shown during the ~5s model load + warmup so the
+        # user sees what's happening instead of facing a frozen Send button.
         self._warmup_signals = WarmupSignals()
         self._warmup_signals.done.connect(self._on_warmup_done)
         self._warmup_signals.failed.connect(self._on_warmup_failed)

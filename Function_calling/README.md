@@ -16,7 +16,7 @@
 
 A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact tool calls that dispatch to real HAT hardware: status LEDs (sysfs), a piezo buzzer (libgpiod), and an optional Adafruit Mini Sparkle Motion driving a 48-pixel WS2812B Neopixel ring over USB serial.
 
-**Why it's fast:** trained Octopus-v2 style — one functional token per tool, **no tool schema in the prompt**. The on-device prompt is ~13 tokens vs ~1088 for schema-in-prompt builds. Cold prefill drops from **57.3 s → 0.55 s (105×)** on the 2-core Cortex-A55.
+**Why it's fast:** trained Octopus-v2 style — one functional token per tool, **no tool schema in the prompt**. The on-device prompt is ~13 tokens, and cold prefill on the 2-core Cortex-A55 lands at **~0.55 s** (synthetic benchmark).
 
 **End-to-end on the board:** model load ~3.6 s, warmup ~1.1 s, then every user turn — including the first — runs in **~1–2 s**. Sub-2 s is the norm, not the exception.
 
@@ -349,7 +349,7 @@ Every runtime knob is a CLI flag — no env vars to remember, no config files to
 | `get_system_status` | `metric?` | CPU / memory / temperature / NPU |
 | `respond` | `message` | Natural-language reply when no tool fits |
 
-The full schema with descriptions lives in `tools.json`. v9 keeps v8's 8-tool surface (surface-specific LED tools — no `turn_on_lights` / `set_led_color` ambiguity) and switches the training pipeline to Octopus v2: functional tokens with **no tool schema in the prompt**. The schema file remains the source of truth for dispatcher arg validation and is embedded as GGUF metadata for schema-drift checks; it's **not** injected into the inference prompt.
+The full schema with descriptions lives in `tools.json`. The 8 tools cover the entire physical-AI surface — surface-specific LED control (no ambiguity between "the LEDs" and "the ring"), neopixel effects, buzzer patterns, alarms, system status, and a natural-language fallback. The model is trained Octopus v2 style: functional tokens with **no tool schema in the prompt**. The schema file remains the source of truth for dispatcher arg validation and is embedded as GGUF metadata for schema-drift checks; it's **not** injected into the inference prompt.
 
 ### Surface-keyword routing
 
@@ -452,7 +452,7 @@ Hosted on HuggingFace: [`BrinqAI/functiongemma-270m-physical-ai`](https://huggin
 - **Dataset:** 6,127 train / 1,339 eval examples — Haiku-authored phrasing templates × deterministic entity pools, with light Moonshine-flavored ASR-noise augmentation
 - **Surface:** 8 tools + `respond()` fallback (training data includes multi-tool routines, but on-device dispatch is unreliable for now — see [Known model behaviors](#known-model-behaviors))
 - **Held-out smoke test:** 29/29 (100%) on a curated routing benchmark; real-world prompt distribution is wider — see [Known model behaviors](#known-model-behaviors)
-- **Cold prefill:** 0.55 s on the SL2619 2-core A55 (105× faster than the v7 schema-in-prompt build, synthetic benchmark)
+- **Cold prefill:** 0.55 s on the SL2619 2-core A55 (synthetic benchmark)
 
 The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [`Synaptics/moonshine-tiny-bf16-torq`](https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq) under the `moonshine/` subdir, fetched automatically by `scripts/setup.sh --voice`.
 

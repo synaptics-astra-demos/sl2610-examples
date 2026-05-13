@@ -1,6 +1,6 @@
 {
   "version": "0.4.0",
-  "description": "Compressed token map for FunctionGemma CPU inference on SL2619. v9: 8 tools (set_status_led, blink_status_led, set_neopixel_effect, play_buzzer, set_alarm, cancel_alarm, get_system_status, respond) + <end> terminator. Trained Octopus v2 style — functional tokens are the entire output vocabulary the model uses for routing; the tool schema (tools.json) is NOT loaded into the inference prompt. v9 drops the unused <tool_none> sentinel that v8's training pipeline reserved but never emitted.",
+  "description": "Compressed token map for FunctionGemma CPU inference on SL2619. 8 tools (set_status_led, blink_status_led, set_neopixel_effect, play_buzzer, set_alarm, cancel_alarm, get_system_status, respond) + <end> terminator. Trained Octopus v2 style — functional tokens are the entire output vocabulary the model uses for routing; the tool schema (tools.json) is NOT loaded into the inference prompt.",
   "tokens": {
     "set_status_led": "<tool_0>",
     "blink_status_led": "<tool_1>",
