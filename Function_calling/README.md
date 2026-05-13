@@ -246,7 +246,7 @@ python3 app_pyqt.py --voice moonshine
 python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-`scripts/setup.sh --voice` installs the entire voice toolchain in one shot: `sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, the `torq_runtime` wheel, five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer — fetched from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace), and `libportaudio.so.2` (extracted from `library/portaudio_libs.tgz` — the OOBE image doesn't ship it).
+`scripts/setup.sh --voice` installs the entire voice toolchain in one shot: `sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, the `torq_runtime` wheel, five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer — fetched from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace), and `libportaudio.so.2` (extracted from the repo-root `../library/portaudio_libs.tgz` shared across examples — the OOBE image doesn't ship it).
 
 If `tokenizer.json` is ever missing at runtime, the ASR worker falls back to fetching it from `UsefulSensors/moonshine-tiny`. For fully offline use after a partial install:
 
@@ -480,8 +480,6 @@ Function_calling/
 │   ├── asr.py             # StubASR + MoonshineASR (delegates to utils.speech)
 │   ├── pipeline.py        # start/stop/callback API on top of utils.speech
 │   └── __init__.py        # make_voice_pipeline factory
-├── library/
-│   └── portaudio_libs.tgz # libportaudio.so.2 (extracted by setup.sh --voice)
 ├── scripts/
 │   ├── setup.sh           # first-time install
 │   ├── install-service.sh # systemd autostart installer
@@ -491,6 +489,7 @@ Function_calling/
 
 # Shared with the rest of the repo:
 ../utils/speech.py         # mic capture + silero VAD + Moonshine transcriber
+../library/                # shared native libs (portaudio_libs.tgz, etc.)
 ../wheelhouse/             # pre-built aarch64 wheels (populated by setup.sh)
 ../models/                 # GGUF + Moonshine artifacts (populated by setup.sh)
   functiongemma-physical-ai-v9-Q5_K_M.gguf       # core demo
