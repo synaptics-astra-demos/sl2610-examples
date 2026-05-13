@@ -36,10 +36,10 @@ from gemma_translate.common_args import (
     add_common_translation_args,
     resolve_gemma_model_path,
 )
+from gemma_translate.translation import GemmaTranslationService, TranslationResult
 from utils.log import configure_logging
 from utils.npu import enable_npu_clock
 from utils.stats import InferenceStats
-from utils.translation import GemmaTranslationService, TranslationResult
 
 if TYPE_CHECKING:
     from utils.speech import SpeechRecognizer, SpeechTranscript
