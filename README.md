@@ -69,6 +69,18 @@ Follow the steps in /object_detection/README.md to see how to perform object det
 
 Follow the steps in /image_classification/README.md to see how to perform image classification using MobileNetV2 on a single image. 
 
+## Function Calling
+
+See [/Function_calling/README.md](Function_calling/README.md) for the on-device voice + text function-calling demo. A fine-tuned FunctionGemma 270M LLM maps natural-language commands to tool calls and dispatches them to real HAT hardware (status LEDs, piezo buzzer, and an optional WLED-driven Neopixel ring).
+
+```bash
+cd Function_calling
+bash scripts/setup.sh [--voice]                  # venv + deps + GGUF (+ voice toolchain)
+bash scripts/install-service.sh                  # systemd autostart of the PyQt UI
+```
+
+`demo.py` and `app_pyqt.py` accept all runtime configuration as CLI flags: `--model`, `--wled-port`, `--voice`, `--mic`, `--moonshine-dir`, `--screenshot-dir`, `--fullscreen`.
+
 ## Speech To Text (Moonshine)
 
 Follow the steps in /speech_to_text/README.md to see how to perform speed-to-text function using Moonshine Model with a microphone. 

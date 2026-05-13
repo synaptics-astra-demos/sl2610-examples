@@ -1,6 +1,6 @@
 """Loading panel shown inside the conversation-log card while the model warms up.
 
-Replaces the empty-state title during the initial ~50s prefill. ``start()`` /
+Replaces the empty-state title during the ~5s model load + warmup. ``start()`` /
 ``stop()`` control the spinner + progress-bar animations; the parent window
 ticks ``set_remaining_seconds`` every second.
 """
@@ -111,13 +111,13 @@ class ModelLoadingPanel(QWidget):
         meta_row.setContentsMargins(0, 2, 0, 0)
         meta_inner = QHBoxLayout()
         meta_inner.setSpacing(0)
-        self._remaining = QLabel("~ 50s remaining")
+        self._remaining = QLabel("~ 5s remaining")
         self._remaining.setStyleSheet(
             f"background: transparent; color: {P.text_secondary};"
             f" font-family: {T.mono}; font-size: 10px;"
         )
         self._remaining.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        stage = QLabel("mmap weights · 312 MB")
+        stage = QLabel("mmap weights · 248 MB")
         stage.setStyleSheet(
             f"background: transparent; color: {P.text_muted};"
             f" font-family: {T.mono}; font-size: 10px;"

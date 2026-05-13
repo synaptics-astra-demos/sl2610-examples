@@ -154,6 +154,33 @@ class _ToolBubble(QFrame):
             layout.addWidget(result_lbl)
 
 
+class _AlarmBubble(QFrame):
+    def __init__(self, label: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setStyleSheet(
+            f"_AlarmBubble {{ background: {P.danger_light}; "
+            f"border: 1px solid #fca5a5; border-radius: 8px; }}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
+
+        head = QHBoxLayout()
+        head.setSpacing(7)
+        head.addWidget(_chip("ALARM", fg=P.danger, bg=P.bg_secondary, border="#fecaca"))
+        head.addStretch(1)
+        layout.addLayout(head)
+
+        body = QLabel(label)
+        body.setWordWrap(True)
+        body.setStyleSheet(
+            f"background: transparent; font-size: 13px; "
+            f"font-weight: 600; color: {P.danger};"
+        )
+        layout.addWidget(body)
+
+
 class _AssistantBubble(QFrame):
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -353,6 +380,11 @@ class CommandLog(QFrame):
         self._remove_empty_state()
         step = ToolStep(name="(backend)", status="error", error=text)
         self._insert_widget(_ToolBubble(step), margin_left=14)
+
+    def append_alarm(self, label: str) -> None:
+        self._remove_empty_state()
+        self._stick_to_bottom = True
+        self._insert_widget(_AlarmBubble(label), margin_left=14)
 
     def show_thinking(self) -> None:
         if self._thinking_wrapper is not None:

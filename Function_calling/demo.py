@@ -3,10 +3,10 @@
 Two modes:
 
     # One-shot
-    python3 demo.py --prompt "Turn the lights red and beep twice"
+    python3 demo.py --prompt "Turn the red light on"
 
-    # Interactive REPL (model stays loaded; turn 2+ is sub-second after the
-    # first turn pays the one-time tool-declaration prefill of ~45-50 s)
+    # Interactive REPL (model loads in ~3.6s, warmup ~1.1s, then every
+    # turn — including the first — settles to ~1-2s.)
     python3 demo.py
 
 By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
@@ -49,7 +49,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "../models" / "functiongemma-physical-ai-v7-Q5_K_M.gguf"
+    / "../models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"
 HISTORY_LIMIT = 1000
@@ -75,12 +75,15 @@ Slash commands:
 Anything else is sent to the model as a prompt."""
 
 _TOOLS_TEXT = """\
-Available tools (v7, 10 functions):
-  turn_on_lights                  Turn all LEDs on (default white)
-  turn_off_lights                 Turn all LEDs off
-  set_led_color <color>           Set RGB color (target / brightness optional)
-  blink_lights [count] [color]    Discrete blink pattern
-  set_neopixel_pattern <pattern>  Animated ring (rainbow, chase, fade, pulse, sparkle, solid)
+Available tools (v9, 8 functions):
+  set_status_led <led> <state>    HAT LED on/off (led: red|green|blue|all)
+  blink_status_led <led>          Blink HAT LED N times (count/speed optional)
+  set_neopixel_effect <effect>    Ring effect: solid, pulse, fade, chase,
+                                    rainbow, sparkle, off, aurora, plasma,
+                                    comet, twinkle, fireworks, police,
+                                    heartbeat, loading, lightning, glitter,
+                                    fire, sunrise. color/palette/speed/
+                                    intensity optional.
   play_buzzer <pattern>           beep, double_beep, chirp, siren, alarm, success, error
   set_alarm <duration|time>       Schedule alarm (label optional)
   cancel_alarm [label]            Cancel one or all alarms
@@ -258,7 +261,7 @@ def main() -> None:
         "--moonshine-dir",
         type=Path,
         help="Directory holding Moonshine VMFB artifacts. Defaults to "
-             "<repo>/models/Synaptics/moonshine-tiny-bf16-torq/ when --voice=moonshine.",
+             "<repo>/models/moonshine/ when --voice=moonshine.",
     )
     args = p.parse_args()
 
@@ -301,7 +304,7 @@ def main() -> None:
         # the audio thread blocks at _on_voice_text rather than queuing
         # 50 s of buffered model.generate calls.
         with turn_lock, _Spinner(
-            "Warming up (one-time ~50s prefill on the 2-core A55)"
+            "Warming up"
         ):
             model.generate("hello")
 

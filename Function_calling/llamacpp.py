@@ -1,18 +1,30 @@
 """llama-cpp-python runtime for the fine-tuned FunctionGemma 270M model.
 
-Builds the same prompt shape Synaptics' ``agentic/function_gemma_astra.py``
-uses (raw Gemma turn format with ``<start_function_declaration>`` blocks),
-runs llama-cpp inference on the 2-core A55 CPU, and parses the compact
-tool-call format the model was fine-tuned to emit.
+Octopus v2 inference. No tool schema is injected into the prompt — the
+model routes from its learned functional-token weights. The prompt for each
+turn is just::
+
+    <start_of_turn>user
+    {user_text}<end_of_turn>
+    <start_of_turn>model
+
+and the model emits::
+
+    <tool_N>(arg1,arg2,...)<end>
+
+which the compact codec parses back into ``ToolCall`` objects. The on-device
+prompt is ~13 tokens, keeping cold prefill on the 2-core A55 around 0.5 s.
+
+``tools.json`` is the source of truth for the dispatcher's arg validation
+and is embedded as GGUF metadata for schema-drift checks. It is not loaded
+into the inference prompt.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from compact_codec import ToolCall, parse_compact
 
@@ -33,7 +45,7 @@ class FunctionGemmaModel:
         self,
         model_path: str,
         n_threads: int = 2,
-        n_ctx: int = 2048,
+        n_ctx: int = 1024,
         max_tokens: int = 64,
         cache_bytes: int = 256 * 1024 * 1024,
     ) -> None:
@@ -47,10 +59,9 @@ class FunctionGemmaModel:
             n_threads=n_threads,
             verbose=False,
         )
-        # Cache the tool-declaration prefix so turn 2+ skips ~1200 token
-        # prefill on the 2-core A55 (drops cold ~48s -> warm ~1-3s).
+        # Cache the user-turn prefix so turn 2+ skips re-tokenization. Tiny
+        # win at v9's ~13-token prompts, but the call is cheap and harmless.
         self.llm.set_cache(LlamaRAMCache(capacity_bytes=cache_bytes))
-        self._tools: list[dict[str, Any]] = json.loads(TOOLS_PATH.read_text())["tools"]
 
     def generate(self, user_text: str) -> GenerationResult:
         prompt = self._build_prompt(user_text)
@@ -83,41 +94,11 @@ class FunctionGemmaModel:
             latency_ms=latency_ms,
         )
 
-    def _build_prompt(self, user_text: str) -> str:
-        declarations = [self._tool_declaration(t) for t in self._tools]
-        system = (
-            "You are a model that can do function calling with the following functions\n"
-            + "\n".join(declarations)
-        )
-        turns = [("developer", system), ("user", user_text)]
-        prompt = "".join(
-            f"<start_of_turn>{role}\n{content}\n<end_of_turn>\n" for role, content in turns
-        )
-        return prompt + "<start_of_turn>model\n"
-
     @staticmethod
-    def _tool_declaration(tool: dict[str, Any]) -> str:
-        fn = tool["function"]
-        name = fn["name"]
-        desc = fn.get("description", "")
-        params = fn.get("parameters", {})
-        props = params.get("properties", {})
-        required = params.get("required", [])
-
-        props_str = ",".join(
-            f"{k}:{{description:<escape>{v.get('description', '')}<escape>,"
-            f"type:<escape>{v.get('type', 'STRING')}<escape>}}"
-            for k, v in props.items()
-        )
-        req_str = ",".join(f"<escape>{r}<escape>" for r in required)
-
+    def _build_prompt(user_text: str) -> str:
+        """v9 Octopus v2 prompt — user turn only, no developer/tools turn."""
         return (
-            "<start_function_declaration>\n"
-            f"declaration:{name}{{"
-            f"description:<escape>{desc}<escape>,"
-            f"parameters:{{properties:{{{props_str}}},"
-            f"required:[{req_str}],"
-            f"type:<escape>OBJECT<escape>"
-            f"}}}}\n"
-            "<end_function_declaration>"
+            f"<start_of_turn>user\n"
+            f"{user_text}<end_of_turn>\n"
+            f"<start_of_turn>model\n"
         )
