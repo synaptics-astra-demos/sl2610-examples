@@ -44,14 +44,16 @@ class DependencyChecker:
         requirements_txt: str | Path | None = None,
         version_map: dict[str, str] | None = None,
         logger: logging.Logger | None = None,
+        source: str | None = None,
     ):
         self.requirements_txt = Path(requirements_txt) if requirements_txt else None
         self.version_map = version_map or {}
         self._logger = logger or _logger
+        self._source = source
         self._missing: list[str] = []
         self._problems: list[str] = []
 
-    def _check_pkg_version(self, pkg: str, specifier: str, source: str):
+    def _check_pkg_version(self, pkg: str, specifier: str, source: str | None = None):
         """Check a single package's version against a specifier string.
 
         Appends to *_missing* or *_problems* as appropriate.
@@ -59,6 +61,7 @@ class DependencyChecker:
         from packaging.specifiers import SpecifierSet
         from packaging.version import Version
 
+        source = source or "version requirements"
         try:
             installed_raw = importlib.metadata.version(pkg)
         except importlib.metadata.PackageNotFoundError:
@@ -97,7 +100,7 @@ class DependencyChecker:
     def _check_versions(self):
         """Verify packages in version_map satisfy their specifiers."""
         for pkg, specifier in self.version_map.items():
-            self._check_pkg_version(pkg, specifier, "version_map")
+            self._check_pkg_version(pkg, specifier, self._source)
 
     def run(self):
         """Run all checks.  Raises on first category of failure."""
@@ -117,6 +120,7 @@ def run_demo_setup(
     logger: logging.Logger | None = None,
     *,
     version_map: dict[str, str] | None = None,
+    demo_name: str | None = None,
 ):
     """Run *download_fn* after verifying that *requirements_txt* is satisfied.
 
@@ -126,9 +130,9 @@ def run_demo_setup(
     if requirements_txt is not None:
         requirements_txt = Path(requirements_txt)
         if requirements_txt.exists():
-            DependencyChecker(requirements_txt, version_map, logger).run()
+            DependencyChecker(requirements_txt, version_map, logger, demo_name).run()
     elif version_map:
-        DependencyChecker(requirements_txt, version_map, logger).run()
+        DependencyChecker(requirements_txt, version_map, logger, demo_name).run()
     download_fn()
 
 
@@ -138,13 +142,14 @@ def run_demo_setup_cli(
     logger: logging.Logger | None = None,
     *,
     version_map: dict[str, str] | None = None,
+    demo_name: str | None = None,
 ):
     """CLI wrapper around :func:`run_demo_setup` that logs errors and exits."""
     logger = logger or _logger
     if requirements_txt is not None:
         requirements_txt = Path(requirements_txt)
     try:
-        run_demo_setup(download_fn, requirements_txt, logger, version_map=version_map)
+        run_demo_setup(download_fn, requirements_txt, logger, version_map=version_map, demo_name=demo_name)
     except IncompatibleVersionError as e:
         logger.error("%s", e)
         sys.exit(1)
