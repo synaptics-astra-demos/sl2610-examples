@@ -17,8 +17,22 @@ import logging
 
 from utils.moonshine import download_moonshine
 from utils.gemma import download_gemma3
+from utils.demo_utils import run_demo_setup_cli
 
 logger = logging.getLogger("gemma_translate.setup")
+
+
+def setup_gemma_translate(
+    moonshine_models: list[str] | None = None,
+    gemma3_models: list[str] | None = None
+):
+
+    def _download_models():
+        download_moonshine(moonshine_models)
+        download_gemma3(gemma3_models)
+
+    requirements_txt = Path(__file__).parent / "requirements.txt"
+    run_demo_setup_cli(_download_models, requirements_txt, logger)
 
 
 if __name__ == "__main__":
@@ -44,13 +58,4 @@ if __name__ == "__main__":
     add_logging_args(parser)
     args = parser.parse_args()
     configure_logging(args.logging, args.log_file)
-    requirements_txt = Path(__file__).parent / "requirements.txt"
-
-    try:
-        download_moonshine(args.moonshine_models)
-        download_gemma3(args.gemma3_models)
-    except Exception as e:
-        logger.error("%s", e)
-        if e.__cause__:
-            logger.error("Caused by: %s", e.__cause__)
-        sys.exit(1)
+    setup_gemma_translate(args.moonshine_models, args.gemma3_models)
