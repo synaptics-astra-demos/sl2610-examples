@@ -47,26 +47,29 @@ def check_requirements(requirements_txt: str | Path, logger: logging.Logger | No
 
 def run_demo_setup(
     download_fn: Callable[[], None],
-    requirements_txt: str | Path,
+    requirements_txt: str | Path | None = None,
     logger: logging.Logger | None = None,
 ):
     """Run *download_fn* after verifying that *requirements_txt* is satisfied.
 
     Raises ``MissingRequirementsError`` or whatever *download_fn* raises.
     """
-    requirements_txt = Path(requirements_txt)
-    check_requirements(requirements_txt, logger)
+    if requirements_txt is not None:
+        requirements_txt = Path(requirements_txt)
+        if requirements_txt.exists():
+            check_requirements(requirements_txt, logger)
     download_fn()
 
 
 def run_demo_setup_cli(
     download_fn: Callable[[], None],
-    requirements_txt: str | Path,
+    requirements_txt: str | Path | None = None,
     logger: logging.Logger | None = None,
 ):
     """CLI wrapper around :func:`run_demo_setup` that logs errors and exits."""
     logger = logger or _logger
-    requirements_txt = Path(requirements_txt)
+    if requirements_txt is not None:
+        requirements_txt = Path(requirements_txt)
     try:
         run_demo_setup(download_fn, requirements_txt, logger)
     except MissingRequirementsError as e:
