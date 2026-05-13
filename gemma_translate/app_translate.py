@@ -12,8 +12,9 @@ import time
 from typing import TYPE_CHECKING
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "UI"))
 
-from PyQt5.QtCore import QObject, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QEvent, QObject, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import (
     QApplication,
@@ -21,14 +22,15 @@ from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
+    QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStyle,
     QVBoxLayout,
     QWidget,
 )
+
+from mic_button import MicButton
 
 from gemma_translate.common_args import (
     LANGUAGES,
@@ -160,7 +162,7 @@ class TranslationWorker(threading.Thread):
         final_status = "Stopped"
         try:
             with self.recognizer:
-                self.window.update_status("Listening")
+                self.window.update_status("Active")
                 logger.info("Audio worker initialized")
                 while not self.stop_event.is_set():
                     transcript = self.recognizer.listen_once(stop_event=self.stop_event)
@@ -176,6 +178,8 @@ class TranslationWorker(threading.Thread):
             self.window.update_status(final_status)
 
     def _accept_transcript(self, transcript: "SpeechTranscript") -> bool:
+        if not getattr(self.window, "voice_active", False):
+            return False
         text = transcript.text.strip()
         if not text:
             return False
@@ -185,6 +189,8 @@ class TranslationWorker(threading.Thread):
         return True
 
     def _translate(self, transcript: "SpeechTranscript"):
+        self.window.signals.update_user.emit("", False)
+        self.window.signals.update_resp.emit("", False)
         self.window.update_user_text(
             transcript.text,
             stats=transcript.stats if self.show_stats else None,
@@ -192,6 +198,7 @@ class TranslationWorker(threading.Thread):
         if self.show_stats:
             self.window.update_stt_stats(transcript.stats)
 
+        self.window.signals.mic_deactivate.emit()
         self.window.update_response_text("...", replace=False)
         partials = PartialUpdateThrottle(
             self.window,
@@ -224,6 +231,7 @@ class CommSignals(QObject):
     update_resp = pyqtSignal(str, bool)
     update_stat = pyqtSignal(str, str)
     update_status = pyqtSignal(str)
+    mic_deactivate = pyqtSignal()
 
 
 class MessageBubble(QFrame):
@@ -272,12 +280,10 @@ class ChatWindow(QWidget):
     ):
         super().__init__()
         self.language_state = language_state
-        self.max_chat_bubbles = max(2, int(max_chat_bubbles))
         self.show_stats = show_stats
         self.verbose_stats = verbose_stats
-        self.active_user_bubble: MessageBubble | None = None
-        self.active_resp_bubble: MessageBubble | None = None
-        self._message_bubbles: deque[MessageBubble] = deque()
+        self.voice_active = False
+        self._translator = None
         self._close_handler = None
 
         self.signals = CommSignals()
@@ -285,83 +291,264 @@ class ChatWindow(QWidget):
         self.signals.update_resp.connect(self._handle_resp_update)
         self.signals.update_stat.connect(self._handle_stat_update)
         self.signals.update_status.connect(self._handle_status_update)
+        self.signals.mic_deactivate.connect(self._deactivate_mic)
+
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.setInterval(400)
+        self._thinking_timer.timeout.connect(self._tick_thinking)
+        self._thinking_step = 0
 
         self._init_ui()
 
     def set_close_handler(self, handler):
         self._close_handler = handler
 
+    def set_translator(self, translator):
+        self._translator = translator
+
+    def _make_panel(self) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #dadce0;
+            }
+        """)
+        return frame
+
+    def _make_divider(self) -> QFrame:
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setStyleSheet("color: #dadce0; border: none; border-top: 1px solid #dadce0;")
+        line.setFixedHeight(1)
+        return line
+
     def _init_ui(self):
         self.setWindowTitle("Astra SL2610 Voice Translation Engine")
         self.setGeometry(0, 0, CHAT_WIDTH, CHAT_HEIGHT)
+        self.setStyleSheet("background-color: #f1f3f4;")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 8)
+        root.setSpacing(8)
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QFrame.NoFrame)
-
-        self.container = QWidget()
-        self.chat_layout = QVBoxLayout(self.container)
-        self.chat_layout.setContentsMargins(6, 6, 6, 6)
-        self.chat_layout.addStretch()
-        self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
-
-        self.status_label = QLabel("")
-        self.status_label.setStyleSheet(
-            "font-size: 16px; color: #333; padding: 2px 6px;"
+        title = QLabel("Language Translation with Gemma3 270M")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(
+            "font-size: 18px; font-weight: 700; color: #202124; border: none;"
         )
-        layout.addWidget(self.status_label, alignment=Qt.AlignLeft)
+        root.addWidget(title)
 
+        # Orientation-aware split: portrait=vertical, landscape=horizontal
+        if _ORIENTATION == "portrait":
+            content = QVBoxLayout()
+        else:
+            content = QHBoxLayout()
+        content.setSpacing(8)
+
+        # ── Input panel (English, pinned) ──────────────────────────
+        input_frame = self._make_panel()
+        input_vbox = QVBoxLayout(input_frame)
+        input_vbox.setContentsMargins(14, 10, 14, 10)
+        input_vbox.setSpacing(6)
+
+        input_header = QHBoxLayout()
+        lang_label = QLabel("English")
+        lang_label.setStyleSheet(
+            "font-size: 15px; font-weight: 600; color: #5f6368; border: none;"
+        )
+        input_header.addWidget(lang_label)
+        input_header.addStretch()
+        self.mic_button = MicButton()
+        self.mic_button.toggled.connect(self._on_mic_toggled)
+        input_header.addWidget(self.mic_button)
+        input_vbox.addLayout(input_header)
+        input_vbox.addWidget(self._make_divider())
+
+        self.input_text = QPlainTextEdit()
+        self.input_text.setPlaceholderText("Enter text")
+        self.input_text.setStyleSheet("""
+            QPlainTextEdit {
+                font-size: 24px;
+                color: #202124;
+                border: none;
+                background: transparent;
+            }
+        """)
+        self.input_text.setFrameShape(QFrame.NoFrame)
+        self.input_text.installEventFilter(self)
+        input_vbox.addWidget(self.input_text, stretch=1)
+
+        content.addWidget(input_frame, stretch=1)
+
+        # ── Output panel (translated language) ─────────────────────
+        output_frame = self._make_panel()
+        output_vbox = QVBoxLayout(output_frame)
+        output_vbox.setContentsMargins(14, 10, 14, 10)
+        output_vbox.setSpacing(6)
+
+        output_header = QHBoxLayout()
+        self.language_dropdown = QComboBox()
+        self.language_dropdown.addItems(
+            [language.display_name for language in LANGUAGES.values()]
+        )
+        self.language_dropdown.setCurrentText(self.language_state.current.display_name)
+        self.language_dropdown.setMinimumWidth(200)
+        self.language_dropdown.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.language_dropdown.setStyleSheet("""
+            QComboBox {
+                font-size: 15px;
+                font-weight: 600;
+                color: #1a73e8;
+                border: 1px solid #dadce0;
+                border-right: none;
+                border-top-left-radius: 4px;
+                border-bottom-left-radius: 4px;
+                padding: 4px 8px;
+                background: white;
+            }
+            QComboBox::drop-down { width: 0; border: none; }
+        """)
+        self.language_dropdown.currentTextChanged.connect(self.on_language_change)
+
+        dropdown_arrow_btn = QPushButton("▼")
+        dropdown_arrow_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 10px;
+                color: #1a73e8;
+                background: white;
+                border: 1px solid #dadce0;
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover { background: #f8f9fa; }
+        """)
+        dropdown_arrow_btn.setCursor(Qt.PointingHandCursor)
+        dropdown_arrow_btn.clicked.connect(self.language_dropdown.showPopup)
+
+        # Force both to the same height so they align as one unit
+        self.language_dropdown.setFixedHeight(34)
+        dropdown_arrow_btn.setFixedHeight(34)
+
+        output_header.addWidget(self.language_dropdown)
+        output_header.addWidget(dropdown_arrow_btn)
+        output_header.addStretch()
+        self.clear_button = QPushButton()
+        self.clear_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self.clear_button.setFixedSize(36, 36)
+        self.clear_button.setFlat(True)
+        self.clear_button.setStyleSheet("border: none; background: transparent;")
+        self.clear_button.clicked.connect(self.clear_chat)
+        output_header.addWidget(self.clear_button)
+        output_vbox.addLayout(output_header)
+        output_vbox.addWidget(self._make_divider())
+
+        self.output_text = QLabel()
+        self.output_text.setWordWrap(True)
+        self.output_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.output_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.output_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.output_text.setStyleSheet("""
+            QLabel {
+                font-size: 24px;
+                color: #202124;
+                border: none;
+                background: transparent;
+                padding: 2px;
+            }
+        """)
+        output_vbox.addWidget(self.output_text, stretch=1)
+
+        content.addWidget(output_frame, stretch=1)
+        root.addLayout(content, stretch=1)
+
+        # ── Bottom bar ──────────────────────────────────────────────
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("font-size: 13px; color: #5f6368; border: none;")
+        root.addWidget(self.status_label, alignment=Qt.AlignLeft)
+
+        stats_style = f"font-size: {STATS_FONT_SIZE}px; color: #5f6368; border: none;"
         self.stats_stt_label = QLabel("")
         self.stats_llm_label = QLabel("")
-        stats_style = (
-            f"font-size: {STATS_FONT_SIZE}px; color: #333; "
-            "background: #f5f5f5; padding: 6px; border-radius: 8px;"
-        )
         self.stats_stt_label.setStyleSheet(stats_style)
         self.stats_llm_label.setStyleSheet(stats_style)
         if self.show_stats:
-            layout.addWidget(self.stats_stt_label, alignment=Qt.AlignRight)
-            layout.addWidget(self.stats_llm_label, alignment=Qt.AlignRight)
+            root.addWidget(self.stats_stt_label, alignment=Qt.AlignRight)
+            root.addWidget(self.stats_llm_label, alignment=Qt.AlignRight)
 
-        button_row = QHBoxLayout()
-        self.language_dropdown = QComboBox()
-        self.language_dropdown.addItems([language.display_name for language in LANGUAGES.values()])
-        self.language_dropdown.setCurrentText(self.language_state.current.display_name)
-        self.language_dropdown.setMinimumHeight(48)
-        self.language_dropdown.setStyleSheet("font-size: 16px; padding: 5px;")
-        self.language_dropdown.currentTextChanged.connect(self.on_language_change)
-        button_row.addWidget(self.language_dropdown)
-        button_row.addStretch()
+    # ── Event handling ──────────────────────────────────────────────
 
-        self.settings_button = QPushButton()
-        self.settings_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
-        self.settings_button.setMinimumSize(80, 48)
-        self.settings_button.setMaximumSize(80, 48)
-        self.settings_button.setIconSize(QSize(40, 40))
-        self.settings_button.clicked.connect(self.open_settings)
-        button_row.addWidget(self.settings_button)
+    def eventFilter(self, obj, event):
+        if obj is self.input_text and event.type() == QEvent.KeyPress:
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                if not (event.modifiers() & Qt.ShiftModifier):
+                    self._submit_text_input()
+                    return True
+        return super().eventFilter(obj, event)
 
-        self.clear_button = QPushButton()
-        self.clear_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
-        self.clear_button.setMinimumSize(80, 48)
-        self.clear_button.setMaximumSize(80, 48)
-        self.clear_button.setIconSize(QSize(40, 40))
-        self.clear_button.clicked.connect(self.clear_chat)
-        button_row.addWidget(self.clear_button)
-        layout.addLayout(button_row)
+    def _on_mic_toggled(self, active: bool):
+        self.voice_active = active
+        self.update_status("Listening (voice)" if active else "Listening (text)")
+
+    def _deactivate_mic(self):
+        self.voice_active = False
+        self.mic_button.setChecked(False)
+        self.mic_button.setEnabled(False)
+        self.update_status("Listening (text)")
+
+    def _start_thinking_anim(self):
+        self._thinking_step = 0
+        self._thinking_timer.start()
+
+    def _stop_thinking_anim(self):
+        self._thinking_timer.stop()
+        self.mic_button.setEnabled(True)
+
+    def _tick_thinking(self):
+        dots = "." * ((self._thinking_step % 3) + 1)
+        self.output_text.setText(dots)
+        self._thinking_step += 1
+
+    def _submit_text_input(self):
+        text = self.input_text.toPlainText().strip()
+        if not text or self._translator is None:
+            return
+        self.input_text.clear()
+        self.output_text.clear()
+        self.update_user_text(text)
+        self.update_response_text("...", replace=False)
+        language = self.language_state.current
+        translator = self._translator
+        throttle = PartialUpdateThrottle(self, min_interval_s=DEFAULT_PARTIAL_UPDATE_MS / 1000)
+
+        def _run():
+            try:
+                result = translator.translate(
+                    text,
+                    target_language=language.prompt_name,
+                    on_partial=throttle,
+                )
+                self.update_translation_result(
+                    result,
+                    stats=result.stats if self.show_stats else None,
+                )
+                if self.show_stats:
+                    self.update_llm_stats(result.stats)
+            except Exception as exc:
+                self.update_response_text(f"Error: {exc}", replace=True)
+
+        threading.Thread(target=_run, daemon=True, name="text-translate").start()
+
+    # ── Public update API (called from worker thread) ───────────────
 
     def on_language_change(self, selected_language: str):
         language = language_by_display_name(selected_language)
         ensure_language_fonts_loaded(language)
         self.language_state.set_language(language)
         logger.info("Language changed to: %s", language.display_name)
-
-    def open_settings(self):
-        QMessageBox.information(self, "Settings", "Settings not implemented yet.")
 
     def update_user_text(
         self,
@@ -417,26 +604,22 @@ class ChatWindow(QWidget):
         self.signals.update_status.emit(text)
 
     def clear_chat(self):
-        while self._message_bubbles:
-            self._delete_bubble(self._message_bubbles.popleft())
-        self.active_user_bubble = None
-        self.active_resp_bubble = None
+        self.input_text.clear()
+        self.output_text.clear()
         self.stats_stt_label.setText("")
         self.stats_llm_label.setText("")
 
+    # ── Signal handlers (Qt main thread) ───────────────────────────
+
     def _handle_user_update(self, text: str, replace: bool):
-        if replace and self.active_user_bubble is not None:
-            self.active_user_bubble.set_text(text)
-        else:
-            self.active_user_bubble = self._insert_bubble(text, is_user=True)
-        self._scroll_to_bottom()
+        self.input_text.setPlainText(text)
 
     def _handle_resp_update(self, text: str, replace: bool):
-        if replace and self.active_resp_bubble is not None:
-            self.active_resp_bubble.set_text(text)
+        if text == "...":
+            self._start_thinking_anim()
         else:
-            self.active_resp_bubble = self._insert_bubble(text, is_user=False)
-        self._scroll_to_bottom()
+            self._stop_thinking_anim()
+            self.output_text.setText(text)
 
     def _handle_stat_update(self, kind: str, text: str):
         if kind == "stt":
@@ -446,32 +629,6 @@ class ChatWindow(QWidget):
 
     def _handle_status_update(self, text: str):
         self.status_label.setText(text)
-
-    def _insert_bubble(self, text: str, *, is_user: bool) -> MessageBubble:
-        bubble = MessageBubble(text, is_user=is_user)
-        alignment = Qt.AlignRight if is_user else Qt.AlignLeft
-        self.chat_layout.insertWidget(self.chat_layout.count() - 1, bubble, alignment=alignment)
-        self._message_bubbles.append(bubble)
-        self._prune_old_bubbles()
-        return bubble
-
-    def _prune_old_bubbles(self):
-        while len(self._message_bubbles) > self.max_chat_bubbles:
-            bubble = self._message_bubbles.popleft()
-            if bubble is self.active_user_bubble:
-                self.active_user_bubble = None
-            if bubble is self.active_resp_bubble:
-                self.active_resp_bubble = None
-            self._delete_bubble(bubble)
-
-    def _delete_bubble(self, bubble: MessageBubble):
-        self.chat_layout.removeWidget(bubble)
-        bubble.setParent(None)
-        bubble.deleteLater()
-
-    def _scroll_to_bottom(self):
-        bar = self.scroll.verticalScrollBar()
-        bar.setValue(bar.maximum())
 
     def _fmt_stats(self, stats: InferenceStats | None) -> str:
         if not self.show_stats or stats is None:
@@ -597,10 +754,37 @@ def build_speech_recognizer(
 
 
 def configure_qt_environment():
-    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+    # Preserve a correct XDG_RUNTIME_DIR set by PAM/systemd; only fall back
+    # to the root-user path if nothing is set.
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "/var/run/user/0")
+    os.environ["XDG_RUNTIME_DIR"] = xdg
     os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
+    # Prevent X11/Xwayland from being selected over the Wayland backend even
+    # when DISPLAY is set in the environment (e.g. by Xwayland).
+    os.environ.pop("DISPLAY", None)
+
+    # Disable xdg-decoration protocol negotiation. Older Weston builds and some
+    # embedded compositor configs don't support it and will kill the client
+    # connection during the handshake, causing a silent startup crash.
+    os.environ["QT_QPA_WAYLAND_DISABLE_WINDOWDECORATION"] = "1"
+    os.environ["QT_WAYLAND_DISABLE_WINDOWDECORATION"] = "1"
+
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "")
+    if not wayland_display:
+        for candidate in ("wayland-1", "wayland-0"):
+            if os.path.exists(os.path.join(xdg, candidate)):
+                wayland_display = candidate
+                break
+
+    if not wayland_display:
+        raise RuntimeError(
+            f"No Wayland socket found in {xdg} — is Weston running?"
+        )
+
+    os.environ["WAYLAND_DISPLAY"] = wayland_display
     os.environ["QT_QPA_PLATFORM"] = "wayland"
+    print(f"[Qt] WAYLAND_DISPLAY={wayland_display}", flush=True)
 
 
 def main() -> int:
@@ -626,6 +810,8 @@ def main() -> int:
         show_stats=not args.hide_stats,
         verbose_stats=args.verbose_stats,
     )
+
+    window.set_translator(translator)
 
     worker = TranslationWorker(
         recognizer=recognizer,
