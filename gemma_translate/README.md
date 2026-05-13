@@ -6,11 +6,6 @@ This example uses the following models:
 
 - [Moonshine](https://github.com/moonshine-ai/moonshine), a modern speech-to-text (automatic speech recognition) model designed specifically for efficient, real-time, and low-latency operation. 
 
-[!WARNING]
-This early-access version has the pre-compiled Moonshine models included. 
-Before cloning, ensure that you have Git LFS installed - in order to handle the large files. 
-In the future they will be downloaded from Huggingface. 
-
 - [Gemma 3 270M](https://deepmind.google/models/gemma/gemma-3/), the most lightweight model in Google’s Gemma 3 family, designed specifically for extreme efficiency. 
 
 - [Silero VAD (Voice Activity Detection)](https://github.com/snakers4/silero-vad), a lightweight, high-performance model designed to detect the presence of human speech in audio streams.
@@ -21,14 +16,14 @@ The User Interface is based on pyQt5, a set of Python bindings for Qt5.
 ```
 gemma_translate
 ├── app_translate.py
-├── inference.py
-├── portaudio_libs.tgz
+├── cli_translate.py
+├── setup_demo.py
 ├── requirements.txt
 ├── README.md
 └── fonts/
 ```
 
-Additionaly, code it used from `../utils/` 
+Additionally, code is used from `../utils/` (including `utils/moonshine/` and `utils/gemma/` subpackages). 
 
 ## 🔧 Hardware Setup
 
@@ -67,6 +62,11 @@ If online
 pip install -r requirements.txt
 ```
 
+If offline
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
 
 #### Install example-specific dependencies
 
@@ -80,21 +80,24 @@ Now install the additional dependencies for this specific example.
 pip install -r requirements.txt
 ```
 
+If offline
+```bash
+pip install --no-index --find-links=../wheelhouse -r requirements.txt
+```
 
-### Other setup
 
-Download Gemma3 and Moonshine model files
+### Download Models
+
+Download the Moonshine and Gemma3 model files from HuggingFace:
+
+```bash
+python setup_demo.py
+```
+
+**Optional:** If you plan to use the llama.cpp backend (`--use-llama-gemma`), download the GGUF model as well:
 
 ```bash
 wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf
-
-wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder.vmfb
-
-wget -P ../models/moonshine https://huggingface.co/Synaptics/Moonshine/blob/main/models/bf16/vmfb/decoder_with_past.vmfb
-
-wget -P ../models/https://huggingface.co/Synaptics/Moonshine/tree/main/models/bf16/onnx/encoder.onnx
-
-wget https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
 
 Extract the audio libraries
@@ -133,13 +136,9 @@ Enter input device to listen on:
 
 In the command-line-only version, it will ask you to choose the language. You can change it by pressing a number key at any time. 
 ```bash
-Press 1-6 to change language at any time:
+Press 1-2 to change language at any time:
   1: Spanish
   2: French
-  3: Russian
-  4: Thai
-  5: Hindi
-  6: Chinese
 Speak to translate. Press Ctrl+C to exit.
 ```
 

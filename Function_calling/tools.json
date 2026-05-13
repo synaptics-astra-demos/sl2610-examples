@@ -1,0 +1,171 @@
+{
+  "version": "0.4.0",
+  "description": "Physical AI tool schema for Coral Dev Board (SL2619) FunctionGemma demo. Canonical mobile-actions format. 8-tool surface, trained Octopus v2 style — functional tokens (<tool_0>..<tool_7>) emitted directly from a minimal user-only prompt with NO tool schema in the context. The on-device prompt is ~13 tokens, keeping cold first-turn around 0.5 s on a 2-core A55. The schema in this file is purely a developer/runtime contract (dispatcher arg validation, GGUF metadata, documentation) — it is NOT injected into the inference prompt. Surface routing keyword: 'neopixels' (literal) for the ring; 'LED' / 'light' / 'red light' / 'green light' / 'blue light' for the HAT status LEDs.",
+  "tools": [
+    {
+      "function": {
+        "name": "set_status_led",
+        "description": "Turn one or all of the HAT status LEDs on or off. The HAT has three individual LEDs (red, green, blue), each independently addressable. Invoke when the user mentions 'LED', 'LEDs', or 'the <color> light'.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "led": {
+              "type": "STRING",
+              "description": "Which LED: 'red', 'green', 'blue', or 'all'."
+            },
+            "state": {
+              "type": "STRING",
+              "description": "'on' or 'off'."
+            },
+            "brightness": {
+              "type": "INTEGER",
+              "description": "Brightness 0-100. Optional, default 100. Ignored when state is 'off'."
+            }
+          },
+          "required": ["led", "state"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "blink_status_led",
+        "description": "Blink one or all HAT status LEDs a given number of times. Invoke for 'blink/flash the <color> light' or 'blink the LEDs' style requests.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "led": {
+              "type": "STRING",
+              "description": "Which LED: 'red', 'green', 'blue', or 'all'."
+            },
+            "count": {
+              "type": "INTEGER",
+              "description": "Number of blinks. Default 3."
+            },
+            "speed": {
+              "type": "STRING",
+              "description": "One of 'slow', 'normal', 'fast'. Default 'normal'."
+            }
+          },
+          "required": ["led"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "set_neopixel_effect",
+        "description": "Play a visual effect on the neopixel ring (48-pixel WS2812B ring around the 7\" display, driven by WLED). Only invoke when the user explicitly mentions 'neopixels'. Use effect='off' to turn the ring off.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "effect": {
+              "type": "STRING",
+              "description": "One of: 'solid', 'pulse', 'fade', 'chase', 'rainbow', 'sparkle', 'off', 'aurora', 'plasma', 'comet', 'twinkle', 'fireworks', 'police', 'heartbeat', 'loading', 'lightning', 'glitter', 'fire', 'sunrise'."
+            },
+            "color": {
+              "type": "STRING",
+              "description": "Color name (e.g. 'red', 'teal', 'amber', 'gold', 'violet') or 6-digit hex like '#FF8800'. Used by effects that take a primary color (solid, pulse, fade, chase, sparkle, comet). Ignored for rainbow and palette-driven effects."
+            },
+            "palette": {
+              "type": "STRING",
+              "description": "Color palette: 'auto', 'ocean', 'lava', 'forest', 'sunset', 'party', 'sherbet', 'c9', 'aurora', 'beach', 'fire', 'sakura', 'splash', 'pastel'. Most useful with aurora, plasma, fire, twinkle, comet."
+            },
+            "speed": {
+              "type": "STRING",
+              "description": "One of 'slow', 'normal', 'fast'. Default 'normal'."
+            },
+            "intensity": {
+              "type": "STRING",
+              "description": "One of 'low', 'medium', 'high'. Default 'medium'. Controls effect density / depth (sparkle density, fire height, comet tail length, aurora width)."
+            }
+          },
+          "required": ["effect"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "play_buzzer",
+        "description": "Play a named pattern on the piezo buzzer on the HAT. The buzzer is binary GPIO on the Coral Dev Board (BUZZERn), so only timed patterns are supported — no tunable frequency.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "pattern": {
+              "type": "STRING",
+              "description": "Named pattern: 'beep', 'double_beep', 'siren', 'chirp', 'alarm', 'success', 'error'."
+            }
+          },
+          "required": ["pattern"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "set_alarm",
+        "description": "Schedule an alarm to go off at a given time or after a duration. Alarm triggers buzzer + flashing LEDs.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "duration": {
+              "type": "STRING",
+              "description": "Relative time like '1 minute', '30 seconds', '2 hours'. Use this OR 'time', not both."
+            },
+            "time": {
+              "type": "STRING",
+              "description": "Absolute time HH:MM (24-hour). Use this OR 'duration', not both."
+            },
+            "label": {
+              "type": "STRING",
+              "description": "Optional human-readable label for the alarm."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "cancel_alarm",
+        "description": "Cancel a scheduled alarm. If no label is given, cancel all alarms.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "label": {
+              "type": "STRING",
+              "description": "Label of the alarm to cancel. Omit to cancel all."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "get_system_status",
+        "description": "Report device system status (CPU load, memory, temperature, NPU utilization).",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "metric": {
+              "type": "STRING",
+              "description": "Specific metric: 'cpu', 'memory', 'temperature', 'npu', or 'all' (default)."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "respond",
+        "description": "Reply to the user in natural language without taking any physical action. Use this when the request is out of scope (no matching tool), ambiguous (needs clarification — e.g. surface keyword missing for LED requests), purely conversational (greetings, thanks), or impossible on this device. Do NOT use this when any physical-action tool fits the request.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "message": {
+              "type": "STRING",
+              "description": "The natural-language reply to show to the user."
+            }
+          },
+          "required": ["message"]
+        }
+      }
+    }
+  ]
+}
