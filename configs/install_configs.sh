@@ -10,19 +10,20 @@
 # Targets:
 #   kernel          - Install NPU kernel module (patch_kernel.sh)
 #   usb_cdc         - Install USB CDC/serial modules (patch_usb_cdc.sh)
+#   portaudio       - Install PortAudio shared libraries for microphone demos
 #   portrait_setup  - Configure portrait display orientation
 #   all             - Install all of the above
 #
 # Examples:
 #   sudo ./install_configs.sh kernel
-#   sudo ./install_configs.sh usb_cdc portrait_setup
+#   sudo ./install_configs.sh usb_cdc portaudio portrait_setup
 #   sudo ./install_configs.sh all
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-ALL_TARGETS=(kernel usb_cdc portrait_setup)
+ALL_TARGETS=(kernel usb_cdc portaudio portrait_setup)
 
 # --- helpers ----------------------------------------------------------------
 
@@ -32,6 +33,7 @@ usage() {
     echo "Targets:"
     echo "  kernel          Install NPU kernel module"
     echo "  usb_cdc         Install USB CDC/serial kernel modules"
+    echo "  portaudio       Install PortAudio shared libraries for microphone demos"
     echo "  portrait_setup  Configure portrait display orientation"
     echo "  all             Install all targets"
     exit 1
@@ -56,6 +58,11 @@ install_usb_cdc() {
     SKIP_REBOOT=1 bash "$SCRIPT_DIR/patch_usb_cdc.sh" "$SCRIPT_DIR"
 }
 
+install_portaudio() {
+    echo "=== Installing PortAudio shared libraries ==="
+    bash "$SCRIPT_DIR/install_portaudio.sh"
+}
+
 install_portrait_setup() {
     echo "=== Configuring portrait display ==="
     bash "$SCRIPT_DIR/portrait_setup.sh"
@@ -76,7 +83,7 @@ for arg in "$@"; do
             TARGETS=("${ALL_TARGETS[@]}")
             break
             ;;
-        kernel|usb_cdc|portrait_setup)
+        kernel|usb_cdc|portaudio|portrait_setup)
             TARGETS+=("$arg")
             ;;
         *)
@@ -107,6 +114,9 @@ for target in "${UNIQUE_TARGETS[@]}"; do
         usb_cdc)
             install_usb_cdc
             REBOOT_NEEDED=true
+            ;;
+        portaudio)
+            install_portaudio
             ;;
         portrait_setup)
             install_portrait_setup

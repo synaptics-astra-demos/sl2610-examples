@@ -63,7 +63,7 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 ## Device Configuration
 
-Some demos require kernel modules or display configuration to be installed on the device. A unified installer script is provided:
+Some demos require kernel modules, native libraries, or display configuration to be installed on the device. A unified installer script is provided:
 
 ```bash
 sudo ./configs/install_configs.sh <target> [target ...]
@@ -73,13 +73,14 @@ sudo ./configs/install_configs.sh <target> [target ...]
 |--------|-------------|
 | `kernel` | Update the NPU kernel module (`syna_npu.ko`) |
 | `usb_cdc` | Install USB CDC/serial modules (`cdc-acm`, `usbserial`, `ch341`) |
+| `portaudio` | Install PortAudio shared libraries for microphone demos |
 | `portrait_setup` | Configure portrait display orientation (weston) |
 | `all` | Install all of the above |
 
 Examples:
 ```bash
 sudo ./configs/install_configs.sh kernel
-sudo ./configs/install_configs.sh usb_cdc portrait_setup
+sudo ./configs/install_configs.sh usb_cdc portaudio portrait_setup
 sudo ./configs/install_configs.sh all
 ```
 
