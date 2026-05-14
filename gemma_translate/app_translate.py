@@ -29,6 +29,12 @@ except Exception as e:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "UI"))
 
+try:
+    from utils.neopixel import NeopixelAnimator
+    _NEOPIXEL_AVAILABLE = True
+except ImportError:
+    _NEOPIXEL_AVAILABLE = False
+
 from PyQt5.QtCore import QEvent, QObject, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import (
@@ -57,6 +63,7 @@ from gemma_translate.translation import GemmaTranslationService, TranslationResu
 from utils.log import configure_logging
 from utils.npu import enable_npu_clock
 from utils.stats import InferenceStats
+from utils.neopixel import NeopixelAnimator
 
 if TYPE_CHECKING:
     from utils.speech import SpeechRecognizer, SpeechTranscript
@@ -155,6 +162,7 @@ class TranslationWorker(threading.Thread):
         min_words: int,
         partial_update_ms: int,
         show_stats: bool,
+        animator: "NeopixelAnimator | None" = None,
     ):
         super().__init__(name="translation-worker", daemon=True)
         self.recognizer = recognizer
@@ -164,6 +172,7 @@ class TranslationWorker(threading.Thread):
         self.min_words = min_words
         self.partial_update_s = max(0, partial_update_ms) / 1000
         self.show_stats = show_stats
+        self.animator = animator
         self.stop_event = threading.Event()
 
     def stop(self):
@@ -215,6 +224,9 @@ class TranslationWorker(threading.Thread):
 
         self.window.signals.mic_deactivate.emit()
         self.window.update_response_text("...", replace=False)
+        if self.animator:
+            logger.debug("NeoPixel: playing 'translating' (voice path)")
+            self.animator.play("translating")
         partials = PartialUpdateThrottle(
             self.window,
             min_interval_s=self.partial_update_s,
@@ -238,6 +250,9 @@ class TranslationWorker(threading.Thread):
             logger.exception("Translation failed")
             self.window.update_response_text(f"Error: {exc}", replace=True)
         finally:
+            if self.animator:
+                logger.debug("NeoPixel: playing 'translation_complete' (voice path)")
+                self.animator.play("translation_complete")
             self.recognizer.drain()
 
 
@@ -302,6 +317,7 @@ class ChatWindow(QWidget):
         self._translator = None
         self._close_handler = None
         self._translate_thread: threading.Thread | None = None
+        self._animator: "NeopixelAnimator | None" = None
 
         self.signals = CommSignals()
         self.signals.update_user.connect(self._handle_user_update)
@@ -322,6 +338,9 @@ class ChatWindow(QWidget):
 
     def set_translator(self, translator):
         self._translator = translator
+
+    def set_animator(self, animator):
+        self._animator = animator
 
     def _make_panel(self) -> QFrame:
         frame = QFrame()
@@ -509,6 +528,9 @@ class ChatWindow(QWidget):
     def _on_mic_toggled(self, active: bool):
         self.voice_active = active
         self.update_status("Listening (voice)" if active else "Listening (text)")
+        if active and self._animator:
+            logger.debug("NeoPixel: playing 'listening'")
+            self._animator.play("listening")
 
     def _deactivate_mic(self):
         self.voice_active = False
@@ -540,6 +562,9 @@ class ChatWindow(QWidget):
         self.output_text.clear()
         self.update_user_text(text)
         self.update_response_text("...", replace=False)
+        if self._animator:
+            logger.debug("NeoPixel: playing 'translating' (text path)")
+            self._animator.play("translating")
         language = self.language_state.current
         translator = self._translator
         throttle = PartialUpdateThrottle(self, min_interval_s=DEFAULT_PARTIAL_UPDATE_MS / 1000)
@@ -560,6 +585,9 @@ class ChatWindow(QWidget):
             except Exception as exc:
                 self.update_response_text(f"Error: {exc}", replace=True)
             finally:
+                if self._animator:
+                    logger.debug("NeoPixel: playing 'translation_complete' (text path)")
+                    self._animator.play("translation_complete")
                 self.signals.translation_done.emit()
 
         self._translate_thread = threading.Thread(target=_run, daemon=True, name="text-translate")
@@ -1041,6 +1069,13 @@ def main() -> int:
         ok, message = enable_npu_clock()
         print(f"[NPU] {message}" if ok else f"[NPU] {message}", flush=True)
 
+    if _NEOPIXEL_AVAILABLE:
+        logger.info("NeoPixel: import OK, creating NeopixelAnimator")
+        animator = NeopixelAnimator()
+    else:
+        logger.warning("NeoPixel: utils.neopixel could not be imported, LED animations disabled")
+        animator = None
+
     translator = build_translation_service(args)
 
     if not getattr(args, "test", False):
@@ -1063,6 +1098,7 @@ def main() -> int:
     )
 
     window.set_translator(translator)
+    window.set_animator(animator)
 
     auto_test = None
     if getattr(args, "test", False):
@@ -1103,6 +1139,7 @@ def main() -> int:
             min_words=args.min_words,
             partial_update_ms=args.partial_update_ms,
             show_stats=not args.hide_stats,
+            animator=animator,
         )
         window.set_close_handler(worker.stop)
         app.aboutToQuit.connect(worker.stop)
