@@ -186,9 +186,23 @@ class TranslationWorker(threading.Thread):
         final_status = "Stopped"
         try:
             with self.recognizer:
-                self.window.update_status("Active")
+                self.window.update_status("Ready")
                 logger.info("Audio worker initialized")
+                mic_was_active = False
                 while not self.stop_event.is_set():
+                    # Wait until the mic button is pressed
+                    if not getattr(self.window, "voice_active", False):
+                        mic_was_active = False
+                        self.stop_event.wait(timeout=0.05)
+                        continue
+
+                    # Drain any audio buffered while the mic was off
+                    if not mic_was_active:
+                        logger.debug("Mic activated — draining buffered audio")
+                        self.recognizer.drain()
+                        mic_was_active = True
+                        self.window.update_status("Listening")
+
                     transcript = self.recognizer.listen_once(stop_event=self.stop_event)
                     if transcript is None:
                         break
