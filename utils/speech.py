@@ -14,6 +14,9 @@ from collections import deque
 from dataclasses import dataclass
 import logging
 import os
+
+os.environ["PA_ALSA_PLUGHW"] = "1"
+
 from pathlib import Path
 from queue import Empty, Full, Queue
 from typing import Any
@@ -91,7 +94,6 @@ class SoundDeviceAudioSource:
     def start(self):
         if self._stream is not None:
             return
-        os.environ["PA_ALSA_PLUGHW"] = "1"
         self._stderr_context = suppress_native_stderr(self.suppress_native_logs)
         self._stderr_context.__enter__()
         try:
