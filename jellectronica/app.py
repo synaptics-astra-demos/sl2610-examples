@@ -524,10 +524,8 @@ def main():
                         shared_state["frame"] = None
 
                 if frame_to_proc is not None:
-                    d_start = time.time()
                     now = time.time()
-                    detections = detector.detect(frame_to_proc)
-                    ms = (time.time() - d_start) * 1000
+                    detections, ms = detector.detect(frame_to_proc)
                     new_trigs = tracker.update(detections)
 
                     t_fx = []

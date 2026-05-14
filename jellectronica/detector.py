@@ -6,6 +6,7 @@ Backend: torq.runtime VMFBInferenceRunner on /dev/torq NPU.
 Based on Patrick Miller's moon_lightweight.py from seaphony-ml.
 """
 
+import time
 import numpy as np
 import cv2
 
@@ -76,14 +77,15 @@ class Detector:
         except Exception as e:
             raise RuntimeError(f"[Detector] Torq load failed: {e}")
 
-    def detect(self, frame) -> list[dict]:
+    def detect(self, frame) -> tuple[list[dict], float]:
         """
         Run detection on a BGR frame (from OpenCV).
-        Returns list of dicts: {bbox: {x1,y1,x2,y2}, centroid: {x,y}, confidence: float}
+        Returns (detections, infer_ms) where detections is a list of dicts:
+        {bbox: {x1,y1,x2,y2}, centroid: {x,y}, confidence: float}
         All coordinates normalized 0-1.
         """
         if self._backend is None:
-            return []
+            return [], 0.0
 
         h, w = frame.shape[:2]
 
@@ -120,15 +122,17 @@ class Detector:
 
         # ── Inference ──
         try:
+            t0 = time.perf_counter()
             raw = self._runner.infer([blob])
+            infer_ms = (time.perf_counter() - t0) * 1000
             if isinstance(raw, (list, tuple)):
                 raw = raw[0]
         except Exception as e:
             print(f"[Detector] Torq inference error: {e}")
-            return []
+            return [], 0.0
 
         # ── Postprocess (int8 dequantize + NMS) ──
-        return self._postprocess_torq(raw, (orig_h, orig_w), pad_info)
+        return self._postprocess_torq(raw, (orig_h, orig_w), pad_info), infer_ms
 
     def _postprocess_torq(self, raw: np.ndarray, orig_shape: tuple,
                           pad_info: tuple) -> list[dict]:
