@@ -81,6 +81,18 @@ bash scripts/install-service.sh                  # systemd autostart of the PyQt
 
 `demo.py` and `app_pyqt.py` accept all runtime configuration as CLI flags: `--model`, `--wled-port`, `--voice`, `--mic`, `--moonshine-dir`, `--screenshot-dir`, `--fullscreen`.
 
+## Systemd Auto-start (GUI Demos)
+
+For the GUI versions of the demos (Object Detection, Jellectronica, and Gemma Translate), systemd unit templates are provided in each demo's directory. These units assume the project is installed at `/home/root/sl2610-examples` by default.
+
+To generate and install a service:
+```bash
+cd <demo_dir>
+bash scripts/install-service.sh [--root /path/to/sl2610-examples]
+```
+
+This will generate a `.service` file from the template and, if run as root on the target device, install it to `/etc/systemd/system/`.
+
 ## Speech To Text (Moonshine)
 
-Follow the steps in /speech_to_text/README.md to see how to perform speed-to-text function using Moonshine Model with a microphone. 
+Follow the steps in /speech_to_text/README.md to see how to perform speed-to-text function using Moonshine Model with a microphone.
