@@ -37,7 +37,7 @@ GGUF_FILENAME="functiongemma-physical-ai-v9-Q5_K_M.gguf"
 HF_BASE="https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai/resolve/main"
 GGUF_URL="${HF_BASE}/${GGUF_FILENAME}"
 MOONSHINE_HF_BASE="https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq/resolve/main"
-MOONSHINE_FILES=(encoder.vmfb decoder.vmfb decoder_with_past.vmfb decoder_token_embeddings.npy tokenizer.json)
+MOONSHINE_FILES=(encoder.vmfb decoder.vmfb decoder_with_past.vmfb decoder_token_embeddings.npy tokenizer.json preprocessor.onnx)
 
 TORQ_WHEEL="${WHEELS_DIR}/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl"
 PORTAUDIO_TGZ="${LIBRARY_DIR}/portaudio_libs.tgz"
@@ -107,7 +107,7 @@ for f in "${MOONSHINE_FILES[@]}"; do
         log "  ${f} already present (skip)"
     else
         log "  fetching ${f}"
-        download "${MOONSHINE_HF_BASE}/moonshine/${f}" "${MOONSHINE_DIR}/${f}"
+        download "${MOONSHINE_HF_BASE}/${f}" "${MOONSHINE_DIR}/${f}"
     fi
 done
 
