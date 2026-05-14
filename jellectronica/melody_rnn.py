@@ -271,7 +271,8 @@ class MelodyRNN:
             return
 
         import queue
-        self._note_queue: queue.Queue = queue.Queue(maxsize=200)
+        # Small queue size = low latency (max ~8 seconds of music ahead)
+        self._note_queue: queue.Queue = queue.Queue(maxsize=10)
         self._running = True
 
         # Thread 1: generates notes into queue (GIL-heavy, but doesn't block playback)
@@ -296,13 +297,19 @@ class MelodyRNN:
         time.sleep(0.5)  # Brief settle
 
         while self._running:
+            # If queue is nearly full, wait a bit
+            if self._note_queue.qsize() > 5:
+                time.sleep(1.0)
+                continue
+
             try:
                 self._generate_into_queue()
             except Exception as e:
                 print(f"[MelodyRNN] Generator error: {e}")
+                time.sleep(1.0)
 
             # Small pause — the queue buffers ahead so this is fine
-            time.sleep(random.uniform(0.2, 0.5))
+            time.sleep(0.1)
 
     def _generate_into_queue(self) -> None:
         """Build seed, run LSTM inference, push timed notes into queue."""
@@ -334,55 +341,67 @@ class MelodyRNN:
             # Add rhythmic gaps
             if random.random() < 0.4:
                 seed_events.append(NO_EVENT)
-            if random.random() < 0.15:
-                seed_events.append(NOTE_OFF_EVENT)
 
         temperature = self._get_temperature()
-        generated = self.continue_sequence(seed_events, num_steps=48, temperature=temperature)
+        # Generate shorter phrases more frequently for better responsiveness
+        generated = self.continue_sequence(seed_events, num_steps=32, temperature=temperature)
 
         if not generated:
             return
 
         # Pre-compute all note data and push into queue
-        bpm = 25  # Slowed down fully (half again)
+        bpm = 35  # Slightly faster for more content
         step_sec = 60.0 / bpm / STEPS_PER_QUARTER
 
+        last_step = -1
         for note in generated:
             if not self._running:
                 break
 
             midi = snap_to_pentatonic(note["midi"])
             step = note["step"]
-            is_downbeat = step % 4 == 0
-            base_vel = 65 if is_downbeat else 50
-            velocity = base_vel + random.randint(-10, 10)
-            velocity = max(30, min(100, velocity))
-            duration = step_sec * random.choice([1, 2, 3, 4])
-            wait = step_sec * random.uniform(0.5, 2.0) + random.uniform(-0.02, 0.02)
-            wait = max(0.05, wait)
+            
+            # Use step delta for timing instead of random wait
+            if last_step == -1:
+                wait = 0.05
+            else:
+                steps_passed = max(1, step - last_step)
+                wait = steps_passed * step_sec
+            
+            last_step = step
 
-            # Non-blocking put — if queue is full, skip note
+            is_downbeat = step % 4 == 0
+            base_vel = 70 if is_downbeat else 55
+            velocity = base_vel + random.randint(-5, 10)
+            velocity = max(40, min(110, velocity))
+            duration = step_sec * 2.0 # More sustain
+
+            # Block if queue is full — ensures we don't generate miles of stale music
             try:
-                self._note_queue.put_nowait({
+                self._note_queue.put({
                     "midi": midi,
                     "velocity": velocity,
                     "duration": duration,
                     "wait": wait,
-                })
+                }, timeout=2.0)
             except Exception:
-                pass  # Queue full — player will catch up
+                break # Stop generating this phrase if player is stalled
 
         count = len(generated)
         if count > 0:
-            print(f"[MelodyRNN] 🎵 Generated {count} notes (temp={temperature:.1f}, jellyfish={self._jelly_count})")
+            print(f"[MelodyRNN] 🎵 Generated {count} notes (temp={temperature:.1f}, jelly={self._jelly_count})")
 
     def _player_loop(self) -> None:
         """Continuously play notes from the queue — lightweight, never freezes."""
         while self._running:
             try:
+                # Wait for next note
                 note = self._note_queue.get(timeout=0.5)
             except Exception:
                 continue  # Queue empty, wait for generator
+
+            # Wait the intended duration before playing the note
+            time.sleep(note["wait"])
 
             midi = note["midi"]
             velocity = note["velocity"]
@@ -392,6 +411,3 @@ class MelodyRNN:
                 self.on_note(midi, velocity, duration)
             if self.ai_note_callback:
                 self.ai_note_callback(midi, velocity, duration)
-
-            # Sleep releases the GIL — main thread renders smoothly
-            time.sleep(note["wait"])

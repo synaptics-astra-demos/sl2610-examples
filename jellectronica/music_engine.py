@@ -202,10 +202,10 @@ class MusicEngine:
                 self._play_chord(col, duration)
             elif row == 3:
                 velocity = int(40 + 15 * (col / GRID_COLS))
-                self._play_note(2, note, velocity, duration)
+                self._play_note(2, note, velocity, duration, visualize=True)
             else:
                 velocity = int(50 + 20 * (1 - row / GRID_ROWS))
-                self._play_note(0, note, velocity, duration)
+                self._play_note(0, note, velocity, duration, visualize=True)
 
             # Feed note to MelodyRNN for AI accompaniment
             if self._jammer:
@@ -228,17 +228,10 @@ class MusicEngine:
         """Callback from MelodyRNN — plays an AI-generated note on Channel 3."""
         if not self._ready or self.fs is None:
             return
-        self._play_note(3, midi, velocity, duration)
-        # Record for visualization
-        note_info = {"midi": midi, "velocity": velocity, "t": time.time()}
-        with self._ai_notes_lock:
-            self.ai_notes.append(note_info)
-            # Keep only last 20 notes
-            if len(self.ai_notes) > 20:
-                self.ai_notes = self.ai_notes[-20:]
+        self._play_note(3, midi, velocity, duration, visualize=True)
 
     def get_recent_ai_notes(self) -> list[dict]:
-        """Get recent AI notes for visualization (thread-safe)."""
+        """Get recent notes for visualization (thread-safe)."""
         with self._ai_notes_lock:
             return list(self.ai_notes)
 
@@ -264,7 +257,7 @@ class MusicEngine:
             for i, val in enumerate([0, 4, 7]):
                 delay = i * 0.04
                 def play_hit(n=base+val, v=23-i*3):
-                    self._play_note(4, n, v, 2.0)
+                    self._play_note(4, n, v, 2.0, visualize=False)
                 if delay > 0:
                     self._scheduler.schedule(delay, play_hit)
                 else:
@@ -272,12 +265,20 @@ class MusicEngine:
         
         self._executor.submit(_do_clash)
 
-    def _play_note(self, channel: int, note: int, velocity: int, duration: float) -> None:
+    def _play_note(self, channel: int, note: int, velocity: int, duration: float, visualize: bool = False) -> None:
         """Play a note with automatic note-off after duration."""
         if self.fs is None:
             return
         velocity = max(20, min(127, velocity))
         self.fs.noteon(channel, note, velocity)
+
+        # Record for visualization (if requested and not clash)
+        if visualize and channel <= 3:
+            note_info = {"midi": note, "velocity": velocity, "t": time.time(), "ch": channel}
+            with self._ai_notes_lock:
+                self.ai_notes.append(note_info)
+                if len(self.ai_notes) > 60:
+                    self.ai_notes = self.ai_notes[-60:]
 
         def off():
             if self.fs is not None:
@@ -308,8 +309,8 @@ class MusicEngine:
             velocity = max(10, 20 + (5 if i == 0 else 0) - i * 3)
             delay = i * step_dur
 
-            def play(n=arp_note, v=velocity):
-                self._play_note(1, n, v, 0.1)
+            def play(n=arp_note, v=velocity, vis=(i == 0)):
+                self._play_note(1, n, v, 0.1, visualize=vis)
 
             if delay > 0:
                 self._scheduler.schedule(delay, play)
@@ -324,7 +325,7 @@ class MusicEngine:
 
         for interval in voicing:
             chord_note = root + interval
-            self._play_note(0, chord_note, velocity, duration)
+            self._play_note(0, chord_note, velocity, duration, visualize=(interval == 0))
 
     def dispose(self) -> None:
         """Clean up synth resources."""
