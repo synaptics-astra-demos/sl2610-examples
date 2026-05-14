@@ -1,0 +1,20 @@
+[Unit]
+Description=Gemma 3 Language Translator GUI
+After=weston.service systemd-user-sessions.service
+Wants=weston.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=@ROOT@/gemma_translate
+Environment=XDG_RUNTIME_DIR=/var/run/user/0
+Environment=WAYLAND_DISPLAY=wayland-1
+Environment=QT_QPA_PLATFORM=wayland
+Environment=WESTON_DISABLE_GBM_MODIFIERS=true
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@ROOT@/.venv/bin/python3 app_translate.py --audio-device default
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
