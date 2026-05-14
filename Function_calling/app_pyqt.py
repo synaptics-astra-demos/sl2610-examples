@@ -73,7 +73,8 @@ def main() -> int:
         "--moonshine-dir",
         type=Path,
         help="Directory holding Moonshine VMFB artifacts. Defaults to "
-             "<repo>/models/moonshine/ when --voice=moonshine.",
+             "<repo>/models/Synaptics/moonshine-tiny-bf16-torq/ when "
+             "--voice=moonshine.",
     )
     p.add_argument(
         "--screenshot-dir",

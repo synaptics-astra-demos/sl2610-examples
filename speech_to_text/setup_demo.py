@@ -29,7 +29,11 @@ def setup_speech_to_text(
         download_moonshine(moonshine_models)
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
-    run_demo_setup_cli(_download_models, requirements_txt, logger)
+    run_demo_setup_cli(
+        _download_models, requirements_txt, logger,
+        version_map={"torq.runtime": ">=2.0.0a1"},
+        demo_name="speech_to_text",
+    )
 
 
 if __name__ == "__main__":

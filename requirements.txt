@@ -9,6 +9,7 @@ PyQt5>=5.15
 psutil>=5.9
 pyserial>=3.5
 ml_dtypes
+packaging
 
 # Voice input (optional; enabled when CORAL_VOICE=stub|moonshine).
 # Requires libportaudio2 system package for sounddevice.

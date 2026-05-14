@@ -100,10 +100,10 @@ python setup_demo.py
 wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf
 ```
 
-Extract the audio libraries
+Install the PortAudio system libraries for microphone input:
 
 ```bash
-tar -xvzf ../library/portaudio_libs.tgz -C /
+../configs/install_configs.sh portaudio
 ```
 
 Connect a USB or PDM microphone

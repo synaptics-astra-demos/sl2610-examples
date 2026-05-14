@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Final
 
-from ..download import default_models_dir, download_from_hf
+from ..download import default_models_dir, download_from_hf, verify_manifest, write_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -34,21 +34,28 @@ def local_moonshine_model_dir(
     *,
     base_dir: str | Path | None = None,
 ) -> Path | None:
-    """Return the managed local model directory if required files exist."""
+    """Return the managed local model directory if manifest is valid."""
 
     if base_dir is None:
         base_dir = default_models_dir()
     model_dir = Path(base_dir) / moonshine_repo_id(model)
-    if all((model_dir / filename).exists() for filename in _MOONSHINE_REQUIRED_FILES):
+    if verify_manifest(model_dir):
         return model_dir
     return None
 
 
-def _download_preprocessor(repo_id: str, base_dir: Path) -> None:
-    """Download the optional Moonshine preprocessor model."""
+def _download_preprocessor(repo_id: str, base_dir: Path) -> str | None:
+    """Download the optional Moonshine preprocessor model.
+
+    Returns:
+        The filename downloaded (e.g. ``"preprocessor.vmfb"``), or None
+        if the repo has no preprocessor (flow 1: embedded in encoder).
+    """
     local_dir = base_dir / repo_id
-    if (local_dir / "preprocessor.vmfb").exists() or (local_dir / "preprocessor.onnx").exists():
-        return
+    if (local_dir / "preprocessor.vmfb").exists():
+        return "preprocessor.vmfb"
+    if (local_dir / "preprocessor.onnx").exists():
+        return "preprocessor.onnx"
 
     from huggingface_hub import HfApi
 
@@ -63,13 +70,14 @@ def _download_preprocessor(repo_id: str, base_dir: Path) -> None:
                 repo_id,
             )
         download_from_hf(repo_id, "preprocessor.vmfb", base_dir=base_dir)
-        return
+        return "preprocessor.vmfb"
 
     if has_onnx:
         download_from_hf(repo_id, "preprocessor.onnx", base_dir=base_dir)
-        return
+        return "preprocessor.onnx"
 
     logger.info("No preprocessor model found in %s; continuing without it.", repo_id)
+    return None
 
 
 def download_moonshine(models: list[str] | None = None) -> dict[str, Path]:
@@ -96,14 +104,20 @@ def download_moonshine(models: list[str] | None = None) -> dict[str, Path]:
             logger.info("Using local Moonshine model files from '%s'", str(local_dir))
             continue
 
-        _download_preprocessor(repo_id, base_dir)
-        download_from_hf(repo_id, "encoder.vmfb", base_dir=base_dir)
-        download_from_hf(repo_id, "decoder.vmfb", base_dir=base_dir)
-        download_from_hf(repo_id, "decoder_with_past.vmfb", base_dir=base_dir)
-        download_from_hf(repo_id, "decoder_token_embeddings.npy", base_dir=base_dir)
-        download_from_hf(repo_id, "tokenizer.json", base_dir=base_dir)
-        result[name] = base_dir / repo_id
-        logger.info("Downloaded Moonshine model files from %s to '%s'", repo_id, str(result[name]))
+        downloaded_files: list[str] = []
+
+        preprocessor = _download_preprocessor(repo_id, base_dir)
+        if preprocessor:
+            downloaded_files.append(preprocessor)
+
+        for filename in _MOONSHINE_REQUIRED_FILES:
+            download_from_hf(repo_id, filename, base_dir=base_dir)
+            downloaded_files.append(filename)
+
+        model_dir = base_dir / repo_id
+        write_manifest(model_dir, repo_id, downloaded_files)
+        result[name] = model_dir
+        logger.info("Downloaded Moonshine model files from %s to '%s'", repo_id, str(model_dir))
 
     logger.info("Moonshine model download complete.")
     return result

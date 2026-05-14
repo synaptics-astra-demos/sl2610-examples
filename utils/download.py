@@ -1,17 +1,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
 
+import json
 import os
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Final
 
 __all__ = [
     "default_models_dir",
     "download_from_url",
     "download_from_hf",
+    "write_manifest",
+    "verify_manifest",
+    "read_manifest",
 ]
 
 logger = logging.getLogger(__name__)
+
+_MANIFEST_FILENAME: Final[str] = ".manifest.json"
 
 
 def download_from_url(url: str, filename: str | os.PathLike, chunk_size: int = 8192):
@@ -73,3 +81,57 @@ def download_from_hf(
     )
     logger.debug("Download from HuggingFace completed.")
     return local_file
+
+
+def write_manifest(model_dir: Path, repo_id: str, files: list[str]) -> Path:
+    """Write a download manifest after a successful setup.
+
+    Args:
+        model_dir: Local directory containing the downloaded model files.
+        repo_id: HuggingFace repo ID the files were fetched from.
+        files: List of filenames that were resolved/downloaded.
+
+    Returns:
+        Path to the written manifest file.
+    """
+    manifest = {
+        "repo_id": repo_id,
+        "files": sorted(files),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    manifest_path = model_dir / _MANIFEST_FILENAME
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    logger.debug("Wrote manifest to %s", manifest_path)
+    return manifest_path
+
+
+def verify_manifest(model_dir: Path) -> bool:
+    """Check that a manifest exists and all listed files are present.
+
+    Returns:
+        True if the manifest exists and every file it lists is on disk.
+    """
+    manifest_path = model_dir / _MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Corrupt manifest at %s", manifest_path)
+        return False
+
+    files = manifest.get("files", [])
+    if not files:
+        return False
+    return all((model_dir / f).exists() for f in files)
+
+
+def read_manifest(model_dir: Path) -> dict | None:
+    """Read and return the manifest dict, or None if missing/corrupt."""
+    manifest_path = model_dir / _MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return None
+    try:
+        return json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None

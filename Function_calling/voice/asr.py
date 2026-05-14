@@ -68,7 +68,7 @@ class MoonshineASR:
     Resolution order for ``model_dir``:
       1. explicit constructor arg (e.g. from ``--moonshine-dir``)
       2. ``Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/`` (default; populated by
-         ``scripts/setup.sh --voice``)
+         ``setup_demo.py``)
 
     Heavy deps (torq.runtime, onnxruntime, ml_dtypes, tokenizers, etc.)
     are imported lazily inside ``__init__`` so a host without them keeps
@@ -86,8 +86,8 @@ class MoonshineASR:
             raise FileNotFoundError(
                 f"Moonshine model dir not found: {resolved}. Pass "
                 "--moonshine-dir, or stage the artifacts under "
-                "Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/ (run "
-                "`scripts/setup.sh --voice` to fetch from HuggingFace)."
+                "Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/ "
+                "(run `python setup_demo.py` to fetch from HuggingFace)."
             )
 
         try:

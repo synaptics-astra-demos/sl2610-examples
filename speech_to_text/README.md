@@ -60,24 +60,16 @@ If online
 pip install -r requirements.txt
 ```
 
-[Warning!] Due to a temporary dependency issue, the torq runtime must be installed after all other requirements are satisfied.
-If the torq runtime is already installed, then uninstall it. 
+Now install the additional dependencies for this specific example.
 
 ```bash
-pip uninstall torq_runtime
-```
-
-Now install the additional dependencies for this specific example. 
-
-```bash
+cd speech_to_text
 pip install -r requirements.txt
 ```
 
-Now (re)install the torq runtime. 
-
-
+If offline:
 ```bash
-pip install --no-deps ../wheelhouse/torq_runtime-1.5.0-cp312-cp312-manylinux_2_28_aarch64.whl
+pip install --no-index --find-links=../wheelhouse -r requirements.txt
 ```
 
 ### Download Models
@@ -88,10 +80,10 @@ Download the Moonshine model files from HuggingFace:
 python setup_demo.py
 ```
 
-Extract the audio libraries
+Install the PortAudio system libraries for microphone input:
 
 ```bash
-tar -xvzf ../library/portaudio_libs.tgz -C /
+../configs/install_configs.sh portaudio
 ```
 
 Connect a USB or PDM microphone

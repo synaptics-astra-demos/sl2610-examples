@@ -61,6 +61,31 @@ If offline
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
+## Device Configuration
+
+Some demos require kernel modules, native libraries, or display configuration to be installed on the device. A unified installer script is provided:
+
+```bash
+./configs/install_configs.sh <target> [target ...]
+```
+
+| Target | Description |
+|--------|-------------|
+| `kernel` | Update the NPU kernel module (`syna_npu.ko`) |
+| `usb_cdc` | Install USB CDC/serial modules (`cdc-acm`, `usbserial`, `ch341`) |
+| `portaudio` | Install PortAudio shared libraries for microphone demos |
+| `portrait_setup` | Configure portrait display orientation (weston) |
+| `all` | Install all of the above |
+
+Examples:
+```bash
+./configs/install_configs.sh kernel
+./configs/install_configs.sh usb_cdc portaudio portrait_setup
+./configs/install_configs.sh all
+```
+
+The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `./configs/patch_usb_cdc.sh`).
+
 ## Object Detection
 
 Follow the steps in /object_detection/README.md to see how to perform object detection using YoloV8 on a single image. 
@@ -75,7 +100,9 @@ See [/Function_calling/README.md](Function_calling/README.md) for the on-device 
 
 ```bash
 cd Function_calling
-bash scripts/setup.sh [--voice]                  # venv + deps + GGUF (+ voice toolchain)
+pip install -r requirements.txt
+python setup_demo.py                             # GGUF + Moonshine model files
+../configs/install_configs.sh portaudio     # needed for voice input
 bash scripts/install-service.sh                  # systemd autostart of the PyQt UI
 ```
 

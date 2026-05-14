@@ -61,7 +61,7 @@ fi
 
 if [ ! -x "${VENV_PY}" ]; then
     echo "venv python not found at ${VENV_PY}" >&2
-    echo "create the shared venv at ${PARENT_DIR}/.venv and run scripts/setup.sh first" >&2
+    echo "create the shared venv at ${PARENT_DIR}/.venv, install requirements, and run setup_demo.py first" >&2
     exit 1
 fi
 
