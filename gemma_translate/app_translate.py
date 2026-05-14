@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from collections import deque
+import enum
+import itertools
 import logging
 import os
 from pathlib import Path
@@ -10,6 +13,18 @@ import sys
 import threading
 import time
 from typing import TYPE_CHECKING
+
+try:
+    import psutil as _psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
+try:
+    with open("/proc/self/oom_score_adj", "w") as f:
+        f.write("300")
+except Exception as e:
+    print(f"Could not set oom_score_adj: {e}")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "UI"))
@@ -232,6 +247,7 @@ class CommSignals(QObject):
     update_stat = pyqtSignal(str, str)
     update_status = pyqtSignal(str)
     mic_deactivate = pyqtSignal()
+    translation_done = pyqtSignal()
 
 
 class MessageBubble(QFrame):
@@ -285,6 +301,7 @@ class ChatWindow(QWidget):
         self.voice_active = False
         self._translator = None
         self._close_handler = None
+        self._translate_thread: threading.Thread | None = None
 
         self.signals = CommSignals()
         self.signals.update_user.connect(self._handle_user_update)
@@ -516,6 +533,9 @@ class ChatWindow(QWidget):
         text = self.input_text.toPlainText().strip()
         if not text or self._translator is None:
             return
+        if self._translate_thread is not None and self._translate_thread.is_alive():
+            logger.debug("Translation already in progress, ignoring submit")
+            return
         self.input_text.clear()
         self.output_text.clear()
         self.update_user_text(text)
@@ -539,8 +559,11 @@ class ChatWindow(QWidget):
                     self.update_llm_stats(result.stats)
             except Exception as exc:
                 self.update_response_text(f"Error: {exc}", replace=True)
+            finally:
+                self.signals.translation_done.emit()
 
-        threading.Thread(target=_run, daemon=True, name="text-translate").start()
+        self._translate_thread = threading.Thread(target=_run, daemon=True, name="text-translate")
+        self._translate_thread.start()
 
     # ── Public update API (called from worker thread) ───────────────
 
@@ -641,13 +664,236 @@ class ChatWindow(QWidget):
         super().closeEvent(event)
 
 
+_DEFAULT_TEST_PHRASES = [
+    "Good morning, how are you today?",
+    "The weather is beautiful outside.",
+    "I would like a cup of coffee, please.",
+    "Where is the nearest train station?",
+    "Can you help me find a good restaurant?",
+    "The meeting starts at nine o'clock.",
+    "Please turn off the lights when you leave.",
+    "I need to buy some groceries on the way home.",
+    "The project deadline is next Friday.",
+    "Thank you very much for your assistance.",
+    "Could you please repeat that more slowly?",
+    "I am looking for the customer service desk.",
+    "The children are playing in the park.",
+    "We should leave early to avoid traffic.",
+    "What time does the museum open tomorrow?",
+    "I forgot my umbrella at the office.",
+    "This is a very important document.",
+    "Please sign here and date the form.",
+    "The flight has been delayed by two hours.",
+    "I enjoy reading books in the evening.",
+]
+
+
+class _TestState(enum.Enum):
+    IDLE = "idle"
+    TRANSLATING = "translating"
+    COOLDOWN = "cooldown"
+
+
+class AutoTestDriver(QObject):
+    """Feeds phrases into the ChatWindow text input on a QTimer loop.
+
+    Completion is detected via the translation_done signal, which is emitted
+    in the finally block of _submit_text_input's background thread. This fires
+    exactly once per translation (after the full result or an error) and cannot
+    be confused with streaming partial token updates.
+    """
+
+    def __init__(
+        self,
+        window: "ChatWindow",
+        *,
+        phrases: list[str],
+        languages: list,
+        delay_s: float,
+        count: int | None,
+        csv_path: str | None,
+    ):
+        super().__init__()
+        self._window = window
+        self._phrase_cycle = itertools.cycle(phrases)
+        self._lang_cycle = itertools.cycle(languages)
+        self._delay_s = delay_s
+        self._count = count
+        self._translation_index = 0
+        self._state = _TestState.IDLE
+        self._cooldown_until = 0.0
+        self._translate_start_s = 0.0
+        self._start_time = time.monotonic()
+
+        self._latency_ms_list: list[float] = []
+        self._mem_mb_list: list[float] = []
+        self._pending_phrase = ""
+        self._pending_language = ""
+
+        self._csv_file = None
+        self._csv_writer = None
+        if csv_path:
+            p = Path(csv_path)
+            self._csv_file = p.open("w", newline="", encoding="utf-8")
+            fieldnames = ["index", "phrase", "language", "translation",
+                          "wall_ms", "mem_mb"]
+            self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=fieldnames)
+            self._csv_writer.writeheader()
+            logger.info("AutoTest: writing results to %s", p)
+
+        window.signals.translation_done.connect(self._on_translation_done)
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(200)
+        self._timer.timeout.connect(self._tick)
+
+    def start(self):
+        logger.info("AutoTest: starting phrase feeder")
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+        if self._csv_file is not None:
+            self._csv_file.close()
+            self._csv_file = None
+
+    def _on_translation_done(self):
+        if self._state != _TestState.TRANSLATING:
+            return
+        wall_ms = (time.monotonic() - self._translate_start_s) * 1000
+        mem_mb = self._get_mem_mb()
+        translation = self._window.output_text.text()
+        self._record_result(wall_ms, mem_mb, translation)
+        self._state = _TestState.COOLDOWN
+        self._cooldown_until = time.monotonic() + self._delay_s
+
+    def _tick(self):
+        if self._state == _TestState.IDLE:
+            if self._count is not None and self._translation_index >= self._count:
+                self._timer.stop()
+                self._print_summary()
+                return
+            self._send_next()
+
+        elif self._state == _TestState.COOLDOWN:
+            if time.monotonic() >= self._cooldown_until:
+                self._state = _TestState.IDLE
+                if self._translation_index % 10 == 0:
+                    self._print_summary()
+
+    def _send_next(self):
+        phrase = next(self._phrase_cycle)
+        language = next(self._lang_cycle)
+        self._pending_phrase = phrase
+        self._pending_language = language.display_name
+        self._window.language_dropdown.setCurrentText(language.display_name)
+        self._window.input_text.setPlainText(phrase)
+        # _submit_text_input emits "..." synchronously via direct Qt signal,
+        # which starts _thinking_timer before this call returns.
+        self._window._submit_text_input()
+        self._translation_index += 1
+        self._translate_start_s = time.monotonic()
+        self._state = _TestState.TRANSLATING
+        logger.info("AutoTest [%d] (%s) %s", self._translation_index, language.display_name, phrase)
+
+    def _record_result(self, wall_ms: float, mem_mb: float | None, translation: str):
+        self._latency_ms_list.append(wall_ms)
+        if mem_mb is not None:
+            self._mem_mb_list.append(mem_mb)
+        mem_str = f"  mem={mem_mb:.0f}MB" if mem_mb is not None else ""
+        logger.info(
+            "AutoTest [%d] done: %.0fms%s  =>  %s",
+            self._translation_index, wall_ms, mem_str, translation,
+        )
+        if self._csv_writer is not None:
+            self._csv_writer.writerow({
+                "index": self._translation_index,
+                "phrase": self._pending_phrase,
+                "language": self._pending_language,
+                "translation": translation,
+                "wall_ms": f"{wall_ms:.1f}",
+                "mem_mb": f"{mem_mb:.1f}" if mem_mb is not None else "",
+            })
+            if self._csv_file is not None:
+                self._csv_file.flush()
+
+    def _get_mem_mb(self) -> float | None:
+        if not _PSUTIL_AVAILABLE:
+            return None
+        try:
+            return _psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+        except Exception:
+            return None
+
+    def _print_summary(self):
+        n = len(self._latency_ms_list)
+        if n == 0:
+            return
+        elapsed = time.monotonic() - self._start_time
+        avg_ms = sum(self._latency_ms_list) / n
+        min_ms = min(self._latency_ms_list)
+        max_ms = max(self._latency_ms_list)
+        mem_str = ""
+        if self._mem_mb_list:
+            mem_str = (
+                f"  mem(MB): min={min(self._mem_mb_list):.0f}"
+                f" max={max(self._mem_mb_list):.0f}"
+            )
+        logger.info(
+            "AutoTest summary: n=%d  elapsed=%.0fs"
+            "  wall_ms: avg=%.0f min=%.0f max=%.0f%s",
+            n, elapsed, avg_ms, min_ms, max_ms, mem_str,
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Astra language translation GUI using Moonshine and Gemma"
     )
     add_common_translation_args(parser)
     add_gui_args(parser)
+    add_test_args(parser)
     return parser.parse_args()
+
+
+def add_test_args(parser: argparse.ArgumentParser):
+    group = parser.add_argument_group("auto-test options")
+    group.add_argument(
+        "--test",
+        action="store_true",
+        help="Enable auto-test mode: feed phrases automatically without mic input.",
+    )
+    group.add_argument(
+        "--test-phrases",
+        type=str,
+        default=None,
+        help="Path to a text file with one phrase per line. Uses built-in list if omitted.",
+    )
+    group.add_argument(
+        "--test-languages",
+        nargs="+",
+        choices=[lang.display_name for lang in LANGUAGES.values()],
+        default=None,
+        help="Target languages to cycle through (default: all configured languages).",
+    )
+    group.add_argument(
+        "--test-delay",
+        type=float,
+        default=1.0,
+        help="Seconds to wait between translations (default: 1.0).",
+    )
+    group.add_argument(
+        "--test-count",
+        type=int,
+        default=None,
+        help="Stop after this many translations. Runs indefinitely if omitted.",
+    )
+    group.add_argument(
+        "--test-csv",
+        type=str,
+        default=None,
+        help="Path to write per-translation CSV results.",
+    )
 
 
 def add_gui_args(parser: argparse.ArgumentParser):
@@ -796,8 +1042,13 @@ def main() -> int:
         print(f"[NPU] {message}" if ok else f"[NPU] {message}", flush=True)
 
     translator = build_translation_service(args)
-    audio_device = choose_audio_device(args.audio_device)
-    recognizer = build_speech_recognizer(args, audio_device=audio_device)
+
+    if not getattr(args, "test", False):
+        audio_device = choose_audio_device(args.audio_device)
+        recognizer = build_speech_recognizer(args, audio_device=audio_device)
+    else:
+        audio_device = None
+        recognizer = None
 
     configure_qt_environment()
     app = QApplication([sys.argv[0]])
@@ -813,28 +1064,73 @@ def main() -> int:
 
     window.set_translator(translator)
 
-    worker = TranslationWorker(
-        recognizer=recognizer,
-        translator=translator,
-        language_state=language_state,
-        window=window,
-        min_words=args.min_words,
-        partial_update_ms=args.partial_update_ms,
-        show_stats=not args.hide_stats,
-    )
-    window.set_close_handler(worker.stop)
-    app.aboutToQuit.connect(worker.stop)
-    signal.signal(signal.SIGINT, lambda *_: (worker.stop(), app.quit()))
+    auto_test = None
+    if getattr(args, "test", False):
+        if args.test_phrases:
+            phrases = [
+                line.strip()
+                for line in Path(args.test_phrases).read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        else:
+            phrases = _DEFAULT_TEST_PHRASES
+
+        lang_names = args.test_languages or [lang.display_name for lang in LANGUAGES.values()]
+        lang_map = {lang.display_name: lang for lang in LANGUAGES.values()}
+        test_languages = [lang_map[n] for n in lang_names]
+        for lang in test_languages:
+            ensure_language_fonts_loaded(lang)
+
+        auto_test = AutoTestDriver(
+            window,
+            phrases=phrases,
+            languages=test_languages,
+            delay_s=args.test_delay,
+            count=args.test_count,
+            csv_path=args.test_csv,
+        )
+        logger.info(
+            "AutoTest mode: %d phrases, languages=%s, delay=%.1fs, count=%s",
+            len(phrases), lang_names, args.test_delay, args.test_count or "unlimited",
+        )
+
+    if recognizer is not None:
+        worker = TranslationWorker(
+            recognizer=recognizer,
+            translator=translator,
+            language_state=language_state,
+            window=window,
+            min_words=args.min_words,
+            partial_update_ms=args.partial_update_ms,
+            show_stats=not args.hide_stats,
+        )
+        window.set_close_handler(worker.stop)
+        app.aboutToQuit.connect(worker.stop)
+        signal.signal(signal.SIGINT, lambda *_: (worker.stop(), app.quit()))
+    else:
+        worker = None
+        if auto_test is not None:
+            app.aboutToQuit.connect(auto_test.stop)
+        signal.signal(signal.SIGINT, lambda *_: app.quit())
 
     if args.windowed:
         window.show()
     else:
         window.showFullScreen()
 
-    worker.start()
+    if worker is not None:
+        worker.start()
+    if auto_test is not None:
+        auto_test.start()
+
     exit_code = app.exec_()
-    worker.stop()
-    worker.join(timeout=2.0)
+
+    if worker is not None:
+        worker.stop()
+        worker.join(timeout=2.0)
+    if auto_test is not None:
+        auto_test.stop()
+
     return exit_code
 
 
