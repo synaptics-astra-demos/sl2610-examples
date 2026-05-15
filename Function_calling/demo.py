@@ -49,7 +49,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "../models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
+    / "../models" / "functiongemma-physical-ai-v10-Q5_K_M.gguf"
 )
 HISTORY_FILE = Path.home() / ".coral_demo_history"
 HISTORY_LIMIT = 1000
@@ -75,15 +75,18 @@ Slash commands:
 Anything else is sent to the model as a prompt."""
 
 _TOOLS_TEXT = """\
-Available tools (v9, 8 functions):
-  set_status_led <led> <state>    HAT LED on/off (led: red|green|blue|all)
-  blink_status_led <led>          Blink HAT LED N times (count/speed optional)
-  set_neopixel_effect <effect>    Ring effect: solid, pulse, fade, chase,
-                                    rainbow, sparkle, off, aurora, plasma,
-                                    comet, twinkle, fireworks, police,
-                                    heartbeat, loading, lightning, glitter,
-                                    fire, sunrise. color/palette/speed/
-                                    intensity optional.
+Available tools (v10, 6 functions):
+  set_lights <color/effect/state> Unified lights tool — dispatcher routes to
+                                    HAT or WLED strip at runtime. Args (all
+                                    optional, named):
+                                      color  = red|green|blue|white|yellow|
+                                               purple|orange|pink|cyan
+                                      effect = solid|blink|pulse|fade|rainbow|
+                                               fire|plasma|aurora|police|
+                                               fireworks|sparkle|twinkle|chase|
+                                               comet|heartbeat|lightning|
+                                               glitter|loading|sunrise|off
+                                      state  = on|off
   play_buzzer <pattern>           beep, double_beep, chirp, siren, alarm, success, error
   set_alarm <duration|time>       Schedule alarm (label optional)
   cancel_alarm [label]            Cancel one or all alarms
