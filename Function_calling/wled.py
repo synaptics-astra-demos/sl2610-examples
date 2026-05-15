@@ -220,6 +220,12 @@ class WLEDSerialClient:
                 seg["pal"] = pal_id
             else:
                 log.warning("unknown palette %r, ignoring", palette)
+        elif effect_l in _PRIMARY_COLOR_EFFECTS:
+            # Force palette 0 (Default = use seg.col[0]) so a palette left
+            # over from a prior effect (aurora, plasma, etc.) doesn't bleed
+            # into the new solid/single-color output. Without this, "turn the
+            # lights white" after a rainbow leaves the strip in palette mode.
+            seg["pal"] = 0
 
         # Rainbow doesn't use a primary color (it spans the spectrum); omit
         # `col` entirely so any residual color from a prior call doesn't bleed

@@ -207,6 +207,9 @@ class Turn:
     latency_ms: float
     raw_text: str = ""
     source: str = "typed"
+    ttft_ms: float = 0.0
+    n_tokens: int = 0
+    tps: float = 0.0
 
 
 def _steps_to_log_records(steps: tuple[ToolStep, ...]) -> list[dict[str, Any]]:
@@ -223,6 +226,16 @@ def _steps_to_log_records(steps: tuple[ToolStep, ...]) -> list[dict[str, Any]]:
 
 
 def _build_step(call: ToolCall, result: DispatchResult) -> ToolStep:
+    if result.status == "fallback":
+        # Dispatcher-side soft-error: render as a respond bubble so the user
+        # sees a friendly suggestion, not a red ERROR badge. The original
+        # tool call is preserved in turn_log via raw_text.
+        return ToolStep(
+            name="respond",
+            args={"message": result.message},
+            status="ok",
+            message=result.message,
+        )
     if result.status == "error":
         return ToolStep(
             name=call.name,
@@ -236,6 +249,12 @@ def _build_step(call: ToolCall, result: DispatchResult) -> ToolStep:
         status="ok",
         message=result.message,
     )
+
+
+_NO_TOOL_FALLBACK = (
+    "I'm not sure how to help with that. Try \"turn on the lights\", "
+    "\"blink red\", or \"play a beep\"."
+)
 
 
 class InferenceWorker(QObject):
@@ -257,14 +276,20 @@ class InferenceWorker(QObject):
             result = self.model.generate(user_text)
             calls = result.tool_calls
             if not calls:
+                # Friendly fallback instead of red ERROR badge. The raw model
+                # output is preserved in turn_log for diagnostics.
                 fallback = ToolStep(
-                    name="(no tool call)", status="error",
-                    error=f"Model did not produce a parseable call. Raw: {result.raw_text!r}",
+                    name="respond",
+                    args={"message": _NO_TOOL_FALLBACK},
+                    status="ok",
+                    message=_NO_TOOL_FALLBACK,
                 )
                 self.finished.emit(Turn(
                     user=user_text, steps=(fallback,),
                     latency_ms=result.latency_ms,
                     raw_text=result.raw_text, source=source,
+                    ttft_ms=result.ttft_ms, n_tokens=result.n_tokens,
+                    tps=result.tps,
                 ))
                 return
             results = self.dispatcher.dispatch_all(calls)
@@ -273,6 +298,8 @@ class InferenceWorker(QObject):
                 user=user_text, steps=steps,
                 latency_ms=result.latency_ms,
                 raw_text=result.raw_text, source=source,
+                ttft_ms=result.ttft_ms, n_tokens=result.n_tokens,
+                tps=result.tps,
             ))
         except Exception as exc:  # noqa: BLE001
             err_step = ToolStep(name="(model)", status="error", error=str(exc))
@@ -562,7 +589,9 @@ class ChatWindow(QMainWindow):
         self.log.append_turn(LogTurn(
             user=turn.user, steps=turn.steps, latency_ms=turn.latency_ms,
         ))
-        self.metrics.report_inference(turn.latency_ms)
+        self.metrics.report_inference(
+            ttft_ms=turn.ttft_ms, tps=turn.tps,
+        )
         self._turn_logger.log(
             "turn_done",
             source=turn.source,
@@ -570,6 +599,9 @@ class ChatWindow(QMainWindow):
             raw_text=turn.raw_text,
             steps=_steps_to_log_records(turn.steps),
             latency_ms=round(turn.latency_ms, 1),
+            ttft_ms=round(turn.ttft_ms, 1),
+            n_tokens=turn.n_tokens,
+            tps=round(turn.tps, 2),
         )
         actions = [s for s in turn.steps if not s.is_respond]
         n = len(actions)

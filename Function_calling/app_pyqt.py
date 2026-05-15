@@ -38,7 +38,7 @@ from wled import WLEDSerialClient
 
 DEFAULT_MODEL = (
     Path(__file__).resolve().parent
-    / "../models" / "functiongemma-physical-ai-v9-Q5_K_M.gguf"
+    / "../models" / "coral-v10-Q5_K_M.gguf"
 )
 
 
@@ -90,20 +90,28 @@ def main() -> int:
     print(f"Loading model from {args.model}")
     model = FunctionGemmaModel(str(args.model))
 
-    if args.wled_port:
-        wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud)
+    # WLED auto-detect: if --wled-port is given, use it. Otherwise probe for
+    # any /dev/ttyACM* and try the first one. This makes the strip "just
+    # work" when plugged in without needing the user to re-run with a flag,
+    # and gracefully falls back to HAT-only mode when no strip is present.
+    wled_port = args.wled_port
+    if not wled_port:
+        candidates = sorted(glob.glob("/dev/ttyACM*"))
+        if candidates:
+            wled_port = candidates[0]
+            logging.info("auto-detected WLED port: %s", wled_port)
+    if wled_port:
+        try:
+            wled = WLEDSerialClient(port=wled_port, baud=args.wled_baud)
+        except Exception:  # noqa: BLE001
+            logging.exception(
+                "WLED client failed to open %s — falling back to HAT-only",
+                wled_port,
+            )
+            wled = None
     else:
         wled = None
-        # Catch the "plugged Sparkle Motion in after installing the systemd
-        # unit" footgun: a serial device is present but we won't drive it.
-        present = sorted(glob.glob("/dev/ttyACM*"))
-        if present:
-            logging.warning(
-                "found %s but --wled-port was not passed; the WLED ring will "
-                "be ignored. Re-run with `--wled-port %s` (or re-install the "
-                "systemd unit) to drive it.",
-                ", ".join(present), present[0],
-            )
+        logging.info("no WLED device detected — running in HAT-only mode")
     alarm_signals = AlarmSignals()
     hardware = HardwareDevice(wled=wled, on_async_event=alarm_signals.fired.emit)
     dispatcher = Dispatcher(hardware)
@@ -133,6 +141,7 @@ def main() -> int:
     finally:
         if voice is not None:
             voice.stop()
+        dispatcher.cleanup()
         hardware.cleanup()
 
 

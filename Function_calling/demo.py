@@ -345,6 +345,7 @@ def main() -> None:
     finally:
         if voice is not None:
             voice.stop()
+        dispatcher.cleanup()
         hardware.cleanup()
 
 
