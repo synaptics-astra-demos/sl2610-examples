@@ -42,6 +42,7 @@ from metrics_provider import MetricsPump, PsutilProvider
 from mic_button import MicButton
 from status_bar import StatusBar
 from theme import PALETTE, TYPE
+from turn_log import TurnLogger
 from voice import VoicePipeline
 
 PROMPT_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -204,6 +205,21 @@ class Turn:
     user: str
     steps: tuple[ToolStep, ...]
     latency_ms: float
+    raw_text: str = ""
+    source: str = "typed"
+
+
+def _steps_to_log_records(steps: tuple[ToolStep, ...]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": s.name,
+            "args": dict(s.args),
+            "status": s.status,
+            "message": s.message,
+            "error": s.error,
+        }
+        for s in steps
+    ]
 
 
 def _build_step(call: ToolCall, result: DispatchResult) -> ToolStep:
@@ -224,17 +240,19 @@ def _build_step(call: ToolCall, result: DispatchResult) -> ToolStep:
 
 class InferenceWorker(QObject):
     finished = pyqtSignal(Turn)
-    failed = pyqtSignal(str)
+    failed = pyqtSignal(Turn)
 
     def __init__(self, model: FunctionGemmaModel, dispatcher: Dispatcher) -> None:
         super().__init__()
         self.model = model
         self.dispatcher = dispatcher
 
-    def run(self, user_text: str) -> None:
-        threading.Thread(target=self._run, args=(user_text,), daemon=True).start()
+    def run(self, user_text: str, source: str = "typed") -> None:
+        threading.Thread(
+            target=self._run, args=(user_text, source), daemon=True,
+        ).start()
 
-    def _run(self, user_text: str) -> None:
+    def _run(self, user_text: str, source: str) -> None:
         try:
             result = self.model.generate(user_text)
             calls = result.tool_calls
@@ -246,6 +264,7 @@ class InferenceWorker(QObject):
                 self.finished.emit(Turn(
                     user=user_text, steps=(fallback,),
                     latency_ms=result.latency_ms,
+                    raw_text=result.raw_text, source=source,
                 ))
                 return
             results = self.dispatcher.dispatch_all(calls)
@@ -253,9 +272,14 @@ class InferenceWorker(QObject):
             self.finished.emit(Turn(
                 user=user_text, steps=steps,
                 latency_ms=result.latency_ms,
+                raw_text=result.raw_text, source=source,
             ))
         except Exception as exc:  # noqa: BLE001
-            self.failed.emit(str(exc))
+            err_step = ToolStep(name="(model)", status="error", error=str(exc))
+            self.failed.emit(Turn(
+                user=user_text, steps=(err_step,),
+                latency_ms=0.0, raw_text="", source=source,
+            ))
 
 
 class VoiceSignals(QObject):
@@ -402,6 +426,8 @@ class ChatWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+P"), self, activated=self._screenshot)
         QShortcut(QKeySequence("Esc"), self, activated=self.close)
 
+        self._turn_logger = TurnLogger()
+
         self.worker = InferenceWorker(model, dispatcher)
         self.worker.finished.connect(self._on_turn_done)
         self.worker.failed.connect(self._on_failed)
@@ -484,7 +510,7 @@ class ChatWindow(QMainWindow):
         history = (recent + [prompt])[-block_n:] if block_n else []
         self._chip_recent[pool] = history
         self.input.setText(prompt)
-        self._on_send()
+        self._submit(prompt, source="chip")
 
     def _set_chips_enabled(self, enabled: bool) -> None:
         for chip in self._prompt_chips:
@@ -493,6 +519,7 @@ class ChatWindow(QMainWindow):
     def _on_mic_toggle(self, checked: bool) -> None:
         if self._voice is None or self.mic_btn is None:
             return
+        self._turn_logger.log("mic_toggle", checked=bool(checked))
         if checked:
             self._voice.start()
             self._set_status("Listening...", "listening")
@@ -505,18 +532,21 @@ class ChatWindow(QMainWindow):
             self._set_chips_enabled(True)
 
     def _on_voice_text(self, text: str) -> None:
+        self._turn_logger.log("voice_text", text=text)
         if self.mic_btn is not None and self.mic_btn.isChecked():
             self.mic_btn.setChecked(False)
             self._on_mic_toggle(False)
         self.input.setText(text)
-        self._on_send()
+        self._submit(text, source="voice")
 
     def _on_reset(self) -> None:
         self.log.clear()
         self._set_status("Ready.")
 
     def _on_send(self) -> None:
-        text = self.input.text().strip()
+        self._submit(self.input.text().strip(), source="typed")
+
+    def _submit(self, text: str, *, source: str) -> None:
         if not text:
             return
         self.input.clear()
@@ -525,7 +555,7 @@ class ChatWindow(QMainWindow):
         self.send_btn.setEnabled(False)
         self._set_chips_enabled(False)
         self.log.show_thinking()
-        self.worker.run(text)
+        self.worker.run(text, source=source)
 
     def _on_turn_done(self, turn: Turn) -> None:
         self.log.hide_thinking()
@@ -533,6 +563,14 @@ class ChatWindow(QMainWindow):
             user=turn.user, steps=turn.steps, latency_ms=turn.latency_ms,
         ))
         self.metrics.report_inference(turn.latency_ms)
+        self._turn_logger.log(
+            "turn_done",
+            source=turn.source,
+            user=turn.user,
+            raw_text=turn.raw_text,
+            steps=_steps_to_log_records(turn.steps),
+            latency_ms=round(turn.latency_ms, 1),
+        )
         actions = [s for s in turn.steps if not s.is_respond]
         n = len(actions)
         if n:
@@ -544,9 +582,16 @@ class ChatWindow(QMainWindow):
         self.send_btn.setEnabled(True)
         self._set_chips_enabled(True)
 
-    def _on_failed(self, error: str) -> None:
+    def _on_failed(self, turn: Turn) -> None:
         self.log.hide_thinking()
-        self.log.append_error(error)
+        err = turn.steps[0].error if turn.steps else "unknown error"
+        self.log.append_error(err or "unknown error")
+        self._turn_logger.log(
+            "turn_failed",
+            source=turn.source,
+            user=turn.user,
+            error=err,
+        )
         self._set_status("Last action failed - see log.", "error")
         self.send_btn.setEnabled(True)
         self._set_chips_enabled(True)
@@ -555,6 +600,7 @@ class ChatWindow(QMainWindow):
         # Hardware emits "ALARM FIRED: <label>"; show just the label in the
         # bubble and status line — the chip already says "ALARM".
         label = event.split(": ", 1)[1] if ": " in event else event
+        self._turn_logger.log("alarm_fired", label=label, event=event)
         self.log.append_alarm(label)
         self._set_status(f"ALARM: {label}", "error")
 
