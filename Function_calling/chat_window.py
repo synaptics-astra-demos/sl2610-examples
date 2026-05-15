@@ -346,6 +346,7 @@ class ChatWindow(QMainWindow):
         self.status = _AnimatedStatusLine()
 
         self._prompt_chips: list[QPushButton] = []
+        self._chip_recent: dict[tuple[str, ...], list[str]] = {}
         chip_row = QHBoxLayout()
         chip_row.setContentsMargins(0, 0, 0, 0)
         chip_row.setSpacing(6)
@@ -474,7 +475,14 @@ class ChatWindow(QMainWindow):
         self.status.set_status(text, state)
 
     def _on_category_chip(self, pool: tuple[str, ...]) -> None:
-        prompt = random.choice(pool)
+        # Skip recent picks so the same prompt does not repeat back-to-back.
+        # Block at most half the pool so small categories stay reachable.
+        block_n = min(2, max(0, len(pool) - 1))
+        recent = self._chip_recent.get(pool, [])
+        candidates = [p for p in pool if p not in recent] or list(pool)
+        prompt = random.choice(candidates)
+        history = (recent + [prompt])[-block_n:] if block_n else []
+        self._chip_recent[pool] = history
         self.input.setText(prompt)
         self._on_send()
 
