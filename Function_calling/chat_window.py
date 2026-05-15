@@ -46,33 +46,27 @@ from turn_log import TurnLogger
 from voice import VoicePipeline
 
 PROMPT_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("status LEDs", (
-        "set the red light on",
-        "turn the green LED on",
+    ("lights", (
+        "turn the lights red",
+        "make the lights blue",
+        "turn the lights on",
+        "lights off",
+        "play a rainbow on the lights",
+        "fire on the lights",
+        "police on the lights",
+        "aurora on the lights",
+        "blue pulse on the lights",
+        "turn the red LED on",
         "turn all LEDs off",
-        "blue LED at 50%",
-        "blink the green light",
-        "flash the red light 5 times fast",
-        "blink all LEDs twice slowly",
     )),
-    ("neopixels", (
-        "aurora on the neopixels",
-        "plasma the neopixels with ocean palette",
-        "fireworks on the neopixels",
-        "comet on the neopixels in red",
-        "pulse the neopixels blue",
-        "police effect on the neopixels",
-        "twinkle the neopixels softly",
-        "intense fire on the neopixels",
-        "turn off the neopixels",
-    )),
-    ("status", (
-        "system status",
-        "what's the cpu usage",
-        "how much memory am I using",
-        "show me the temperature",
-        "what's the NPU at",
-        "give me a system report",
+    ("buzzer", (
+        "play a beep",
+        "play a chirp",
+        "play a double beep",
+        "play the siren on the buzzer",
+        "play a success sound",
+        "play an alarm sound",
+        "play the error sound",
     )),
     ("alarms", (
         "set an alarm for 7am",
@@ -82,14 +76,13 @@ PROMPT_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "cancel my alarm",
         "remove the alarm",
     )),
-    ("buzzer", (
-        "beep",
-        "play a chirp",
-        "double beep",
-        "play the siren",
-        "play success sound",
-        "make an alarm sound",
-        "play the error sound",
+    ("status", (
+        "system status",
+        "what's the cpu usage",
+        "how much memory am I using",
+        "show me the temperature",
+        "what's the NPU at",
+        "give me a system report",
     )),
 )
 
