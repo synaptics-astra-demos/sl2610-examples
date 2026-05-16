@@ -22,7 +22,7 @@ from utils.moonshine import download_moonshine
 logger = logging.getLogger("function_calling.setup")
 
 FUNCTIONGEMMA_REPO_ID = "BrinqAI/functiongemma-270m-physical-ai"
-FUNCTIONGEMMA_FILENAME = "functiongemma-physical-ai-v9-Q5_K_M.gguf"
+FUNCTIONGEMMA_FILENAME = "functiongemma-physical-ai-v10-Q5_K_M.gguf"
 FUNCTIONGEMMA_URL = (
     f"https://huggingface.co/{FUNCTIONGEMMA_REPO_ID}/resolve/main/"
     f"{FUNCTIONGEMMA_FILENAME}"
