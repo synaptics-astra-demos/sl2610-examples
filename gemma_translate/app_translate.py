@@ -83,11 +83,13 @@ CHAT_WIDTH = int(os.environ.get("DISPLAY_WIDTH", 800 if _ORIENTATION == "landsca
 CHAT_HEIGHT = int(os.environ.get("DISPLAY_HEIGHT", 480 if _ORIENTATION == "landscape" else 800))
 
 _THIS_DIR = Path(__file__).resolve().parent
-NON_LATIN_LANGUAGE_FONTS = {
-    "Chinese": (_THIS_DIR / "fonts" / "NotoSansSC-VariableFont_wght.ttf",),
-    "Simplified Chinese": (_THIS_DIR / "fonts" / "NotoSansSC-VariableFont_wght.ttf",),
-    "Hindi": (_THIS_DIR / "fonts" / "NotoSansDevanagari-VariableFont_wdth,wght.ttf",),
-    "Thai": (_THIS_DIR / "fonts" / "NotoSansThai-VariableFont_wdth,wght.ttf",),
+NON_LATIN_LANGUAGE_FONTS: dict[str, tuple] = {
+    # Non-latin fonts are not bundled in this build.
+    # To re-enable, add entries here and place font files in the fonts/ directory:
+    #   "Chinese":            (_THIS_DIR / "fonts" / "NotoSansSC-VariableFont_wght.ttf",),
+    #   "Simplified Chinese": (_THIS_DIR / "fonts" / "NotoSansSC-VariableFont_wght.ttf",),
+    #   "Hindi":              (_THIS_DIR / "fonts" / "NotoSansDevanagari-VariableFont_wdth,wght.ttf",),
+    #   "Thai":               (_THIS_DIR / "fonts" / "NotoSansThai-VariableFont_wdth,wght.ttf",),
 }
 _LOADED_FONT_PATHS: set[str] = set()
 
