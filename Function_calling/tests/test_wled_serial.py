@@ -162,16 +162,20 @@ def test_set_effect_rainbow_omits_col(patched_serial: list[bytes]) -> None:
 
 def test_set_effect_chase_populates_secondary_color(patched_serial: list[bytes]) -> None:
     """Chase (fx 28) uses col[0] as the runners and col[1] as the background.
-    We default col[1] to a dim version of col[0] so the trail is visible."""
+    We default col[1] to a dim version of col[0] so the trail is visible.
+    col[2] is zeroed explicitly so residual tertiary from a previous effect
+    can't leak through."""
     c = WLEDSerialClient()
     c.set_effect("chase", color="red")
     seg = _parse_line(patched_serial[0])["seg"][0]
-    assert len(seg["col"]) == 2
+    assert len(seg["col"]) == 3
     assert seg["col"][0] == [255, 0, 0]
     # col[1] is a dim shade of col[0] — non-zero on the red channel.
     assert seg["col"][1][0] > 0
     # And visibly dimmer than the primary.
     assert seg["col"][1][0] < seg["col"][0][0]
+    # col[2] is zeroed defensively to prevent gradient bleed.
+    assert seg["col"][2] == [0, 0, 0]
 
 
 def test_set_effect_off_sends_on_false(patched_serial: list[bytes]) -> None:
@@ -220,7 +224,9 @@ def test_set_effect_with_new_color_name(patched_serial: list[bytes]) -> None:
     c = WLEDSerialClient()
     c.set_effect("solid", color="teal")
     seg = _parse_line(patched_serial[0])["seg"][0]
-    assert seg["col"] == [[0, 180, 180]]
+    # col[1] and col[2] zeroed so residual secondaries from a prior chase /
+    # comet / rainbow don't bleed into the solid color output.
+    assert seg["col"] == [[0, 180, 180], [0, 0, 0], [0, 0, 0]]
 
 
 # --------------------------------------------------------------- blink

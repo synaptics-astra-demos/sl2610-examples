@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from compact_codec import ToolCall
 from hardware import HardwareDevice
+from lights import KNOWN_COLORS, KNOWN_EFFECTS, KNOWN_STATES, LightsController
 
 
 # Closed enums declared in tools.json descriptions. Validated here because the
@@ -34,13 +35,16 @@ _SYSTEM_METRICS = {"cpu", "memory", "temperature", "npu", "all"}
 @dataclass(frozen=True)
 class DispatchResult:
     tool: str
-    status: str  # "ok" | "error"
+    status: str  # "ok" | "error" | "fallback"
     message: str
     detail: dict[str, Any] | None = None
 
     def __str__(self) -> str:
-        return f"{self.tool}: {self.message}" if self.status == "ok" \
-            else f"{self.tool} ERROR: {self.message}"
+        if self.status == "ok":
+            return f"{self.tool}: {self.message}"
+        if self.status == "fallback":
+            return f"{self.tool} (fallback): {self.message}"
+        return f"{self.tool} ERROR: {self.message}"
 
 
 def _summary(args: dict[str, Any], *keys: str) -> str:
@@ -52,21 +56,33 @@ def _summary(args: dict[str, Any], *keys: str) -> str:
 
 
 def _reject(tool: str, arg: str, value: Any, valid: set[str]) -> DispatchResult:
+    """Friendly fallback for invalid arg values. Renders as a respond
+    bubble in the UI instead of a red ERROR badge — per Google's
+    feedback that error bubbles ruin demo flow. The original tool call
+    and the bad value are preserved in turn_log via raw_text."""
+    suggestions = ", ".join(sorted(valid))
     return DispatchResult(
-        tool=tool, status="error",
-        message=f"invalid {arg}={value!r} (expected one of: {', '.join(sorted(valid))})",
+        tool=tool, status="fallback",
+        message=f"I can do {arg}: {suggestions}. Try one of those?",
     )
 
 
 class Dispatcher:
-    """Translate ToolCall -> HardwareDevice method invocation."""
+    """Translate ToolCall -> HardwareDevice method invocation.
+
+    Carries a ``LightsController`` for the unified v10 ``set_lights`` tool;
+    the strip-vs-HAT routing happens inside the controller based on whether
+    the ``HardwareDevice`` was constructed with a WLED client.
+    """
 
     def __init__(self, hardware: HardwareDevice) -> None:
         self._hw = hardware
+        self._lights = LightsController(wled=hardware._wled)
         self._handlers: dict[str, Callable[[dict[str, Any]], DispatchResult]] = {
             "set_status_led": self._set_status_led,
             "blink_status_led": self._blink_status_led,
             "set_neopixel_effect": self._effect,
+            "set_lights": self._set_lights,
             "play_buzzer": self._buzzer,
             "set_alarm": self._set_alarm,
             "cancel_alarm": self._cancel_alarm,
@@ -74,18 +90,39 @@ class Dispatcher:
             "respond": self._respond,
         }
 
+    def cleanup(self) -> None:
+        """Stop any running HAT effect thread. Idempotent."""
+        self._lights.cleanup()
+
     def dispatch_all(self, calls: list[ToolCall]) -> list[DispatchResult]:
         return [self._dispatch_one(c) for c in calls]
 
     def _dispatch_one(self, call: ToolCall) -> DispatchResult:
+        # Rescue path for a known v10 failure mode: the 270M model sometimes
+        # emits the correct respond MESSAGE but inside a wrong tool token
+        # (e.g. <tool_1>(message="Hi there.") when it meant <tool_5>). Any
+        # tool that wasn't `respond` but carries a `message=` arg gets
+        # reinterpreted as a respond turn. Cheap, no retrain needed; loses
+        # one diagnostic signal (model's original tool choice) which is
+        # acceptable for demo polish.
+        if call.name != "respond" and "message" in call.arguments:
+            return DispatchResult(
+                tool="respond", status="ok",
+                message=str(call.arguments["message"]),
+            )
         handler = self._handlers.get(call.name)
         if handler is None:
-            return DispatchResult(tool=call.name, status="error",
-                                  message=f"no handler for {call.name!r}")
+            return DispatchResult(
+                tool=call.name, status="fallback",
+                message="I didn't recognize that command — try \"turn on the lights\", \"blink red\", or \"play a beep\".",
+            )
         try:
             return handler(call.arguments)
         except Exception as exc:  # noqa: BLE001 — dispatcher boundary
-            return DispatchResult(tool=call.name, status="error", message=str(exc))
+            return DispatchResult(
+                tool=call.name, status="fallback",
+                message=f"Something went wrong running that. ({exc})",
+            )
 
     # -------------------------------------------------------------- handlers
 
@@ -99,8 +136,8 @@ class Dispatcher:
         brightness = int(args.get("brightness", 100))
         if not 0 <= brightness <= 100:
             return DispatchResult(
-                tool="set_status_led", status="error",
-                message=f"invalid brightness={brightness} (expected 0-100)",
+                tool="set_status_led", status="fallback",
+                message=f"Brightness should be 0-100. I got {brightness}.",
             )
         self._hw.set_status_led(led=led, state=state, brightness=brightness)
         return DispatchResult("set_status_led", "ok",
@@ -116,8 +153,8 @@ class Dispatcher:
         count = int(args.get("count", 3))
         if count < 1:
             return DispatchResult(
-                tool="blink_status_led", status="error",
-                message=f"invalid count={count} (expected >= 1)",
+                tool="blink_status_led", status="fallback",
+                message=f"Blink count should be at least 1. I got {count}.",
             )
         self._hw.blink_status_led(led=led, count=count, speed=speed)
         return DispatchResult("blink_status_led", "ok",
@@ -183,3 +220,28 @@ class Dispatcher:
     def _respond(self, args: dict[str, Any]) -> DispatchResult:
         message = str(args.get("message", ""))
         return DispatchResult("respond", "ok", message)
+
+    def _set_lights(self, args: dict[str, Any]) -> DispatchResult:
+        """v10 unified handler. All three args are optional; the dispatcher
+        validates each present arg against its known-good set and emits a
+        friendly fallback (rendered as respond bubble) on any miss."""
+        color = args.get("color")
+        if color is not None and color.lower() not in KNOWN_COLORS:
+            return _reject("set_lights", "color", color, set(KNOWN_COLORS))
+        effect = args.get("effect")
+        if effect is not None and effect.lower() not in KNOWN_EFFECTS:
+            return _reject("set_lights", "effect", effect, set(KNOWN_EFFECTS))
+        state = args.get("state")
+        if state is not None and state.lower() not in KNOWN_STATES:
+            return _reject("set_lights", "state", state, set(KNOWN_STATES))
+        # All args clean (or absent). LightsController normalizes to
+        # lowercase internally for HAT path; strip path accepts raw strings.
+        self._lights.set_lights(
+            color=color.lower() if isinstance(color, str) else None,
+            effect=effect.lower() if isinstance(effect, str) else None,
+            state=state.lower() if isinstance(state, str) else None,
+        )
+        return DispatchResult(
+            "set_lights", "ok",
+            _summary(args, "color", "effect", "state"),
+        )

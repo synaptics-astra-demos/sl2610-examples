@@ -82,7 +82,7 @@ class ModelLoadingPanel(QWidget):
         title.setContentsMargins(0, 4, 0, 0)
         layout.addWidget(title)
 
-        sub = QLabel("functiongemma-270m · llamacpp")
+        sub = QLabel("BrinqAI/functiongemma-270m-physical-ai · llamacpp")
         sub.setAlignment(Qt.AlignHCenter)
         sub.setStyleSheet(
             f"background: transparent; color: {P.text_muted};"

@@ -113,14 +113,14 @@ class StatusBar(QFrame):
 
         row2 = QHBoxLayout()
         row2.setSpacing(6)
-        self._subtitle_full = "Physical AI demo · SL2619 · metrics=psutil"
+        self._subtitle_full = "Physical AI demo · SL2619"
         self._subtitle = QLabel(self._subtitle_full)
         self._subtitle.setStyleSheet(
             f"background: transparent; color: {P.text_secondary}; font-size: 11px;"
         )
         self._subtitle.setMinimumWidth(40)
         self._subtitle.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        self._pill = QLabel("model: functiongemma-270m")
+        self._pill = QLabel("BrinqAI/functiongemma-270m-physical-ai")
         self._pill.setStyleSheet(
             f"background: {P.bg_tertiary}; color: {P.text_secondary};"
             f" border: 1px solid {P.border}; border-radius: 999px;"
@@ -148,4 +148,4 @@ class StatusBar(QFrame):
         self._reset_btn.setEnabled(state != "loading")
 
     def set_model_name(self, name: str) -> None:
-        self._pill.setText(f"model: {name}")
+        self._pill.setText(name)

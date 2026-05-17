@@ -36,6 +36,9 @@ class GenerationResult:
     raw_text: str
     tool_calls: list[ToolCall]
     latency_ms: float
+    ttft_ms: float = 0.0
+    n_tokens: int = 0
+    tps: float = 0.0
 
 
 class FunctionGemmaModel:
@@ -72,10 +75,13 @@ class FunctionGemmaModel:
         # token, so we need detokenize(..., special=True) to see it.
         prompt_tokens = self.llm.tokenize(prompt.encode("utf-8"), add_bos=True, special=True)
         new_tokens: list[int] = []
+        t_first: float | None = None
         for token_id in self.llm.generate(prompt_tokens, temp=0.0, top_p=1.0, top_k=1):
             if token_id == self.llm.token_eos():
                 break
             new_tokens.append(token_id)
+            if t_first is None:
+                t_first = time.time()
             if len(new_tokens) >= self.max_tokens:
                 break
             decoded_so_far = self.llm.detokenize(new_tokens, special=True).decode(
@@ -86,12 +92,19 @@ class FunctionGemmaModel:
             # so stopping at the first <end> would truncate legitimate output.
             if "<end_of_turn>" in decoded_so_far:
                 break
-        latency_ms = (time.time() - t0) * 1000.0
+        t_end = time.time()
+        latency_ms = (t_end - t0) * 1000.0
+        ttft_ms = (t_first - t0) * 1000.0 if t_first is not None else latency_ms
+        decode_s = (t_end - t_first) if t_first is not None else 0.0
+        tps = len(new_tokens) / decode_s if decode_s > 0 else 0.0
         raw = self.llm.detokenize(new_tokens, special=True).decode("utf-8", errors="replace")
         return GenerationResult(
             raw_text=raw,
             tool_calls=parse_compact(raw),
             latency_ms=latency_ms,
+            ttft_ms=ttft_ms,
+            n_tokens=len(new_tokens),
+            tps=tps,
         )
 
     @staticmethod

@@ -1,7 +1,10 @@
 """Top-half metrics panel: 2x2 tile grid with sparklines.
 
-Tiles: CPU, Memory, Power, Inference. NPU + Temp were removed in the redesign
-(neither metric resolves on the Coralboard hardware in practice).
+Tiles: CPU, Memory, TTFT (time-to-first-token), Tok/s (decode throughput).
+Power was replaced with TTFT and total Inference time replaced with Tok/s per
+Google feedback — the Power sysfs path never resolved on the Coralboard, and
+TTFT + Tok/s are the inference numbers that match how the gemma_translate
+demo presents itself.
 """
 
 from __future__ import annotations
@@ -150,10 +153,10 @@ class MetricsPanel(QFrame):
         root.addLayout(grid, stretch=1)
 
         tiles = [
-            ("CPU",       "cpu",    CHART_COLORS["cpu"],    "%"),
-            ("Memory",    "memory", CHART_COLORS["memory"], "%"),
-            ("Power",     "power",  CHART_COLORS["power"],  "W"),
-            ("Inference", "infer",  CHART_COLORS["infer"],  "ms"),
+            ("CPU",    "cpu",    CHART_COLORS["cpu"],    "%"),
+            ("Memory", "memory", CHART_COLORS["memory"], "%"),
+            ("TTFT",   "ttft",   CHART_COLORS["power"],  "ms"),
+            ("Tok/s",  "tps",    CHART_COLORS["infer"],  "tok/s"),
         ]
         for i, (label, key, color, unit) in enumerate(tiles):
             tile = MetricTile(label, key, color, unit)
@@ -183,12 +186,14 @@ class MetricsPanel(QFrame):
         self._tiles["memory"].set_value(
             f"{snap.memory_percent:.0f}%", snap.memory_percent,
         )
-        if snap.power_w is not None:
-            pct = min(100.0, snap.power_w / 5.0 * 100)
-            self._tiles["power"].set_value(f"{snap.power_w:.1f}W", pct)
-        else:
-            self._tiles["power"].set_muted()
 
-    def report_inference(self, ms: float) -> None:
-        pct = min(100.0, ms / 50.0)
-        self._tiles["infer"].set_value(f"{ms:.0f}ms", pct)
+    def report_inference(self, *, ttft_ms: float, tps: float) -> None:
+        # Sparkline domain: TTFT 0-1500ms -> 0-100%, tok/s 0-20 -> 0-100%.
+        # Octopus-v2 cold prefill on this CPU is ~500ms warm / ~1500ms cold;
+        # decode hovers around 7-10 tok/s.
+        self._tiles["ttft"].set_value(
+            f"{ttft_ms:.0f}ms", min(100.0, ttft_ms / 15.0),
+        )
+        self._tiles["tps"].set_value(
+            f"{tps:.1f} tok/s", min(100.0, tps * 5.0),
+        )

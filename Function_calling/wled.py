@@ -177,6 +177,7 @@ class WLEDSerialClient:
 
     def _send(self, payload: dict[str, Any]) -> None:
         line = json.dumps(payload, separators=(",", ":")) + "\n"
+        log.info("wled tx: %s", line.rstrip())
         try:
             ser = self._ensure_open()
             ser.write(line.encode("ascii"))
@@ -212,7 +213,17 @@ class WLEDSerialClient:
         ix = INTENSITY_MAP.get((intensity or "").lower(), meta["ix"])
         sx = SPEED_MAP.get(speed.lower(), SPEED_MAP["normal"])
 
-        seg: dict[str, Any] = {"id": 0, "fx": fx, "sx": sx, "ix": ix}
+        # Force segment 0 to cover the WHOLE strip. WLED retains segments
+        # between calls, and effects like "police" / "rainbow" can split
+        # the strip into multiple segments under the hood — sending just
+        # `{"id": 0, "fx": ...}` would leave the OTHER segments running
+        # whatever they were doing, producing a red/green/blue/off banded
+        # pattern instead of solid red. stop=1024 is a generous upper
+        # bound; WLED clamps to actual strip length.
+        seg: dict[str, Any] = {
+            "id": 0, "start": 0, "stop": 1024,
+            "fx": fx, "sx": sx, "ix": ix,
+        }
 
         if palette:
             pal_id = PALETTE_MAP.get(palette.lower())
@@ -220,26 +231,44 @@ class WLEDSerialClient:
                 seg["pal"] = pal_id
             else:
                 log.warning("unknown palette %r, ignoring", palette)
+        elif effect_l in _PRIMARY_COLOR_EFFECTS:
+            # Force palette 0 (Default = use seg.col[0]) so a palette left
+            # over from a prior effect (aurora, plasma, etc.) doesn't bleed
+            # into the new solid/single-color output. Without this, "turn the
+            # lights white" after a rainbow leaves the strip in palette mode.
+            seg["pal"] = 0
 
         # Rainbow doesn't use a primary color (it spans the spectrum); omit
         # `col` entirely so any residual color from a prior call doesn't bleed
         # through. Other effects get the resolved primary; chase also gets a
         # dim version of the primary as a trail color (col[1]).
+        #
+        # For primary-color effects we ALWAYS send all three col slots
+        # explicitly (with col[1]/col[2] zeroed unless used). WLED retains
+        # whichever slots aren't included in the update, so a previous
+        # chase/comet/rainbow's col[1] / col[2] would otherwise persist and
+        # mix into the new "solid red" output as a red/blue/green gradient.
         if effect_l == "rainbow":
             pass
         elif effect_l in _PRIMARY_COLOR_EFFECTS:
             r, g, b = resolve_color(color) if color else COLOR_NAMES["white"]
-            cols: list[list[int]] = [[r, g, b]]
-            if effect_l in _TRAIL_COLOR_EFFECTS:
-                cols.append([r // 6, g // 6, b // 6])
-            seg["col"] = cols
+            trail = [r // 6, g // 6, b // 6] if effect_l in _TRAIL_COLOR_EFFECTS else [0, 0, 0]
+            seg["col"] = [[r, g, b], trail, [0, 0, 0]]
         elif color:
             # Palette-driven effects (aurora, plasma, fire, etc.) tolerate
             # a primary color hint; pass it through but don't require it.
             r, g, b = resolve_color(color)
-            seg["col"] = [[r, g, b]]
+            seg["col"] = [[r, g, b], [0, 0, 0], [0, 0, 0]]
 
-        self._send({"on": True, "bri": 255, "seg": [seg]})
+        # Delete segments 1..7 explicitly. WLED keeps prior segments alive
+        # unless they're set to stop=0; without this, a previous "police"
+        # or "rainbow" effect that split the strip will keep rendering its
+        # bands underneath our segment 0 update.
+        extra_dels = [{"id": i, "stop": 0} for i in range(1, 8)]
+        self._send({
+            "on": True, "bri": 255, "mainseg": 0,
+            "seg": [seg, *extra_dels],
+        })
 
     def blink(self, count: int, color: str = "white",
               speed: str = "normal") -> None:
