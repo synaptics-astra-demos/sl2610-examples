@@ -127,11 +127,12 @@ done
 echo ""
 echo "=== All requested targets installed ==="
 if [[ "$REBOOT_NEEDED" == true ]]; then
-    echo "A reboot is required. Reboot now? [y/N]"
-    read -r answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
-        reboot
-    else
-        echo "Skipping reboot. Remember to reboot manually."
-    fi
+    echo "A reboot is required. Press the reset button now."
+    #echo "A reboot is required. Reboot now? [y/N]"
+    #read -r answer
+    #if [[ "$answer" =~ ^[Yy]$ ]]; then
+    #    reboot
+    #else
+    #    echo "Skipping reboot. Remember to reboot manually."
+    #fi
 fi
