@@ -1,0 +1,13 @@
+# Python build artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# venv created by scripts/setup.sh
+.venv/
+
+# Models downloaded by scripts/setup.sh from HuggingFace
+models/
+
+# Per-turn diagnostics JSONL log (turn_log.py)
+logs/
