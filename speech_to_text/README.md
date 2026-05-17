@@ -6,8 +6,6 @@ This example uses the following models:
 
 - [Moonshine](https://github.com/moonshine-ai/moonshine), a modern speech-to-text (automatic speech recognition) model designed specifically for efficient, real-time, and low-latency operation. 
 
-
-
 - [Silero VAD (Voice Activity Detection)](https://github.com/snakers4/silero-vad), a lightweight, high-performance model designed to detect the presence of human speech in audio streams.
 
 The User Interface is based on pyQt5, a set of Python bindings for Qt5.
@@ -24,6 +22,18 @@ speech_to_text
 Additionally, code is used from `../utils/` (including `utils/moonshine/` for the Moonshine inference and download backend). 
 
 ## 🔧 Hardware Setup
+
+This example is compatible with the following hardware:
+- Astra Machina SL2610 Dev Kit
+- Synaptics Coralboard
+
+Machina Dev Kit
+- For setup instructions, see the [Setting up the hardware guide](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)
+
+Coralboard
+- For setup instructions, see the [Synaptics Coralboard Site](https://developers.google.com/coral/products/SL2610-dev-board)
+
+## Example Setup
 
 Attach a USB microphone to the board. 
 

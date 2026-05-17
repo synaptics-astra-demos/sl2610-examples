@@ -3,13 +3,13 @@
 > Natural-language commands → real hardware, end-to-end on a 2-core A55. No cloud, no API keys, no wake word.
 
 <p align="center">
-  <img src="docs/hero.jpg" alt="FunctionGemma demo running on the Synaptics Coral Dev Board with a WS2812B Neopixel strip in rainbow mode" width="720" />
+  <img src="docs/hero.jpg" alt="FunctionGemma demo running on the Synaptics Coralboard with a WS2812B Neopixel strip in rainbow mode" width="720" />
 </p>
 <p align="center"><em>The PyQt UI on the 7" panel after the prompt "play rainbow" — Neopixels alive at the bottom, tool-call log on the right.</em></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12" />
-  <img src="https://img.shields.io/badge/board-Coral%20Dev%20Board%20(SL2619)-orange" alt="Coral Dev Board" />
+  <img src="https://img.shields.io/badge/board-Coral%20Dev%20Board%20(SL2619)-orange" alt="Synaptics Coralboard" />
   <img src="https://img.shields.io/badge/model-FunctionGemma%20270M-green" alt="FunctionGemma 270M" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-lightgrey" alt="Apache 2.0" />
 </p>
@@ -48,7 +48,7 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 ## Requirements
 
 **Required**
-- Synaptics **Coral Dev Board (SL2619)** with the Grinn Coral HAT (RGB status LEDs + piezo buzzer)
+- **Synaptics Coralboard (SL2619)** with the Grinn Coral HAT (RGB status LEDs + piezo buzzer)
 - **Astra SDK OOBE image** — ships with `git`, `python3`, `gstreamer`, `gpiod`, and `weston`
 - ~500 MB free disk for the model and Python venv
 - Network access for `setup_demo.py` to fetch model files (or pre-populate `models/` offline)
@@ -424,7 +424,7 @@ The model is fine-tuned with this rule baked in — any `set_neopixel_effect` ca
 
 ## Hardware reference
 
-- **Coral Dev Board (SL2619)** with the Grinn Coral HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
+- **Synaptics Coralboard (SL2619)** with the Grinn Coral HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
 - **Optional Adafruit Mini Sparkle Motion (6314)** running WLED firmware, enumerated as `/dev/ttyACM0` over USB-CDC. Drives a 48-pixel WS2812B / SKC6812RV ring (Adafruit 2539).
 
 ### Buzzer wiring note
@@ -664,4 +664,4 @@ See [Known model behaviors](#known-model-behaviors) for the specific patterns we
 - **Forum:** [Synaptics AI Developer Zone](https://developer.synaptics.com/)
 - **Pull requests welcome** — especially new tool integrations, additional WLED effects, and bug fixes for routing failures. Include the failing prompt in the PR description.
 
-Tested on Coral Dev Board (SL2619) running the Astra SDK OOBE image.
+Tested on the Synaptics Coralboard (SL2619) running the Astra SDK OOBE image.

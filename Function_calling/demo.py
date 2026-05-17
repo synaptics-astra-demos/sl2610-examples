@@ -1,4 +1,4 @@
-"""Command-line FunctionGemma physical-AI demo for the SL2619 Coral Dev Board.
+"""Command-line FunctionGemma physical-AI demo for the Synaptics Coralboard SL2619.
 
 Two modes:
 
