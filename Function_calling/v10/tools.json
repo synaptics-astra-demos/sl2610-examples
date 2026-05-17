@@ -1,0 +1,115 @@
+{
+  "version": "0.5.0-draft",
+  "description": "DRAFT v10 schema. Single unified set_lights tool replaces v9's three LED tools (set_status_led, blink_status_led, set_neopixel_effect). The model is hardware-agnostic — it parses user intent into semantic args; the dispatcher maps those args to whichever LED hardware is detected at launch (HAT 3-LED indicators or WLED strip). User vocabulary is hardware-agnostic too: 'lights', 'LEDs', 'strip' all refer to whatever is connected. Named-args format per Mercedes-Benz Octopus v2 (arXiv 2501.02342) — emitted calls look like <tool_0>(color=\"red\", state=\"on\")<end>. 6 tools (down from 8). set_lights kept to 3 args (color/effect/state) for robustness on the 270M — brightness/count/speed dropped after analysis showed they appeared in zero of 5 observed voice failures and the dispatcher's defaults cover them.",
+  "format": "named",
+  "tools": [
+    {
+      "function": {
+        "name": "set_lights",
+        "description": "Set the lights according to user intent. Emit only the args the user implied — color if they named one, effect if they named an animation/pattern, state if they said on/off. All three args optional; the dispatcher fills sensible defaults (full brightness, normal speed, ~3 repetitions for blink) and approximates effects the connected hardware can't perform natively.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "color": {
+              "type": "STRING",
+              "description": "Color name. Common values: 'red', 'green', 'blue', 'white', 'yellow', 'purple', 'orange', 'pink', 'cyan'. HAT mode maps non-RGB colors to closest combo (e.g. yellow=red+green)."
+            },
+            "effect": {
+              "type": "STRING",
+              "description": "Named animation. Strip mode handles all natively. HAT mode approximates on 3 LEDs. Values: 'solid', 'blink', 'pulse', 'fade', 'rainbow', 'fire', 'plasma', 'aurora', 'police', 'fireworks', 'sparkle', 'twinkle', 'chase', 'comet', 'heartbeat', 'lightning', 'glitter', 'loading', 'sunrise', 'off'."
+            },
+            "state": {
+              "type": "STRING",
+              "description": "'on' or 'off'. Use when the user just toggles lights without specifying a color or effect."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "play_buzzer",
+        "description": "Play a named pattern on the piezo buzzer on the HAT. Binary GPIO — only timed patterns, no tunable frequency.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "pattern": {
+              "type": "STRING",
+              "description": "One of: 'beep', 'double_beep', 'siren', 'chirp', 'alarm', 'success', 'error'."
+            }
+          },
+          "required": ["pattern"]
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "set_alarm",
+        "description": "Schedule an alarm to go off at a given time or after a duration. Alarm triggers the buzzer plus a visible flash on whatever lights are connected.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "duration": {
+              "type": "STRING",
+              "description": "Relative time like '1 minute', '30 seconds', '2 hours'. Use this OR 'time', not both."
+            },
+            "time": {
+              "type": "STRING",
+              "description": "Absolute time HH:MM (24-hour). Use this OR 'duration', not both."
+            },
+            "label": {
+              "type": "STRING",
+              "description": "Optional human-readable label for the alarm."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "cancel_alarm",
+        "description": "Cancel a scheduled alarm. If no label is given, cancel all alarms.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "label": {
+              "type": "STRING",
+              "description": "Label of the alarm to cancel. Omit to cancel all."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "get_system_status",
+        "description": "Report device system status (CPU load, memory, temperature, NPU utilization).",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "metric": {
+              "type": "STRING",
+              "description": "Specific metric: 'cpu', 'memory', 'temperature', 'npu', or 'all' (default)."
+            }
+          }
+        }
+      }
+    },
+    {
+      "function": {
+        "name": "respond",
+        "description": "Reply to the user in natural language without taking any physical action. Use when the request is out of scope, ambiguous, purely conversational, or impossible on this device. Do NOT use when set_lights or another physical-action tool fits the request.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "message": {
+              "type": "STRING",
+              "description": "The natural-language reply to show to the user."
+            }
+          },
+          "required": ["message"]
+        }
+      }
+    }
+  ]
+}

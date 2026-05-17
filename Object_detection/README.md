@@ -2,13 +2,22 @@
 
 This guide describes how to run the YOLOv8n object detection on the **Synaptics Astra SL26xx series** using the Torq/Iree Python runtime. 
 
-## Setting up Astra Machina Board
-For instructions on how to set up Astra Machina board, see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
+## Hardware Setup
+
+This example is compatible with the following hardware:
+- Astra Machina SL2610 Dev Kit
+- Synaptics Coralboard
+
+Machina Dev Kit
+- For setup instructions, see the [Setting up the hardware guide](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)
+
+Coralboard
+- For setup instructions, see the [Synaptics Coralboard Site](https://developers.google.com/coral/products/SL2610-dev-board)
 
 ## Prerequisites
 Ensure your board has the following installed:
 
-**Astra SDK "OOBE" Image**: Download and flash the SL2619 OOBE image from:
+**Astra SDK "OOBE" Image** (Default):
 - [SL2619 OOBE Image](https://github.com/synaptics-astra/sdk/releases)
 - The image includes important software components such as `git` and `python3`
 
@@ -67,8 +76,6 @@ cd object_detection/
 
 ### Run the object detection on an image file
 
-**Note:** The Python runtime is compatible with newer compiler and runtime settings. Use a model that was compiled recently, including the provided model yolov8n_od.vmfb.  
-
 
 ```bash
 python3 object_detection.py \
@@ -96,6 +103,20 @@ python3 object_detection_video.py \
   --camera-device auto \
   --labels labels.json \
   --device torq
+```
+
+**Golden Command for Arducam on Portrait Display:**
+This command optimizes the UI for portrait orientation (letterboxing, title, and stats) while ensuring proper hardware exposure control for Arducam modules.
+
+```bash
+python3 object_detection_video.py \
+  --model ../models/yolov8n_od.vmfb \
+  --camera-device /dev/video0 \
+  --camera-control-device /dev/v4l-subdev2 \
+  --labels labels.json \
+  --device torq \
+  --display \
+  --exposure-auto 0
 ```
 
 Optionally you can also set the following configurations:

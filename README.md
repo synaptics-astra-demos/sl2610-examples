@@ -1,18 +1,16 @@
 # Synaptics Astra SL2610 Series AI Examples
 
-This repository provides AI example applications for the **Synaptics Astra SL2610** series. Currently, there are only a few simple **computer vision** examples. However, check back for future updates to include examples for **speech processing and large language models (LLMs)**. Follow the instructions below to set up your environment and run various AI examples in few minutes.
+This repository provides AI example applications for the **Synaptics Astra SL2610** series with **Synaptics Torq with Coral NPU**. Follow the instructions below to set up your environment and run various AI examples in few minutes. Most examples offer a **headless** or **display** version.
 
-The examples in this repository are designed to work with Astra SL2610 processor using Astra Machina Dev Kit. Examples leverage the NPU.
+## Supported Hardware
+- [Astra Machina SL2619 Development Kit](https://www.synaptics.com/products/embedded-processors/sl2610-product-line#devKit)
+- [Synaptics Coralboard SL2619](https://developers.google.com/coral/products/SL2610-dev-board)
+
 
 ## Learn more about Synaptics Astra by visiting:
 
 - [Astra](https://www.synaptics.com/products/embedded-processors) – Explore the Astra AI platform.
-- [Astra Machina](https://www.synaptics.com/products/embedded-processors/astra-machina-foundation-series) – Discover our powerful development kit.
 - [AI Developer Zone](https://developer.synaptics.com/) – Find step-by-step tutorials and resources.
-
-## Setting up Astra Machina Board
-For instructions on how to set up Astra Machina board , see the  [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)  guide.
-
 
 ## Torq Compiler & Runtime
 
@@ -21,11 +19,22 @@ The Torq compiler is based on the MLIR framework and IREE runtime. The examples 
 - [Torq Documentation](https://synaptics-torq.github.io/torq-compiler/v/latest)
 
 
+## Setting up your hardware
+
+- For the Machina Kit - see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
+
+- For the Coralboard - see the [Getting Started](https://developers.google.com/coral/products/SL2610-dev-board) guide. 
+
+
 ## 🔧 Installation
  
 ### Connect to the SL2610 
 
-Power up the Astra Machina SL2610 board and open a terminal. 
+Power up the SL2610 kit and open a terminal - using ADB or other method. See hardware setup guide for details.    
+
+### Connect to the network
+
+To enable online example updates and installation of dependencies, it is recommended to connect the kit to the network. See hardware setup guide for details. 
 
 ### Clone the Repository
 
@@ -56,16 +65,69 @@ If online
 pip install -r requirements.txt
 ```
 
-If offline
+If offline (supported for Object detection and Image Classification examples)
 ```bash
 pip install --no-index --find-links=./wheelhouse -r requirements.txt
 ```
 
-## Object Detection
+## Device Configuration
 
-Follow the steps in /object_detection/README.md to see how to perform object detection using YoloV8 on a single image. 
+Some demos require kernel modules, native libraries, or display configuration to be installed on the device. A unified installer script is provided:
 
-## Image Classification
+```bash
+./configs/install_configs.sh <target> [target ...]
+```
 
-Follow the steps in /image_classification/README.md to see how to perform image classification using MobileNetV2 on a single image. 
+| Target | Description |
+|--------|-------------|
+| `kernel` | Update the NPU kernel module (`syna_npu.ko`) |
+| `usb_cdc` | Install USB CDC/serial modules (`cdc-acm`, `usbserial`, `ch341`) |
+| `portaudio` | Install PortAudio shared libraries for microphone demos |
+| `portrait_setup` | Configure portrait display orientation (weston) |
+| `all` | Install all of the above |
 
+Examples:
+```bash
+./configs/install_configs.sh all
+./configs/install_configs.sh kernel
+./configs/install_configs.sh usb_cdc portaudio portrait_setup
+```
+
+The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `./configs/patch_usb_cdc.sh`).
+
+
+## Examples
+
+Check out the README.md files in each of these example directories to run the examples. 
+
+- object_detection - detect objects with YoloV8 - [README.md](Object_detection/README.md)
+- image_classification - classify images with MobileNetV2 - [README.md](image_classification/README.md)
+- speech_to_text - capture speech with Moonshine - [README.md](speech_to_text/README.md)
+- gemma_translation - translate text to other languages using Gemma3 - [README.md](gemma_translate/README.md)
+- function_calling - control the system with voice/text - [README.md](Function_calling/README.md)
+
+
+## Auto-start with Systemd (GUI Demos)
+
+For the GUI versions of the demos (Object Detection, Gemma Translate, etc), systemd unit templates are provided in each demo's directory. These units assume the project is installed at `/home/root/sl2610-examples` by default.
+
+To generate and install a service:
+```bash
+cd <demo_dir>
+bash scripts/install-service.sh [--root /path/to/sl2610-examples]
+```
+
+This will generate a `.service` file from the template and, if run as root on the target device, install it to `/etc/systemd/system/`.
+
+
+## Resources
+
+- [Astra](https://www.synaptics.com/products/embedded-processors) – Explore the Astra AI platform.
+- [AI Developer Zone](https://developer.synaptics.com/) – Find step-by-step tutorials and resources.
+- [Astra SDK (Linux)](https://synaptics-astra.github.io/doc/v/latest/) - Customize your image. 
+- [Torq Compiler Documentation](https://synaptics-torq.github.io/torq-compiler/v/latest) - Compile and optimize models for powerful and efficient Edge AI performance. 
+
+## Build Something Awesome!
+Great technology becomes meaningful when used to make the world a better place. We are here to support you.
+
+If you are stuck or find an issue, please raise a support ticket in the [Astra Support Portal](https://synacsm.atlassian.net/servicedesk/customer/portal/543).

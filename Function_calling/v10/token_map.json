@@ -1,0 +1,24 @@
+{
+  "version": "0.5.0-draft",
+  "description": "DRAFT v10 compact token map. 6 tools + <end> terminator. Single unified set_lights tool with semantic named args (Mercedes-Benz Octopus v2 convention, arXiv 2501.02342). The model is hardware-agnostic; the dispatcher maps semantic args to whatever LED hardware is detected at launch.",
+  "tokens": {
+    "set_lights": "<tool_0>",
+    "play_buzzer": "<tool_1>",
+    "set_alarm": "<tool_2>",
+    "cancel_alarm": "<tool_3>",
+    "get_system_status": "<tool_4>",
+    "respond": "<tool_5>"
+  },
+  "reverse": {
+    "<tool_0>": "set_lights",
+    "<tool_1>": "play_buzzer",
+    "<tool_2>": "set_alarm",
+    "<tool_3>": "cancel_alarm",
+    "<tool_4>": "get_system_status",
+    "<tool_5>": "respond"
+  },
+  "special_tokens": ["<tool_0>", "<tool_1>", "<tool_2>", "<tool_3>", "<tool_4>", "<tool_5>", "<end>"],
+  "output_format": "<tool_N>(name1=\"value1\", name2=value2, ...)<end>",
+  "prompt_format": "<start_of_turn>user\\n{user_text}<end_of_turn>\\n<start_of_turn>model\\n",
+  "notes": "v10 uses NAMED arguments — per Mercedes-Benz Octopus v2 (arXiv 2501.02342), the published Octopus-v2 reference that demonstrates production multi-arg tool calls with optional args absent. The model emits only the args the user implied; absent args are simply not emitted. set_lights kept to 3 optional args (color/effect/state) for robustness on the 270M — brightness/count/speed were dropped after analysis; the dispatcher uses sensible defaults (full brightness, normal speed, ~3 repetitions for blink). Backwards-compat positional parsing is retained in compact_codec.py so the parser still handles v9 GGUF output during the transition."
+}

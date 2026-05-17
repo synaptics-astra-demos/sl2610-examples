@@ -78,6 +78,16 @@ def run_inference_torq(runner, input_data):
     # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
     return outputs
 
+#  NPU Clock 
+def enable_npu_clock():
+    """Enable NPU clock via devmem (required before Torq inference)."""
+    try:
+        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
+                       capture_output=True, timeout=5)
+        print("[NPU] Clock enabled")
+    except Exception as e:
+        print(f"[NPU] Clock enable failed: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Run complete inference workflow on board")
     parser.add_argument("--model", required=True, help="Path to .vmfb model file")
@@ -86,6 +96,9 @@ def main():
     parser.add_argument("--device", default="torq", help="Device to target (default: torq)")
     args = parser.parse_args()
 
+    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
     if not os.path.exists(args.model):
         print(f"Model file not found: {args.model}")
         sys.exit(1)
@@ -93,6 +106,9 @@ def main():
     if not os.path.exists(args.image):
         print(f"Image file not found: {args.image}")
         sys.exit(1)
+
+    #Set NPU clock
+    enable_npu_clock()
 
     # 0. Load the model with Torq Runtime
     runner = torq_rt.VMFBInferenceRunner(
@@ -177,8 +193,10 @@ def main():
         if img.mode != "RGB":
             img = img.convert("RGB")
             
-        # Resize to standard 720p (1280x720) for display compatibility
-        target_w, target_h = 1280, 720
+        # Resize to match display resolution based on environment variables
+        orientation = os.environ.get("ORIENTATION", "landscape")
+        target_w = int(os.environ.get("DISPLAY_WIDTH", 800 if orientation == "landscape" else 480))
+        target_h = int(os.environ.get("DISPLAY_HEIGHT", 480 if orientation == "landscape" else 800))
         # Create black background
         new_img = Image.new("RGB", (target_w, target_h), (0, 0, 0))
         
@@ -265,6 +283,8 @@ def main():
                     "jpegdec", "!",
                     "videoconvert", "!",
                     "imagefreeze", "!",
+                    "videoscale", "!",
+                    f"video/x-raw,width={target_w},height={target_h}", "!",
                     "waylandsink"
                 ]
                 
