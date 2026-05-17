@@ -1,6 +1,6 @@
 # 🪼 Jellectronica: Coralboard Native Edition
 
-**Turn any video stream into ambient music using real-time AI object detection**, running entirely on the [Synaptics Astra SL2619 Coral Dev Board](https://coral.ai/products/).
+**Turn any video stream into ambient music using real-time AI object detection**, running entirely on the [Synaptics Coralboard SL2619](https://coral.ai/products/).
 
 Jellectronica watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
 
@@ -30,15 +30,14 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 | **Synaptics Astra SL2619** | Coralboard or Machina Kit |
 | **USB Audio** | Any USB speaker or headset |
 | **Display** | Waveshare 7" DSI LCD (optional) |
-| **Network** | For YouTube livestream (optional — local video fallback included) |
+| **Network** | For installation and YouTube livestream (optional — local video fallback included) |
 | **Power** | USB Type C |
 
 ### Board Firmware
 
 - Astra SDK v2.0+ (Yocto scarthgap, Python 3.12)
-- NPU must be enabled in the device tree
 
-### Host Computer Software
+### Host Machine Software
 
 - Android Debug Bridge (ADB) from [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) (recommended)
 
@@ -49,7 +48,7 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 
 - Connect to the network
 
-The Synaptics Coralboards support network sharing over USB. Connect to a computer and enable network sharing. See [Coralboard Documentation](https://developers.google.com/coral/products/SL2610-dev-board) for details. 
+The Synaptics Coralboards support network sharing over USB. Connect to a host machine and enable network sharing. See [Coralboard Documentation](https://developers.google.com/coral/products/SL2610-dev-board) for details. 
 
 Optionally, if you have the supported WiFi/BT module, you can use WiFi for the network and Bluetooth for the audio device. This module comes standard with the Machina Kit, but sold separately with the Coralboard.
 
@@ -59,7 +58,7 @@ Optionally, if you have the supported WiFi/BT module, you can use WiFi for the n
 
 ### Choose an installation mdethod
 
-1. Indirect - clone on your computer than copy the files to the Coralboard
+1. Indirect - clone on your host machine than copy the files to the Coralboard
 
 2. Direct - clone directly onto the coralboard
 
@@ -67,7 +66,7 @@ Optionally, if you have the supported WiFi/BT module, you can use WiFi for the n
 ### 🔧 Installation (Indirect Method)
 
 
-- Clone the repositiory on your computer.
+- Clone the repositiory on your host machine.
 
 ```bash
 git clone https://github.com/synaptics-astra-demos/sl2610-examples 
@@ -149,26 +148,34 @@ pip install -r requirements.txt
 
 #### Optionally Pair a Bluetooth Device
 
-- If you have the WiFi/BT module, follow this guide to pair a bluetooth headset or speaker. 
-https://synaptics-astra.github.io/doc/v/latest/linux/index.html#using-bluetooth
+- If you have the WiFi/BT module, follow the [bluetooth guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#using-bluetooth) to pair a bluetooth headset or speaker. 
+
 
 
 ### 3. Choose Your Display Mode
 
-The setup script asks which mode to enable:
+- Headless - stream to browswer 
+- Display - If you have a DSI display connected, use that.
 
-| Mode | What It Does | Launch |
-|------|-------------|--------|
-| **Display App** | Fullscreen on DSI/HDMI display, standalone | `python3 app.py` |
-| **Server** | Headless, stream to browser for monitoring | `python3 server.py` |
 
-#### Display Mode (Standalone Installation)
+### 4. Start the App
 
-Renders directly to the attached DSI. Audio plays through the USB DAC. No laptop needed.
+#### For headless mode, start the app: 
 
-#### Server Mode (Remote Monitoring)
+ `python3 server.py`
 
-Runs headless on the board. Open `http://<board-ip>:5002` in any browser to see the live detection stream. Audio still plays on the board via USB DAC.
+Open `http://<board-ip>:5002` in any browser on the same sub-network. 
+
+Audio plays on the board via USB speaker.
+
+#### For display mode, start the app: 
+
+ `python3 app.py`
+
+It renders directly to the attached DSI display. 
+
+Audio plays through the USB speaker.
+
 
 ---
 
@@ -237,6 +244,34 @@ python3 server.py --video rtsp://192.168.1.100:554/stream
 python3 server.py --video /path/to/your/video.mp4
 ```
 
+## Usage Examples
+
+```bash
+# Display mode (DSI display, fullscreen)
+python3 app.py
+python3 app.py --video ../samples/jellyfish.mp4
+
+# Server mode (headless, MJPEG stream)
+python3 server.py
+python3 server.py --video ../samples/jellyfish.mp4 --port 5002
+
+# Custom video source
+python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+python3 server.py --video /path/to/your/video.mp4
+
+# Custom detection model
+python3 server.py --model model/your_model.vmfb
+
+# Audio configuration
+python3 server.py --audio-driver alsa --alsa-device hw:0,0
+
+# Disable AI accompaniment
+python3 server.py --no-ai
+python3 app.py --no-ai
+
+```
+
+
 ### Seamless Looping (H.264 Elementary Streams)
 
 For a looping application, using standard MP4 files requires the entire application pipeline to briefly restart when the video ends. For perfectly seamless, infinite hardware looping with zero black frames, convert your MP4 to a raw H.264 elementary stream:
@@ -269,34 +304,6 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 
 ---
 
-## Manual Usage
-
-```bash
-# Display mode (DSI display, fullscreen)
-python3 app.py
-python3 app.py --video ../samples/jellyfish.mp4
-
-# Server mode (headless, MJPEG stream)
-python3 server.py
-python3 server.py --video ../samples/jellyfish.mp4 --port 5002
-
-# Custom video source
-python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID
-python3 server.py --video /path/to/your/video.mp4
-
-# Custom detection model
-python3 server.py --model model/your_model.vmfb
-
-# Audio configuration
-python3 server.py --audio-driver alsa --alsa-device hw:0,0
-
-# Disable AI accompaniment
-python3 server.py --no-ai
-python3 app.py --no-ai
-
-```
-
----
 
 ## Project Structure
 
@@ -310,11 +317,11 @@ jellectronica
 ├── soft_synth.py             # Built-in synthesizer (pure Python/NumPy, zero dependencies)
 ├── melody_rnn.py             # MelodyRNN AI accompaniment (pure NumPy LSTM inference)
 ├── requirements.txt          # Python dependencies
-├── models/
+├── ../models/moon_jellyfish
 │   ├── moon320.vmfb          # Quantized YOLOv8 (int8, NPU)
 │   ├── basic_rnn_weights.npz # MelodyRNN weights (Magenta basic_rnn, 12MB)
 │   └── moon.json             # Model metadata
-├── video/
+├── ../samples/
 │   └── jellyfish.mp4            # Fallback jellyfish video (~208MB)
 └── docs/
     ├── architecture.md       # Technical architecture deep-dive
@@ -337,12 +344,15 @@ jellectronica
 
 ---
 
+## Content Licensing
+
+Jellyfish video content included in this project is provided courtesy of the Monterey Bay Aquarium and is licensed for non-commercial use only. For more information on commercial-usage terms, please contact the Monterey Bay Aquarium, and we encourage you to visit and support their conservation and education efforts.
+
 ## Credits
 
 - **Jellectronica Coral Board Native Edition**: [jellectronica-coral](https://github.com/raphdixon/jellectronica-coral) by Raphael Dixon
 - **Jellyfish Detection Model**: [seaphony-ml](https://github.com/patrickdmiller/seaphony-ml) by Patrick Miller
 - **Live Stream**: [Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) Moon Jelly Cam
-- **Hardware**: [Synaptics Astra SL2619](https://coral.ai/products/) Coral Dev Board
 - **MelodyRNN Weights**: [Magenta](https://magenta.tensorflow.org/) basic_rnn checkpoint by Google Brain
 
 

@@ -2,11 +2,11 @@
 
 ## Overview
 
-Jellectronica runs **entirely on the Coral Dev Board**. No computation happens on the connected laptop — it's used only as an optional monitoring display.
+Jellectronica runs **entirely on the Syaptics Coralboard**. No computation happens on the connected laptop — it's used only as an optional monitoring display.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                    CORAL DEV BOARD (SL2619)                            │
+│                    Syaptics Coralboard (SL2619)                            │
 │                                                                        │
 │   Video Source                                                         │
 │   (YouTube live / local .mp4)                                          │
