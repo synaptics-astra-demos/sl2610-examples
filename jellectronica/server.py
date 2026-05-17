@@ -258,7 +258,7 @@ def _detection_thread(detector, tracker):
             time.sleep(0.01)
             continue
 
-        detections = detector.detect(frame)
+        detections, _ = detector.detect(frame)
         with _detect_results_lock:
             triggers = tracker.update(detections)
 
