@@ -58,6 +58,35 @@ def enable_npu_clock():
     except Exception as e:
         print(f"[NPU] Clock enable failed: {e}")
 
+#  NeoPixel Control 
+NP_TTY = "/dev/ttyACM0"
+
+def init_neopixels():
+    if not os.path.exists(NP_TTY):
+        return False
+    try:
+        os.system(f"stty -F {NP_TTY} 115200 raw -echo -hupcl")
+        print(f"[NeoPixel] Initialized TTY {NP_TTY}")
+        return True
+    except Exception as e:
+        print(f"[NeoPixel] Initialization failed: {e}")
+        return False
+
+def send_npxl_command(cmd):
+    import json
+    try:
+        with open(NP_TTY, "w") as f:
+            f.write(json.dumps(cmd) + "\r\n")
+    except Exception:
+        pass
+
+def npxl_ocean():
+    send_npxl_command({
+        "on": True,
+        "bri": 150,
+        "seg": [{"fx": 43, "sx": 30, "ix": 255, "col": [[0, 100, 255], [0, 200, 255], [0, 255, 150]]}]
+    })
+
 def create_symlink_for_python():
     """Create symlink for Python 3.12 library (required for some environments)."""
     try:
@@ -131,143 +160,211 @@ ROW_COLORS = [
     (100, 255, 180),  # Row 3: teal (bass)
 ]
 
-def draw_overlay(frame, tracks, triggers, clashes, trigger_count, jelly_count, fps, npu_ms):
-    """Draw detection overlay on BGRA frame."""
+class UIOverlay:
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.static_layer = np.zeros((h, w, 4), dtype=np.uint8)
+        
+        # Determine letterbox boundaries once
+        self.video_h = int(w * (720 / 1280)) # Assuming 16:9 720p source
+        self.top_pad = (h - self.video_h) // 2
+        self.bot_pad = self.top_pad + self.video_h
+        
+        self._precompute_static()
+
+    def _precompute_static(self):
+        """Draw elements that never change (labels, backgrounds, grid lines)."""
+        # Grid lines (subtle)
+        for c in range(1, GRID_COLS):
+            x = int(c * self.w / GRID_COLS)
+            cv2.line(self.static_layer, (x, self.top_pad), (x, self.bot_pad), (255, 255, 255, 40), 1)
+        for r in range(1, GRID_ROWS):
+            y = self.top_pad + int(r * self.video_h / GRID_ROWS)
+            cv2.line(self.static_layer, (0, y), (self.w, y), (255, 255, 255, 40), 1)
+
+        # --- TOP METRICS AREA ---
+        # Subtle header bar
+        cv2.rectangle(self.static_layer, (0, 0), (self.w, 60), (20, 20, 30, 160), -1)
+        cv2.line(self.static_layer, (0, 60), (self.w, 60), (100, 100, 120, 100), 1)
+        
+        # Centered main title
+        title = 'Generative Audio "Jellectronica"'
+        (tw, th), _ = cv2.getTextSize(title, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        cv2.putText(self.static_layer, title, (self.w // 2 - tw // 2, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 240, 255), 2, cv2.LINE_AA)
+        
+        cv2.putText(self.static_layer, "SYSTEM METRICS", (20, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (160, 160, 180, 255), 1, cv2.LINE_AA)
+        
+        cv2.putText(self.static_layer, "NPU LATENCY", (20, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120, 255), 1, cv2.LINE_AA)
+        cv2.putText(self.static_layer, "FRAME RATE", (260, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120, 255), 1, cv2.LINE_AA)
+
+        # --- BOTTOM METRICS AREA ---
+        bot_start = self.h - 265
+        
+        # Center everything in this section
+        mid_x = self.w // 2
+        
+        # Small centered divider
+        cv2.line(self.static_layer, (mid_x - 50, bot_start + 20), (mid_x + 50, bot_start + 20), (100, 255, 150, 150), 1)
+        
+        # Centered label
+        label = "JELLYFISH TRACKED"
+        (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+        cv2.putText(self.static_layer, label, (mid_x - lw // 2, bot_start + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150, 255), 1, cv2.LINE_AA)
+        
+
+    def draw(self, frame, tracks, triggers, clashes, trigger_count, jelly_count, fps, npu_ms):
+        """Draw dynamic detection overlay on BGRA frame."""
+        # Start with static content
+        np.copyto(frame, self.static_layer)
+        
+        w, h = self.w, self.h
+        mid_x = w // 2
+        video_h, top_pad = self.video_h, self.top_pad
+        now = time.time()
+
+        # Create a view of the frame for the video area to enable automatic clipping
+        video_roi = frame[top_pad:self.bot_pad, :]
+
+        # Active triggers (ripple)
+        alive_triggers = []
+        for trig in triggers:
+            age = now - trig.t
+            if age > 2.0: continue
+            alive_triggers.append(trig)
+            progress = age / 2.0
+            alpha = 1.0 - progress
+            color = ROW_COLORS[trig.row % 4]
+            cx, cy = int(trig.x * w), int(trig.y * video_h)
+            radius = int(15 + 40 * progress)
+            ring_color = tuple(int(c * alpha) for c in color) + (255,)
+            cv2.circle(video_roi, (cx, cy), radius, ring_color, max(1, int(3 * alpha)))
+            if age < 1.0:
+                name = midi_to_name(trig.note)
+                fa = max(0, 1.0 - age * 1.5)
+                text_color = tuple(int(c * fa) for c in color) + (255,)
+                cv2.putText(video_roi, name, (cx - 10, cy - radius - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, text_color, 1, cv2.LINE_AA)
+        triggers[:] = alive_triggers
+
+        # Clash effects
+        alive_clashes = []
+        for cl in clashes:
+            age = now - cl.t
+            if age > 1.0: continue
+            alive_clashes.append(cl)
+            progress = age / 1.0
+            fade = 1.0 - progress
+            cx, cy = int(cl.x * w), int(cl.y * video_h)
+            r, b = int(5 + progress * 60), int(255 * fade)
+            cv2.circle(video_roi, (cx, cy), r, (int(b*0.5), int(b*0.9), b, 255), max(1, int(3 * fade)), cv2.LINE_AA)
+        clashes[:] = alive_clashes
+
+        # Tracked jellyfish
+        for jf in tracks:
+            bbox = jf.bbox
+            bx1, by1 = int(bbox["x1"] * w), int(bbox["y1"] * video_h)
+            bx2, by2 = int(bbox["x2"] * w), int(bbox["y2"] * video_h)
+            length = max(4, min(bx2 - bx1, by2 - by1) // 5)
+            color = (220, 220, 220, 200)
+            # Top-left
+            cv2.line(video_roi, (bx1, by1), (bx1 + length, by1), color, 1)
+            cv2.line(video_roi, (bx1, by1), (bx1, by1 + length), color, 1)
+            # Top-right
+            cv2.line(video_roi, (bx2, by1), (bx2 - length, by1), color, 1)
+            cv2.line(video_roi, (bx2, by1), (bx2, by1 + length), color, 1)
+            # Bottom-left
+            cv2.line(video_roi, (bx1, by2), (bx1 + length, by2), color, 1)
+            cv2.line(video_roi, (bx1, by2), (bx1, by2 - length), color, 1)
+            # Bottom-right
+            cv2.line(video_roi, (bx2, by2), (bx2 - length, by2), color, 1)
+            cv2.line(video_roi, (bx2, by2), (bx2, by2 - length), color, 1)
+
+            cv2.circle(video_roi, (int(jf.smooth_x * w), int(jf.smooth_y * video_h)), 2, (0, 255, 200, 255), -1)
+
+        # Dynamic Metrics (drawn on full frame)
+        cv2.putText(frame, f"{npu_ms:.1f} ms", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (100, 220, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"{fps:.1f} FPS", (260, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (180, 180, 255, 255), 2, cv2.LINE_AA)
+        
+        # Centered counter
+        count_str = str(jelly_count)
+        (cw, ch), _ = cv2.getTextSize(count_str, cv2.FONT_HERSHEY_SIMPLEX, 2.8, 3)
+        cv2.putText(frame, count_str, (mid_x - cw // 2, self.h - 265 + 140), cv2.FONT_HERSHEY_SIMPLEX, 2.8, (120, 255, 150, 255), 3, cv2.LINE_AA)
+        
+        return frame, self.bot_pad
+
+def draw_ai_bar(frame, ai_notes, ai_active, bot_y):
+    """Draw AI Accompaniment visualization bar overlaying the bottom of the video."""
     h, w = frame.shape[:2]
-
-    # Determine letterbox boundaries
-    video_h = int(w * (720 / 1280)) # Assuming 16:9 720p source, width is 480
-    top_pad = (h - video_h) // 2
-    bot_pad = top_pad + video_h
-
-    # Grid lines (subtle)
-    for c in range(1, GRID_COLS):
-        x = int(c * w / GRID_COLS)
-        cv2.line(frame, (x, top_pad), (x, bot_pad), (255, 255, 255, 40), 1)
-    for r in range(1, GRID_ROWS):
-        y = top_pad + int(r * video_h / GRID_ROWS)
-        cv2.line(frame, (0, y), (w, y), (255, 255, 255, 40), 1)
-
+    bar_h = 32
+    bar_y = bot_y - bar_h
     now = time.time()
 
-    # Active triggers (ripple)
-    alive_triggers = []
-    for trig in triggers:
-        age = now - trig.t
-        if age > 2.0:
-            continue
-        alive_triggers.append(trig)
-        progress = age / 2.0
-        alpha = 1.0 - progress
-        color = ROW_COLORS[trig.row % 4]
-        cx = int(trig.x * w)
-        cy = top_pad + int(trig.y * video_h)
-        radius = int(15 + 40 * progress)
-        thickness = max(1, int(3 * alpha))
-        ring_color = tuple(int(c * alpha) for c in color) + (255,)
-        cv2.circle(frame, (cx, cy), radius, ring_color, thickness)
-        if age < 1.0:
-            name = midi_to_name(trig.note)
-            fa = max(0, 1.0 - age * 1.5)
-            text_color = tuple(int(c * fa) for c in color) + (255,)
-            cv2.putText(frame, name, (cx - 10, cy - radius - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, text_color, 1, cv2.LINE_AA)
-    triggers[:] = alive_triggers
+    # Dark, semi-transparent background with a subtle purple tint
+    cv2.rectangle(frame, (0, bar_y), (w, bot_y), (25, 15, 35, 210), -1)
 
-    # Clash effects
-    alive_clashes = []
-    for cl in clashes:
-        age = now - cl.t
-        if age > 1.0:
-            continue
-        alive_clashes.append(cl)
-        progress = age / 1.0
-        fade = 1.0 - progress
-        cx = int(cl.x * w)
-        cy = top_pad + int(cl.y * video_h)
-        r = int(5 + progress * 60)
-        b = int(255 * fade)
-        cv2.circle(frame, (cx, cy), r, (int(b*0.5), int(b*0.9), b, 255),
-                   max(1, int(3 * fade)), cv2.LINE_AA)
-    clashes[:] = alive_clashes
-
-    # Tracked jellyfish
-    for jf in tracks:
-        bbox = jf.bbox
-        bx1 = int(bbox["x1"] * w)
-        by1 = top_pad + int(bbox["y1"] * video_h)
-        bx2 = int(bbox["x2"] * w)
-        by2 = top_pad + int(bbox["y2"] * video_h)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (200, 200, 200, 255), 1)
-        cx = int(jf.smooth_x * w)
-        cy = top_pad + int(jf.smooth_y * video_h)
-        cv2.circle(frame, (cx, cy), 3, (0, 255, 200, 255), -1)
-
-    # --- TOP METRICS AREA ---
-    cv2.putText(frame, "SYSTEM METRICS", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150, 255), 2, cv2.LINE_AA)
-    cv2.putText(frame, "NPU LATENCY", (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100, 255), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"{npu_ms:.1f} ms", (20, 140), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (50, 200, 255, 255), 2, cv2.LINE_AA)
-    
-    cv2.putText(frame, "FRAME RATE", (260, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100, 255), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"{fps:.1f} FPS", (260, 140), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (150, 150, 255, 255), 2, cv2.LINE_AA)
-
-    # --- BOTTOM METRICS AREA ---
-    bot_start = h - 265
-    cv2.putText(frame, "JELLYFISH TRACKED", (20, bot_start + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100, 255), 1, cv2.LINE_AA)
-    cv2.putText(frame, str(jelly_count), (20, bot_start + 110), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (100, 255, 100, 255), 3, cv2.LINE_AA)
-    
-    cv2.putText(frame, "CORAL SL2610 EDGE NPU", (120, h - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 100, 255), 1, cv2.LINE_AA)
-
-    return frame
-
-def draw_ai_bar(frame, ai_notes, ai_active):
-    """Draw AI Accompaniment visualization bar at the bottom of the BGRA frame."""
-    h, w = frame.shape[:2]
-    bar_h = 36
-    bar_y = h - bar_h
-    now = time.time()
-
-    cv2.rectangle(frame, (0, bar_y), (w, h), (15, 10, 25, 180), -1)
-
-    line_alpha = 0.4 + 0.2 * math.sin(now * 2.0)
-    line_color = tuple(int(c * line_alpha) for c in AI_COLOR) + (255,)
+    # Glowing top edge pulse
+    line_pulse = 0.6 + 0.3 * math.sin(now * 3.0)
+    line_color = tuple(int(c * line_pulse) for c in AI_COLOR) + (255,)
     cv2.line(frame, (0, bar_y), (w, bar_y), line_color, 1)
+    
+    # Faint secondary glow line
+    glow_color = tuple(int(c * line_pulse * 0.4) for c in AI_COLOR) + (255,)
+    cv2.line(frame, (0, bar_y - 1), (w, bar_y - 1), glow_color, 1)
 
+    # Status indicator dot
     dot_x = 12
     dot_y = bar_y + bar_h // 2
-    pulse = 0.5 + 0.5 * math.sin(now * 3.0)
+    pulse = 0.5 + 0.5 * math.sin(now * 4.0) if ai_active else 0.2
     dot_color = tuple(int(c * pulse) for c in AI_COLOR) + (255,)
     cv2.circle(frame, (dot_x, dot_y), 4, dot_color, -1)
+    if ai_active:
+        cv2.circle(frame, (dot_x, dot_y), int(4 + 6 * (1-pulse)), 
+                   tuple(int(c * (1-pulse) * 0.5) for c in AI_COLOR) + (255,), 1)
 
-    label = "AI ACCOMPANIMENT" if ai_active else "AI ACCOMPANIMENT [OFF]"
-    label_color = AI_COLOR + (255,) if ai_active else (80, 60, 100, 255)
-    cv2.putText(frame, label, (22, bar_y + 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.32, label_color, 1, cv2.LINE_AA)
+    label = "AI ACCOMPANIMENT" if ai_active else "LIVE PERFORMANCE"
+    label_color = AI_COLOR + (255,) if ai_active else (180, 180, 200, 255)
+    cv2.putText(frame, label, (22, bar_y + bar_h // 2 + 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, label_color, 1, cv2.LINE_AA)
 
-    if not ai_active or not ai_notes:
+    if not ai_notes:
         return frame
 
-    note_area_x = 160
-    note_spacing = 28
+    note_area_x = 170
+    note_spacing = 30
     max_visible = min(len(ai_notes), (w - note_area_x) // note_spacing)
 
     for i, note_info in enumerate(ai_notes[-max_visible:]):
         age = now - note_info["t"]
-        if age > 4.0:
+        if age > 10.0:
             continue
 
-        fade = max(0.0, 1.0 - age / 4.0)
+        # Color based on channel (0-2: Jellyfish rows, 3: AI)
+        ch = note_info.get("ch", 3)
+        if ch == 3:
+            base_color = AI_COLOR
+        else:
+            # Map channel back to a row color (Channel 0=Pad, 1=Arp, 2=Bass)
+            # MusicEngine: Ch0=rows 1/2, Ch1=row 0, Ch2=row 3
+            color_idx = 1 if ch == 0 else (0 if ch == 1 else 3)
+            base_color = ROW_COLORS[color_idx]
+
+        fade = max(0.0, 1.0 - age / 10.0)
         nx = note_area_x + i * note_spacing
         ny = bar_y + bar_h // 2
-
-        radius = int(3 + 4 * max(0, 1.0 - age / 0.5))
-        circle_color = tuple(int(c * fade) for c in AI_COLOR) + (255,)
-        cv2.circle(frame, (nx, ny + 4), radius, circle_color, -1)
+        
+        # Subtle "float" animation
+        drift = math.sin(now * 2.0 + i) * 2
+        
+        # Initial pop effect
+        pop = max(0, 1.0 - age / 0.4)
+        radius = int(3 + 5 * pop)
+        
+        circle_color = tuple(int(c * fade) for c in base_color) + (255,)
+        cv2.circle(frame, (nx, int(ny + 4 + drift)), radius, circle_color, -1)
 
         name = midi_to_name(note_info["midi"])
-        text_color = tuple(int(c * fade * 0.8) for c in AI_COLOR) + (255,)
-        cv2.putText(frame, name, (nx - 8, ny - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.28, text_color, 1, cv2.LINE_AA)
+        text_color = tuple(int(c * fade * 0.9) for c in base_color) + (255,)
+        cv2.putText(frame, name, (nx - 8, int(ny - 6 + drift)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.3, text_color, 1, cv2.LINE_AA)
 
     return frame
 
@@ -411,6 +508,8 @@ def main():
 
     enable_npu_clock()
     create_symlink_for_python()
+    init_neopixels()
+    npxl_ocean()
 
     #  Resolve source 
     source = args.video if args.video else DEFAULT_LOCAL_VIDEO
@@ -653,6 +752,7 @@ def main():
 
         frame_npu = np.zeros((video_h, video_w, 3), dtype=np.uint8)
         reusable_canvas = np.zeros((H, W, 4), dtype=np.uint8)
+        overlay = UIOverlay(W, H)
         last_read_frame = 0
         last_video_time = time.time()
 
@@ -690,12 +790,12 @@ def main():
 
                 reusable_canvas.fill(0)
                 t_draw_start = time.time()
-                canvas = draw_overlay(reusable_canvas, tracker.tracks, triggers, clash_fx,
-                                      trigger_count, display_count, display_fps, display_npu_ms)
+                canvas, bot_y = overlay.draw(reusable_canvas, tracker.tracks, triggers, clash_fx,
+                                             trigger_count, display_count, display_fps, display_npu_ms)
                 
                 ai_notes = music.get_recent_ai_notes() if music else []
                 ai_active = music.ai_enabled if music else False
-                canvas = draw_ai_bar(canvas, ai_notes, ai_active)
+                canvas = draw_ai_bar(canvas, ai_notes, ai_active, bot_y)
                 t_draw_end = time.time()
                 draw_ms = (t_draw_end - t_draw_start) * 1000
 
