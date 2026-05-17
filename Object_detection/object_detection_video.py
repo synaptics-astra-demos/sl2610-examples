@@ -15,11 +15,108 @@ import time
 import torq.runtime as torq_rt
 
 MAX_DETECTIONS_TO_KEEP = 60
-ROTATE_CAMERA_180 = True
 
 # ==========================================
 # Helpers (Ported from helpers/yolo.py)
 # ==========================================
+
+def letterbox_frame(frame, target_size):
+    """Maintain aspect ratio and pad with black."""
+    import cv2
+    h, w = frame.shape[:2]
+    target_w, target_h = target_size
+    
+    scale = min(target_w / w, target_h / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    
+    resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    
+    canvas = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+    top = (target_h - new_h) // 2
+    left = (target_w - new_w) // 2
+    canvas[top:top + new_h, left:left + new_w] = resized
+    
+    return canvas, (top, left, new_w, new_h)
+
+def draw_ui(canvas, title, stats, video_rect):
+    """Draw title and statistics in the letterbox areas."""
+    import cv2
+    target_h, target_w = canvas.shape[:2]
+    top, left, vw, vh = video_rect
+    
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    
+    # 1. Draw Title on top
+    if top > 40:
+        (tw, th), _ = cv2.getTextSize(title, font, 1.1, 2)
+        tx = (target_w - tw) // 2
+        ty = (top // 2) + (th // 2)
+        # Subtle glow effect
+        cv2.putText(canvas, title, (tx+1, ty+1), font, 1.1, (0, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(canvas, title, (tx, ty), font, 1.1, (255, 255, 255), 2, cv2.LINE_AA)
+    
+    # 2. Draw Stats on bottom
+    bot_y_start = top + vh
+    if target_h - bot_y_start > 60:
+        y_cursor = bot_y_start + 40
+        
+        # FPS and NPU on the left
+        cv2.putText(canvas, f"FPS: {stats['fps']:.1f}", (30, y_cursor), 
+                    font, 0.7, (180, 180, 180), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"NPU: {stats['npu']:.1f} ms", (30, y_cursor + 35), 
+                    font, 0.7, (180, 180, 180), 1, cv2.LINE_AA)
+        
+        # Object count on the right
+        count_text = f"DETECTIONS: {stats['count']}"
+        (cw, ch), _ = cv2.getTextSize(count_text, font, 0.7, 2)
+        cv2.putText(canvas, count_text, (target_w - cw - 30, y_cursor + 15), 
+                    font, 0.7, (0, 255, 100), 2, cv2.LINE_AA)
+
+def configure_camera(device, controls):
+    """Set V4L2 controls for the camera."""
+    if not controls:
+        return
+    
+    # Mapping of logical names to potential V4L2 control names
+    # Drivers vary: UVC uses 'exposure_absolute', CSI often uses 'exposure'
+    NAME_MAPS = {
+        "brightness": ["brightness"],
+        "contrast": ["contrast"],
+        "saturation": ["saturation"],
+        "sharpness": ["sharpness"],
+        "gain": ["gain", "analogue_gain"],
+        "exposure_auto": ["exposure_auto", "auto_exposure"],
+        "exposure_absolute": ["exposure_absolute", "exposure"],
+        "exposure_auto_priority": ["exposure_auto_priority"],
+    }
+
+    for logical_name, val in controls.items():
+        if val is None:
+            continue
+        
+        success = False
+        errors = []
+        for v4l2_name in NAME_MAPS.get(logical_name, [logical_name]):
+            cmd = ["v4l2-ctl", "-d", device, "-c", f"{v4l2_name}={val}"]
+            try:
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+                if res.returncode == 0:
+                    print(f"[Camera] Success: {' '.join(cmd)}")
+                    success = True
+                    break
+                else:
+                    errors.append(f"{v4l2_name}: {res.stderr.strip()}")
+            except Exception as e:
+                errors.append(f"{v4l2_name}: {str(e)}")
+                continue
+        
+        if not success:
+            err_msg = " | ".join(errors)
+            print(f"[Camera] Warning: Failed to set {logical_name}={val} on {device}. Tried: {err_msg}")
 
 def preprocess_frame_cv(bgr_frame, target_size=(320, 320)):
     """
@@ -430,6 +527,8 @@ def run_with_opencv(args, runner, labels):
 
     print(f"Processing {source_desc} with Torq Python runtime... Press Ctrl+C to stop.")
     frame_count = 0
+    fps = 0.0
+    fps_time = time.time()
 
     try:
         while True:
@@ -446,8 +545,12 @@ def run_with_opencv(args, runner, labels):
             if not ret or bgr_frame is None:
                 break
 
-            if ROTATE_CAMERA_180:
+            if args.rotate == 90:
+                bgr_frame = cv2.rotate(bgr_frame, cv2.ROTATE_90_CLOCKWISE)
+            elif args.rotate == 180:
                 bgr_frame = cv2.rotate(bgr_frame, cv2.ROTATE_180)
+            elif args.rotate == 270:
+                bgr_frame = cv2.rotate(bgr_frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
             # -- preprocess ---------------------------------------------------
             input_data, pad_info, orig_shape = preprocess_frame_cv(bgr_frame)
@@ -520,8 +623,18 @@ def run_with_opencv(args, runner, labels):
                     )
                     display_pipeline.set_state(Gst.State.PLAYING)
 
-                display_frame = cv2.resize(annotated, (disp_w, disp_h))
-                rendered_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2BGRA)
+                # Use letterbox_frame to maintain aspect ratio on portrait displays
+                display_frame_bgr, video_rect = letterbox_frame(annotated, (disp_w, disp_h))
+                
+                # Add UI elements to the black bars
+                ui_stats = {
+                    "fps": fps,
+                    "npu": infer_time,
+                    "count": len(detections)
+                }
+                draw_ui(display_frame_bgr, "Object Detection", ui_stats, video_rect)
+
+                rendered_frame = cv2.cvtColor(display_frame_bgr, cv2.COLOR_BGR2BGRA)
                 ret = push_display_frame(
                     Gst,
                     display_appsrc,
@@ -536,6 +649,10 @@ def run_with_opencv(args, runner, labels):
                 out_writer.write(annotated)
 
             frame_count += 1
+            if frame_count % 10 == 0:
+                now = time.time()
+                fps = 10.0 / (now - fps_time)
+                fps_time = now
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
@@ -585,6 +702,19 @@ def main():
     parser.add_argument("--camera-fps", type=int, default=30, help="USB camera frame rate")
     parser.add_argument("--display", action="store_true", help="Display annotated frames live")
     parser.add_argument("--display-sink", default="waylandsink", help="GStreamer video sink for live display")
+    parser.add_argument("--rotate", type=int, choices=[0, 90, 180, 270], default=180, help="Rotate camera feed (degrees clockwise)")
+    
+    # Camera Config Group
+    cam_group = parser.add_argument_group("Camera Config")
+    cam_group.add_argument("--camera-control-device", help="V4L2 device for controls (e.g. /dev/v4l-subdev2)")
+    cam_group.add_argument("--brightness", type=int, help="V4L2 brightness")
+    cam_group.add_argument("--contrast", type=int, help="V4L2 contrast")
+    cam_group.add_argument("--saturation", type=int, help="V4L2 saturation")
+    cam_group.add_argument("--sharpness", type=int, help="V4L2 sharpness")
+    cam_group.add_argument("--gain", type=int, help="V4L2 gain")
+    cam_group.add_argument("--exposure-auto", type=int, help="V4L2 auto exposure")
+    cam_group.add_argument("--exposure-absolute", type=int, help="V4L2 absolute exposure time")
+    
     args = parser.parse_args()
 
     # Set NPU clock
@@ -594,6 +724,20 @@ def main():
     if args.display:
         os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
         os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
+    # Configure camera if it's a real device
+    if args.camera_device and args.camera_device != "auto":
+        ctrl_device = args.camera_control_device or args.camera_device
+        cam_ctrls = {
+            "brightness": args.brightness,
+            "contrast": args.contrast,
+            "saturation": args.saturation,
+            "sharpness": args.sharpness,
+            "gain": args.gain,
+            "exposure_auto": args.exposure_auto,
+            "exposure_absolute": args.exposure_absolute,
+        }
+        configure_camera(ctrl_device, cam_ctrls)
 
     # 0. Load the model with Torq Runtime
     runner = torq_rt.VMFBInferenceRunner(

@@ -105,6 +105,20 @@ python3 object_detection_video.py \
   --device torq
 ```
 
+**Golden Command for Arducam on Portrait Display:**
+This command optimizes the UI for portrait orientation (letterboxing, title, and stats) while ensuring proper hardware exposure control for Arducam modules.
+
+```bash
+python3 object_detection_video.py \
+  --model ../models/yolov8n_od.vmfb \
+  --camera-device /dev/video0 \
+  --camera-control-device /dev/v4l-subdev2 \
+  --labels labels.json \
+  --device torq \
+  --display \
+  --exposure-auto 0
+```
+
 Optionally you can also set the following configurations:
 - `--output`, Output video file
 - `--json-results`, Output JSON file for detections
