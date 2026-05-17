@@ -5,12 +5,13 @@ Two modes:
     # One-shot
     python3 demo.py --prompt "Turn the red light on"
 
-    # Interactive REPL (model loads in ~3.6s, warmup ~1.1s, then every
+    # Interactive REPL (model loads in ~3.3s, warmup ~1.1s, then every
     # turn — including the first — settles to ~1-2s.)
     python3 demo.py
 
-By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
-to drive an Adafruit Mini Sparkle Motion + WS2812B ring over USB-CDC.
+A connected Adafruit Mini Sparkle Motion + WS2812B ring over USB-CDC is
+auto-detected at ``/dev/ttyACM*``. Pass ``--wled-port`` to override or
+``--no-wled`` to disable.
 
 The REPL supports slash commands (``/help``, ``/tools``, ``/stats``,
 ``/clear``, ``/exit``) and persists prompt history across sessions to
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import glob
 import logging
 import os
 import readline
@@ -241,7 +243,12 @@ def main() -> None:
     p.add_argument(
         "--wled-port",
         help="USB-CDC port for the Mini Sparkle Motion (e.g. /dev/ttyACM0). "
-             "Omit to run without the Neopixel ring.",
+             "If omitted, the first /dev/ttyACM* is auto-detected.",
+    )
+    p.add_argument(
+        "--no-wled",
+        action="store_true",
+        help="Disable WLED entirely, even if a /dev/ttyACM* is present.",
     )
     p.add_argument("--wled-baud", type=int, default=115200,
                    help="WLED serial baud rate (default 115200)")
@@ -272,8 +279,28 @@ def main() -> None:
     with _Spinner(f"Loading model from {args.model.name}"):
         model = FunctionGemmaModel(str(args.model))
 
-    wled = WLEDSerialClient(port=args.wled_port, baud=args.wled_baud) \
-        if args.wled_port else None
+    # WLED auto-detect: --no-wled overrides everything; --wled-port pins a
+    # specific device; otherwise probe /dev/ttyACM* and use the first match.
+    # Mirrors app_pyqt.py so both entrypoints behave identically.
+    wled: WLEDSerialClient | None = None
+    if not args.no_wled:
+        wled_port = args.wled_port
+        if not wled_port:
+            candidates = sorted(glob.glob("/dev/ttyACM*"))
+            if candidates:
+                wled_port = candidates[0]
+                logging.info("auto-detected WLED port: %s", wled_port)
+        if wled_port:
+            try:
+                wled = WLEDSerialClient(port=wled_port, baud=args.wled_baud)
+            except Exception:  # noqa: BLE001
+                logging.exception(
+                    "WLED client failed to open %s — falling back to HAT-only",
+                    wled_port,
+                )
+                wled = None
+        else:
+            logging.info("no WLED device detected — running in HAT-only mode")
     hardware = HardwareDevice(wled=wled, on_async_event=_print_async)
     dispatcher = Dispatcher(hardware)
 

@@ -14,11 +14,11 @@
   <img src="https://img.shields.io/badge/license-Apache--2.0-lightgrey" alt="Apache 2.0" />
 </p>
 
-A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact tool calls that dispatch to real HAT hardware: status LEDs (sysfs), a piezo buzzer (libgpiod), and an optional Adafruit Mini Sparkle Motion driving a 48-pixel WS2812B Neopixel ring over USB serial.
+A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact tool calls that dispatch to real HAT hardware: status LEDs (sysfs), a piezo buzzer (libgpiod), and an optional Adafruit Mini Sparkle Motion driving a 48-pixel WS2812B Neopixel ring over USB serial. A single unified `set_lights` tool covers both LED surfaces — the model parses intent into semantic args (color/effect/state) and the dispatcher routes to whichever hardware is connected.
 
-**Why it's fast:** trained Octopus-v2 style — one functional token per tool, **no tool schema in the prompt**. The on-device prompt is ~13 tokens, and cold prefill on the 2-core Cortex-A55 lands at **~0.55 s** (synthetic benchmark).
+**Why it's fast:** trained Octopus-v2 style — one functional token per tool, **no tool schema in the prompt**. The on-device prompt is ~13 tokens, and cold prefill on the 2-core Cortex-A55 lands at **~0.48 s** (synthetic benchmark).
 
-**End-to-end on the board:** model load ~3.6 s, warmup ~1.1 s, then every user turn — including the first — runs in **~1–2 s**. Sub-2 s is the norm, not the exception.
+**End-to-end on the board:** model load ~3.3 s, warmup ~1.1 s, then every user turn — including the first — runs in **~1.3–2.0 s** for action tools and ~2.9 s for the `respond()` fallback. Sub-2 s is the norm, not the exception.
 
 ---
 
@@ -33,8 +33,8 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 - [WLED Neopixel ring (optional)](#wled-neopixel-ring-optional)
 - [Auto-start on boot (systemd)](#auto-start-on-boot-systemd)
 - [CLI reference](#cli-reference)
-- [Tool schema (8 functions, v9)](#tool-schema-8-functions-v9)
-- [Effects, palettes, intensity](#effects-palettes-intensity)
+- [Tool schema (6 functions, v10)](#tool-schema-6-functions-v10)
+- [Effects](#effects)
 - [Hardware reference](#hardware-reference)
 - [Model and training](#model-and-training)
 - [Project layout](#project-layout)
@@ -96,67 +96,35 @@ To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system li
 
 ## Try saying...
 
-The following are **verbatim** REPL outputs from the v9 model running on the SL2619 — not simulated, captured from a single REPL session at ~1 s per turn:
+The following are **verbatim** REPL outputs from the v10 model running on the SL2619 — not simulated, captured from a single REPL session:
 
 ```text
 >>> Turn the red light on
-  set_status_led: led=red state=on
-  (1 tool call · 1141 ms)
+  set_lights: color=red state=on
+  (1 tool call · 1821 ms)
 
->>> Turn off the green LED
-  set_status_led: led=green state=off
-  (1 tool call · 1109 ms)
-
->>> Blink the blue light three times
-  blink_status_led: led=blue count=3
-  (1 tool call · 1211 ms)
-
->>> Set the neopixels to aurora
-  set_neopixel_effect: effect=aurora
-  (1 tool call · 1097 ms)
-
->>> Pulse the neopixels in blue
-  set_neopixel_effect: effect=pulse color=blue
-  (1 tool call · 1208 ms)
+>>> Turn off the lights
+  set_lights: state=off
+  (1 tool call · 1293 ms)
 
 >>> Show fireworks on the neopixels
-  set_neopixel_effect: effect=fireworks
-  (1 tool call · 1110 ms)
+  set_lights: effect=fireworks state=on
+  (1 tool call · 1936 ms)
 
 >>> Play a siren
   play_buzzer: pattern=siren
-  (1 tool call · 977 ms)
-
->>> Wake me up in thirty seconds
-  set_alarm: scheduled alarm_1778638439 @ 2026-05-13T02:14:29
-  (1 tool call · 1186 ms)
-
->>> Set an alarm for 5pm
-  set_alarm: scheduled alarm_1778638507 @ 2026-05-13T17:00:00
-  (1 tool call · 1636 ms)
+  (1 tool call · 1374 ms)
 
 >>> How much memory is free?
-  get_system_status: {'memory': 83.0}
-  (1 tool call · 962 ms)
-
->>> Cancel all alarms
-  cancel_alarm: cancelled 0 (all)
-  (1 tool call · 661 ms)
-
->>> Turn off the lights
-  respond: Status LEDs or neopixel ring?
-  (1 tool call · 1538 ms)
-
->>> What can you do?
-  respond: I control LEDs, neopixel effects, buzzer patterns, and set alarms.
-  (1 tool call · 2424 ms)
+  get_system_status: {'memory': 38.4}
+  (1 tool call · 1355 ms)
 
 >>> Hello there
-  respond: Hey.
-  (1 tool call · 840 ms)
+  respond: Hi there. Try "turn the lights on" or "play a beep".
+  (1 tool call · 2876 ms)
 ```
 
-Notice that **"Turn off the lights"** — an ambiguous prompt — correctly routes to `respond()` and asks the user to disambiguate. The training data bakes in this surface-disambiguation behavior so the model doesn't guess. See [Known model behaviors](#known-model-behaviors) for prompts that still misroute, and [Tool schema](#tool-schema-8-functions-v9) for the full surface.
+In v10, the unified `set_lights` tool handles every LED-related prompt — "the lights", "the LEDs", "the neopixels", "the strip" all route the same way. The dispatcher resolves at runtime which hardware to drive (HAT 3-LED indicators or WLED ring) based on what it detects, so the model never has to guess. See [Tool schema](#tool-schema-6-functions-v10) for the full surface.
 
 ---
 
@@ -220,15 +188,18 @@ In the PyQt UI: `Ctrl+P` snapshots the window to `/tmp/`. `Esc` quits.
 ### Expected output (REPL)
 
 ```text
-Loading model from functiongemma-physical-ai-v9-Q5_K_M.gguf done in 3.6s.
-HardwareDevice ready (status_leds=3, wled=no, gpiod=yes, buzzer=gpiochip0 6)
+Loading model from functiongemma-physical-ai-v10-Q5_K_M.gguf done in 3.3s.
+auto-detected WLED port: /dev/ttyACM0
+HardwareDevice ready (status_leds=3, wled=yes, gpiod=yes, buzzer=gpiochip0 6)
 Warming up done in 1.1s.
 Ready. /help for commands, Ctrl-D or /exit to leave.
 >>> Turn the red light on
-  set_status_led: led=red state=on
-  (1 tool call · 1141 ms)
+  set_lights: color=red state=on
+  (1 tool call · 1821 ms)
 >>>
 ```
+
+`auto-detected WLED port` only appears when a Mini Sparkle Motion is plugged in. With no `/dev/ttyACM*` device present you'll see `no WLED device detected — running in HAT-only mode` instead, and `wled=no` in the next line.
 
 ---
 
@@ -268,20 +239,22 @@ wget -O ../models/Synaptics/moonshine-tiny-bf16-torq/tokenizer.json \
 
 ## WLED Neopixel ring (optional)
 
-Plug an Adafruit Mini Sparkle Motion (6314) running WLED firmware + a WS2812B Neopixel ring (Adafruit 2539) into a USB-A port and verify it enumerates:
+Plug an Adafruit Mini Sparkle Motion (6314) running WLED firmware + a WS2812B Neopixel ring (Adafruit 2539) into a USB-A port. Verify it enumerates and then just run the demo — auto-detect picks up the first `/dev/ttyACM*` and the dispatcher routes `set_lights` calls to the ring automatically:
 
 ```bash
-ls /dev/ttyACM*
+ls /dev/ttyACM*               # confirm the Sparkle Motion enumerated
+python3 demo.py               # auto-detect handles the rest
+python3 app_pyqt.py --fullscreen
 ```
 
-Then pass `--wled-port`:
+To pin a specific device or to disable WLED while one is plugged in:
 
 ```bash
-python3 demo.py --wled-port /dev/ttyACM0
-python3 app_pyqt.py --wled-port /dev/ttyACM0 --fullscreen
+python3 demo.py --wled-port /dev/ttyACM1   # pin
+python3 demo.py --no-wled                  # force HAT-only
 ```
 
-Without the WLED hardware, `set_neopixel_effect` calls log to the command pane but no-op silently. The rest of the demo (LEDs, buzzer, alarms, system status, chat) works unchanged.
+Without WLED hardware, `set_lights` calls route to the HAT 3-LED indicators automatically — non-RGB colors are mapped to the closest red/green/blue combo, and effects are approximated on the 3 LEDs. The rest of the demo (buzzer, alarms, system status, chat) works unchanged.
 
 ---
 
@@ -331,94 +304,84 @@ Every runtime knob is a CLI flag — no env vars to remember, no config files to
 
 | Flag | Default | Applies to | Purpose |
 |---|---|---|---|
-| `--model PATH` | `../models/functiongemma-physical-ai-v9-Q5_K_M.gguf` | both | GGUF path |
+| `--model PATH` | `../models/functiongemma-physical-ai-v10-Q5_K_M.gguf` | both | GGUF path |
 | `--prompt TEXT` | — | `demo.py` | One-shot prompt, then exit |
 | `--voice MODE` | `off` | both | `off` / `stub` / `moonshine` |
 | `--mic INDEX_OR_NAME` | system default | both | Sounddevice device index or substring (e.g. `0`, `hw:0,0`, `USB`) |
 | `--moonshine-dir PATH` | `../models/Synaptics/moonshine-tiny-bf16-torq/` | both | Where Moonshine VMFB + tokenizer live |
-| `--wled-port PATH` | — | both | Mini Sparkle Motion serial device (e.g. `/dev/ttyACM0`) |
+| `--wled-port PATH` | auto-detect `/dev/ttyACM*` | both | Pin a specific Mini Sparkle Motion serial device. Omit to use the first `/dev/ttyACM*` found. |
+| `--no-wled` | off | both | Disable WLED entirely, even if a serial device is present |
 | `--wled-baud N` | `115200` | both | WLED serial baud rate |
 | `--screenshot-dir PATH` | `/tmp` | `app_pyqt.py` | Where `Ctrl+P` writes PNGs |
 | `--fullscreen` | off | `app_pyqt.py` | Skip window decorations, fill the 7" panel |
 
 ---
 
-## Tool schema (8 functions, v9)
+## Tool schema (6 functions, v10)
 
-| Tool | Args | Effect |
+| Tool | Args (all optional unless noted) | Effect |
 |---|---|---|
-| `set_status_led` | `led`, `state`, `brightness?` | Drive one HAT status LED (red / green / blue / all) on or off |
-| `blink_status_led` | `led`, `count?`, `speed?` | Blink one HAT status LED N times |
-| `set_neopixel_effect` | `effect`, `color?`, `palette?`, `speed?`, `intensity?` | Play an effect on the 48-pixel ring (see tables below) |
-| `play_buzzer` | `pattern` | Named pattern on the binary-GPIO buzzer (`beep`, `double_beep`, `chirp`, `siren`, `alarm`, `success`, `error`) |
-| `set_alarm` | `duration` \| `time`, `label?` | Schedule alarm (buzzer + flashing) |
+| `set_lights` | `color?`, `effect?`, `state?` | Unified LED tool. Dispatcher routes to whichever hardware is connected — HAT 3-LED indicators when no WLED, or the WLED strip/ring when present. Hardware-agnostic at the model layer. |
+| `play_buzzer` | `pattern` (required) | Named pattern on the binary-GPIO buzzer (`beep`, `double_beep`, `chirp`, `siren`, `alarm`, `success`, `error`) |
+| `set_alarm` | `duration` \| `time`, `label?` | Schedule alarm (buzzer + red flash on whatever lights are connected) |
 | `cancel_alarm` | `label?` | Cancel one or all alarms |
 | `get_system_status` | `metric?` | CPU / memory / temperature / NPU |
-| `respond` | `message` | Natural-language reply when no tool fits |
+| `respond` | `message` (required) | Natural-language reply when no physical-action tool fits, or for clarification on ambiguous prompts |
 
-The full schema with descriptions lives in `tools.json`. The 8 tools cover the entire physical-AI surface — surface-specific LED control (no ambiguity between "the LEDs" and "the ring"), neopixel effects, buzzer patterns, alarms, system status, and a natural-language fallback. The model is trained Octopus v2 style: functional tokens with **no tool schema in the prompt**. The schema file remains the source of truth for dispatcher arg validation and is embedded as GGUF metadata for schema-drift checks; it's **not** injected into the inference prompt.
+v10 emits **named args** per the Mercedes-Benz Octopus v2 paper ([arXiv 2501.02342](https://arxiv.org/abs/2501.02342)) — calls look like `<tool_0>(color="red", state="on")<end>`. The model only emits the args the user actually implied; absent optional args are simply not present in the call. This is a deliberate change from v9's positional-arg format and is what makes a 270M model robust enough to leave brightness/count/speed off `set_lights` (the dispatcher's defaults cover them).
 
-### Surface-keyword routing
+The full schema with descriptions lives in `tools.json`. It is the source of truth for dispatcher arg validation and is embedded as GGUF metadata for drift checks; it's **not** injected into the inference prompt — Octopus v2 means the functional tokens carry all the routing.
 
-| Prompt contains... | Routes to... |
+### `set_lights` arg semantics
+
+| Arg | Values | Notes |
+|---|---|---|
+| `color` | `red`, `green`, `blue`, `white`, `yellow`, `purple`, `orange`, `pink`, `cyan` | HAT mode maps non-RGB colors to the closest 3-LED combo (e.g. yellow = red + green) |
+| `effect` | `solid`, `blink`, `pulse`, `fade`, `rainbow`, `fire`, `plasma`, `aurora`, `police`, `fireworks`, `sparkle`, `twinkle`, `chase`, `comet`, `heartbeat`, `lightning`, `glitter`, `loading`, `sunrise`, `off` | Strip mode hits WLED firmware effects natively; HAT mode approximates on 3 LEDs |
+| `state` | `on`, `off` | Use when toggling without a color or effect |
+
+### Routing discipline
+
+Bare ambiguous prompts route to `respond()` with a clarification rather than guessing:
+
+| Prompt | Routes to... |
 |---|---|
-| literal `"neopixels"` | `set_neopixel_effect` |
-| `"LED"` / `"LEDs"` / `"the <color> light"` | `set_status_led` or `blink_status_led` |
-| `"ring"` / `"strip"` without `"neopixels"` | `respond()` clarification |
-| Generic `"lights"` with no surface keyword | `respond()` clarification |
+| `rainbow` (bare) | `respond("Did you mean the lights? Try 'rainbow on the lights'.")` |
+| `siren` (bare) | `respond("Did you mean the buzzer? Try 'play a siren'.")` |
+| `on` / `off` (bare) | `respond("On what? Try 'turn the lights on'.")` |
 
-The model is fine-tuned with this rule baked in — any `set_neopixel_effect` call whose source prompt lacks `"neopixels"` is a routing failure, not a feature. Ambiguous-lights prompts route to `respond()` for clarification (verified on v9: `"Turn off the lights"` → `respond: Status LEDs or neopixel ring?`).
+Hardware-naming vocabulary that all route to `set_lights`: `lights`, `LEDs`, `the strip`, `indicators`, `neopixels`, `the ring`, `<color> light/lights`, etc. This is intentional — the v10 model is hardware-agnostic; the dispatcher resolves hardware at runtime.
 
 ---
 
-## Effects, palettes, intensity
+## Effects
 
-### Effects (`set_neopixel_effect.effect`)
+Strip mode hits each WLED firmware effect natively; HAT mode approximates on the 3 status LEDs.
 
-| Effect | WLED fx | Visual role | Notes |
-|---|---|---|---|
-| `solid` | 0 | Static color | Uses `color` |
-| `pulse` | 2 (Breathe) | Voice activity / breathing | Uses `color` |
-| `fade` | 12 | Gentle fade | Uses `color` |
-| `chase` | 28 | Runners on dim trail | Uses `color`; secondary auto-dimmed |
-| `rainbow` | 9 | Spectrum spread | `color` ignored |
-| `sparkle` | 20 | Random twinkle on solid bg | Uses `color` |
-| `off` | — | Turn ring off | Sends `on: false` |
-| `aurora` | 38 | Northern Lights ambient | Palette-driven |
-| `plasma` | 97 | Plasma lamp | Palette-driven |
-| `comet` | 41 (Lighthouse) | Trailing dot — "thinking" | Uses `color` |
-| `twinkle` | 80 (TwinkleFox) | Gentle random twinkle | Palette-friendly |
-| `fireworks` | 42 | Random color blobs | Celebration |
-| `police` | 49 | Red/blue alternating | Alert / alarm |
-| `heartbeat` | 100 | Biological pulse | Voice activity |
-| `loading` | 47 | Sawtooth fill | "Processing" indicator |
-| `lightning` | 57 | White random flash | Storm alert |
-| `glitter` | 87 | Rainbow + white sparkles | Celebration |
-| `fire` | 66 (Fire 2012) | Flickering fire | Palette-friendly |
-| `sunrise` | 104 | Gradual sunrise | Slow ambient |
-
-### Palettes (`set_neopixel_effect.palette`)
-
-| Palette | WLED pal | Mood |
+| Effect | WLED fx | Visual role |
 |---|---|---|
-| `auto` | 0 | Effect default |
-| `ocean` | 9 | Blue / teal / white |
-| `lava` | 8 | Dark red, yellow, white |
-| `forest` | 10 | Yellow + green |
-| `sunset` | 13 | Dark blue → purple → red → yellow |
-| `party` | 6 | Rainbow without green |
-| `sherbet` | 27 | White, pink, mint |
-| `c9` | 48 | Christmas lights |
-| `aurora` | 50 | Greens on dark blue |
-| `beach` | 22 | Light blue shades |
-| `fire` | 35 | White, yellow, fading red |
-| `sakura` | 49 | Pink and rose |
-| `splash` | 19 | Vibrant pink and magenta |
-| `pastel` | 20 | Desaturated hues |
+| `solid` | 0 | Static color (uses `color`) |
+| `pulse` | 2 (Breathe) | Voice activity / breathing |
+| `fade` | 12 | Gentle fade |
+| `blink` | — | Hard on/off cycle |
+| `chase` | 28 | Runners on dim trail |
+| `rainbow` | 9 | Spectrum spread (`color` ignored) |
+| `sparkle` | 20 | Random twinkle on solid bg |
+| `aurora` | 38 | Northern Lights ambient |
+| `plasma` | 97 | Plasma lamp |
+| `comet` | 41 (Lighthouse) | Trailing dot — "thinking" |
+| `twinkle` | 80 (TwinkleFox) | Gentle random twinkle |
+| `fireworks` | 42 | Random color blobs — celebration |
+| `police` | 49 | Red/blue alternating — alert |
+| `heartbeat` | 100 | Biological pulse |
+| `loading` | 47 | Sawtooth fill — "processing" |
+| `lightning` | 57 | White random flash — storm |
+| `glitter` | 87 | Rainbow + white sparkles |
+| `fire` | 66 (Fire 2012) | Flickering fire |
+| `sunrise` | 104 | Gradual sunrise — slow ambient |
+| `off` | — | Turn ring off (sends `on: false`) |
 
-### Intensity (`set_neopixel_effect.intensity`)
-
-`low` / `medium` / `high` controls effect density via WLED's `ix` knob — sparkle density, fire height, comet tail length, aurora width, etc.
+v10 trimmed the previous `palette` and `intensity` args off `set_lights` after a failure-mode analysis showed they appeared in zero observed voice failures, and the dispatcher's defaults (palette = effect default, intensity = medium) cover them. If a future board needs them back, restore in `lights.py` and retrain.
 
 ---
 
@@ -444,7 +407,7 @@ The demo guarantees the buzzer and status LEDs return to a silent/off state on e
 - `SIGHUP` (terminal close, parent process death)
 - A fresh demo loading `hardware.py` after a crashed prior process
 
-Layered as `try/finally` inside `play_buzzer` + `blink_status_led`, a `HardwareDevice.cleanup()` called from a `finally` block in `main()`, signal handlers for `SIGTERM`/`SIGHUP`, and an `atexit` net.
+Layered as `try/finally` inside `play_buzzer` + the alarm-flash helper, a `HardwareDevice.cleanup()` called from a `finally` block in `main()`, signal handlers for `SIGTERM`/`SIGHUP`, and an `atexit` net.
 
 `SIGKILL`, kernel OOM kill, segfault, and power loss bypass all in-process cleanup. The systemd unit installed by `scripts/install-service.sh` carries an `ExecStopPost=` that drives `BUZZERn` back to silent on every service exit, including `SIGKILL` — so the buzzer can never latch ON across an unclean restart.
 
@@ -452,14 +415,15 @@ Layered as `try/finally` inside `play_buzzer` + `blink_status_led`, a `HardwareD
 
 ## Model and training
 
-Hosted on HuggingFace: [`BrinqAI/functiongemma-270m-physical-ai`](https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai) → `functiongemma-physical-ai-v9-Q5_K_M.gguf` (248 MB).
+Hosted on HuggingFace: [`BrinqAI/functiongemma-270m-physical-ai`](https://huggingface.co/BrinqAI/functiongemma-270m-physical-ai) → `functiongemma-physical-ai-v10-Q5_K_M.gguf` (248 MB).
 
 - **Base:** [`google/functiongemma-270m-it`](https://huggingface.co/google/functiongemma-270m-it)
-- **Style:** Fine-tuned [Octopus v2](https://arxiv.org/abs/2404.01744) — one functional token per tool, no schema in prompt
-- **Dataset:** 6,127 train / 1,339 eval examples — Haiku-authored phrasing templates × deterministic entity pools, with light Moonshine-flavored ASR-noise augmentation
-- **Surface:** 8 tools + `respond()` fallback (training data includes multi-tool routines, but on-device dispatch is unreliable for now — see [Known model behaviors](#known-model-behaviors))
-- **Held-out smoke test:** 29/29 (100%) on a curated routing benchmark; real-world prompt distribution is wider — see [Known model behaviors](#known-model-behaviors)
-- **Cold prefill:** 0.55 s on the SL2619 2-core A55 (synthetic benchmark)
+- **Style:** Fine-tuned [Octopus v2](https://arxiv.org/abs/2404.01744) — one functional token per tool, no schema in prompt. **Named-args** output format per the [Mercedes-Benz Octopus v2 follow-up](https://arxiv.org/abs/2501.02342) — the model emits only the args the user actually implied.
+- **Dataset:** 5,222 train / 920 eval examples — Haiku-authored phrasing templates × deterministic entity pools, with light Moonshine-flavored ASR-noise augmentation
+- **Surface:** 6 tools (set_lights unified the v9 LED trio into one hardware-agnostic tool). Single-tool dispatch only — multi-tool prompts are not reliable on a 270M model.
+- **Held-out smoke test:** 35/36 (97.2%) on a curated 36-prompt routing benchmark. Final eval loss 0.046, mean token accuracy 97.9%. Real-world prompt distribution is wider — see [Known model behaviors](#known-model-behaviors).
+- **Cold prefill:** 0.48 s on the SL2619 2-core A55 for a ~13-token prompt (measured on-device)
+- **Decode rate:** 9.7 tok/s (measured on-device, Q5_K_M)
 
 The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [`Synaptics/moonshine-tiny-bf16-torq`](https://huggingface.co/Synaptics/moonshine-tiny-bf16-torq), fetched automatically by `setup_demo.py`.
 
@@ -469,20 +433,23 @@ The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [
 
 ```
 Function_calling/
-├── app_pyqt.py            # PyQt5 entrypoint (the UI demo)
+├── app_pyqt.py            # PyQt6 entrypoint (the UI demo)
 ├── demo.py                # CLI / REPL entrypoint
 ├── setup_demo.py          # model download/setup check
 ├── chat_window.py         # main UI window
 ├── command_log.py         # scrolling tool-call log widget
-├── compact_codec.py       # <tool_N>(args)<end> ↔ ToolCall
+├── compact_codec.py       # <tool_N>(args)<end> ↔ ToolCall (named-args)
 ├── cpu_governor.py        # forces "performance" governor on the A55
-├── dispatcher.py          # ToolCall → HardwareDevice method
-├── hardware.py            # status LEDs, buzzer, alarms, camera
+├── dispatcher.py          # ToolCall → handler routing
+├── hardware.py            # buzzer, alarms, camera, system status
+├── lights.py              # unified set_lights router (HAT ⟷ WLED)
 ├── llamacpp.py            # llama-cpp-python wrapper for the GGUF
 ├── metrics_panel.py       # top-pane sparklines
 ├── metrics_provider.py    # psutil + sysfs samplers
 ├── theme.py               # Qt palette / typography
-├── tools.json             # 8-tool schema (v9)
+├── tools.json             # 6-tool schema (v10)
+├── token_map.json         # functional-token ↔ tool-name map
+├── turn_log.py            # per-turn JSONL diagnostics log
 ├── wled.py                # Mini Sparkle Motion serial client
 ├── voice/
 │   ├── asr.py             # StubASR + MoonshineASR (delegates to utils.speech)
@@ -500,12 +467,13 @@ Function_calling/
 ../library/                # shared native archives (portaudio_libs.tgz, etc.)
 ../wheelhouse/             # pre-built aarch64 wheels
 ../models/                 # GGUF + Moonshine artifacts (populated by setup_demo.py)
-  functiongemma-physical-ai-v9-Q5_K_M.gguf       # core demo
+  functiongemma-physical-ai-v10-Q5_K_M.gguf      # core demo
   Synaptics/moonshine-tiny-bf16-torq/            # only with --voice
     encoder.vmfb
     decoder.vmfb
     decoder_with_past.vmfb
     decoder_token_embeddings.npy
+    preprocessor.onnx
     tokenizer.json
 ```
 
@@ -513,31 +481,31 @@ Function_calling/
 
 ## Known model behaviors
 
-A 270M model fine-tuned for tool routing is not GPT-4. Below is what we've measured from a sweep against the v9 model on the board. Patterns that route cleanly vs. patterns that still misroute:
+A 270M model fine-tuned for tool routing is not GPT-4. Below is what we've measured against the v10 model on the board.
 
-**Reliable (verified on v9):**
+**Reliable (verified on v10):**
 
 | Pattern | Example |
 |---|---|
-| `<color> light/LED on/off` | `Turn the red light on` → `set_status_led` |
-| `blink <color> <N> times` | `Blink the blue light three times` → `blink_status_led` |
-| `<effect> on the neopixels` | `Show fireworks on the neopixels` → `set_neopixel_effect` |
-| `pulse the neopixels in <color>` | → `set_neopixel_effect: effect=pulse color=blue` |
-| `play a <pattern>` | `Play a siren` → `play_buzzer` |
+| `<color> light/LED on/off` | `Turn the red light on` → `set_lights: color=red state=on` |
+| `<state> the lights` | `Turn off the lights` → `set_lights: state=off` |
+| `<effect> on the <lights/LEDs/neopixels/strip>` | `Show fireworks on the neopixels` → `set_lights: effect=fireworks state=on` |
+| `<effect> the lights in <color>` | `Pulse the lights in blue` → `set_lights: color=blue effect=pulse state=on` |
+| `play a <pattern>` | `Play a siren` → `play_buzzer: pattern=siren` |
 | `wake me up in <N> <unit>` | `Wake me up in thirty seconds` → `set_alarm` |
 | `set an alarm for <time>` | `Set an alarm for 5pm` → `set_alarm @ 17:00:00` |
 | `cancel all alarms` | → `cancel_alarm: cancelled 0 (all)` |
-| `how much <metric>` | `How much memory is free?` → `get_system_status` |
-| Ambiguous-surface clarification | `Turn off the lights` → `respond: Status LEDs or neopixel ring?` |
-| Conversational | `Hello there` → `respond: Hey.` |
+| `how much <metric>` | `How much memory is free?` → `get_system_status: {'memory': 38.4}` |
+| Bare ambiguous prompts | `rainbow` / `on` / `off` (no target) → `respond()` clarification |
+| Conversational | `Hello there` → `respond: Hi there. Try "turn the lights on"...` |
 
-**Misroutes we've observed:**
+**Misroutes worth knowing about:**
 
-- **Multi-tool prompts** ("Beep twice and flash the green LED") — emit one malformed call, not two. The dispatcher rejects with an arg validation error. **Stick to one action per prompt** for now.
-- **Short imperatives without a surface keyword** ("Beep twice") — model routes to `play_buzzer` but emits `pattern='double'` instead of `'double_beep'`. Phrase as `Play a double beep` to land an exact-match pattern.
-- **Effects that need an exact name** ("Make the neopixels look like a police car") — model emits `palette='car'` (not a defined palette). Use the literal effect name: `Make the neopixels do the police effect`. See the [Effects table](#effects-set_neopixel_effecteffect) for the closed set.
-- **Specific system metrics** ("What's the CPU temperature?") — routes to `get_system_status` but picks `metric=cpu` instead of `temperature`. Ask `What's the temperature?` for a cleaner hit.
-- **Free-form chat** ("Tell me a joke about embedded systems") — the v9 model often emits 0 tool calls (gives up gracefully) rather than misrouting. That's a feature, not a bug — the model is fine-tuned for tool routing, not open-ended conversation.
+- **Multi-tool prompts** ("Beep twice and flash the green LED") — the model emits one call, not two. **Stick to one action per prompt.**
+- **Short imperatives without a target** ("Beep twice") — may emit `play_buzzer pattern='double'` instead of `'double_beep'`. Phrase as `Play a double beep` for an exact-match pattern.
+- **Effects requiring an exact name** ("Make the lights look like a police car") — model may emit a non-canonical effect string. Use the literal effect name from the [Effects table](#effects).
+- **Specific system metrics** ("What's the CPU temperature?") — routes to `get_system_status` but may pick `metric=cpu` instead of `temperature`. Ask `What's the temperature?` for a cleaner hit.
+- **Free-form chat** ("Tell me a joke about embedded systems") — the model often emits 0 tool calls (gives up gracefully) rather than misrouting. That's a feature, not a bug — the model is fine-tuned for tool routing, not open-ended conversation.
 
 If you hit a misroute on a phrasing you think should work, file an issue with the verbatim prompt — the fix is to add it to the next dataset regen and retrain.
 
