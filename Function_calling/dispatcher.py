@@ -11,22 +11,10 @@ from lights import KNOWN_COLORS, KNOWN_EFFECTS, KNOWN_STATES, LightsController
 
 
 # Closed enums declared in tools.json descriptions. Validated here because the
-# compact codec is positional and accepts whatever literal the model emits, so
-# a hallucinated string ("Tell me a joke" -> effect="No joke here.") would
-# otherwise silently fall through to the hardware layer.
-_STATUS_LEDS = {"red", "green", "blue", "all"}
-_STATES = {"on", "off"}
-_EFFECTS = {
-    "solid", "pulse", "fade", "chase", "rainbow", "sparkle", "off",
-    "aurora", "plasma", "comet", "twinkle", "fireworks", "police",
-    "heartbeat", "loading", "lightning", "glitter", "fire", "sunrise",
-}
-_PALETTES = {
-    "auto", "ocean", "lava", "forest", "sunset", "party", "sherbet",
-    "c9", "aurora", "beach", "fire", "sakura", "splash", "pastel",
-}
-_INTENSITIES = {"low", "medium", "high"}
-_SPEEDS = {"slow", "normal", "fast"}
+# compact codec accepts whatever literal the model emits, so a hallucinated
+# string ("Tell me a joke" -> pattern="No joke here.") would otherwise fall
+# through to the hardware layer. set_lights args are validated against
+# KNOWN_COLORS/KNOWN_EFFECTS/KNOWN_STATES imported from lights.py.
 _BUZZER_PATTERNS = {"beep", "double_beep", "siren", "chirp", "alarm",
                     "success", "error"}
 _SYSTEM_METRICS = {"cpu", "memory", "temperature", "npu", "all"}
@@ -79,9 +67,6 @@ class Dispatcher:
         self._hw = hardware
         self._lights = LightsController(wled=hardware._wled)
         self._handlers: dict[str, Callable[[dict[str, Any]], DispatchResult]] = {
-            "set_status_led": self._set_status_led,
-            "blink_status_led": self._blink_status_led,
-            "set_neopixel_effect": self._effect,
             "set_lights": self._set_lights,
             "play_buzzer": self._buzzer,
             "set_alarm": self._set_alarm,
@@ -125,65 +110,6 @@ class Dispatcher:
             )
 
     # -------------------------------------------------------------- handlers
-
-    def _set_status_led(self, args: dict[str, Any]) -> DispatchResult:
-        led = args.get("led")
-        if led not in _STATUS_LEDS:
-            return _reject("set_status_led", "led", led, _STATUS_LEDS)
-        state = args.get("state")
-        if state not in _STATES:
-            return _reject("set_status_led", "state", state, _STATES)
-        brightness = int(args.get("brightness", 100))
-        if not 0 <= brightness <= 100:
-            return DispatchResult(
-                tool="set_status_led", status="fallback",
-                message=f"Brightness should be 0-100. I got {brightness}.",
-            )
-        self._hw.set_status_led(led=led, state=state, brightness=brightness)
-        return DispatchResult("set_status_led", "ok",
-                              _summary(args, "led", "state", "brightness"))
-
-    def _blink_status_led(self, args: dict[str, Any]) -> DispatchResult:
-        led = args.get("led")
-        if led not in _STATUS_LEDS:
-            return _reject("blink_status_led", "led", led, _STATUS_LEDS)
-        speed = args.get("speed", "normal")
-        if speed not in _SPEEDS:
-            return _reject("blink_status_led", "speed", speed, _SPEEDS)
-        count = int(args.get("count", 3))
-        if count < 1:
-            return DispatchResult(
-                tool="blink_status_led", status="fallback",
-                message=f"Blink count should be at least 1. I got {count}.",
-            )
-        self._hw.blink_status_led(led=led, count=count, speed=speed)
-        return DispatchResult("blink_status_led", "ok",
-                              _summary(args, "led", "count", "speed"))
-
-    def _effect(self, args: dict[str, Any]) -> DispatchResult:
-        effect = args.get("effect")
-        if effect not in _EFFECTS:
-            return _reject("set_neopixel_effect", "effect", effect, _EFFECTS)
-        speed = args.get("speed", "normal")
-        if speed not in _SPEEDS:
-            return _reject("set_neopixel_effect", "speed", speed, _SPEEDS)
-        palette = args.get("palette")
-        if palette is not None and palette not in _PALETTES:
-            return _reject("set_neopixel_effect", "palette", palette, _PALETTES)
-        intensity = args.get("intensity")
-        if intensity is not None and intensity not in _INTENSITIES:
-            return _reject("set_neopixel_effect", "intensity", intensity,
-                           _INTENSITIES)
-        self._hw.set_neopixel_effect(
-            effect=effect,
-            color=args.get("color"),
-            palette=palette,
-            speed=speed,
-            intensity=intensity,
-        )
-        return DispatchResult("set_neopixel_effect", "ok",
-                              _summary(args, "effect", "color", "palette",
-                                       "speed", "intensity"))
 
     def _buzzer(self, args: dict[str, Any]) -> DispatchResult:
         pattern = args.get("pattern") or "beep"
