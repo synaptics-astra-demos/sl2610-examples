@@ -1,4 +1,4 @@
-"""Unit tests for the v8 dispatcher.
+"""Unit tests for the v10 dispatcher.
 
 Exercises the dispatcher's enum validation and routing to a stub
 HardwareDevice that records every call. No real hardware required.
@@ -28,27 +28,6 @@ class StubHardware:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def set_status_led(self, led: str, state: str,
-                       brightness: int = 100) -> None:
-        self.calls.append(("set_status_led", {
-            "led": led, "state": state, "brightness": brightness,
-        }))
-
-    def blink_status_led(self, led: str, count: int = 3,
-                         speed: str = "normal") -> None:
-        self.calls.append(("blink_status_led", {
-            "led": led, "count": count, "speed": speed,
-        }))
-
-    def set_neopixel_effect(self, effect: str, color: str | None = None,
-                            palette: str | None = None,
-                            speed: str = "normal",
-                            intensity: str | None = None) -> None:
-        self.calls.append(("set_neopixel_effect", {
-            "effect": effect, "color": color, "palette": palette,
-            "speed": speed, "intensity": intensity,
-        }))
-
     def play_buzzer(self, pattern: str) -> None:
         self.calls.append(("play_buzzer", {"pattern": pattern}))
 
@@ -76,138 +55,6 @@ def hw_and_dispatcher() -> tuple[StubHardware, Dispatcher]:
     return hw, Dispatcher(hw)  # type: ignore[arg-type]
 
 
-# --------------------------------------------------------------- set_status_led
-
-def test_set_status_led_ok(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_status_led",
-                                     {"led": "red", "state": "on"})])
-    assert res.status == "ok"
-    assert hw.calls == [("set_status_led",
-                         {"led": "red", "state": "on", "brightness": 100})]
-
-
-def test_set_status_led_all(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_status_led",
-                                     {"led": "all", "state": "off"})])
-    assert res.status == "ok"
-    assert hw.calls[0][1]["led"] == "all"
-
-
-def test_set_status_led_invalid_led(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_status_led",
-                                     {"led": "magenta", "state": "on"})])
-    assert res.status == "fallback"
-    assert "led" in res.message
-
-
-def test_set_status_led_invalid_state(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_status_led",
-                                     {"led": "red", "state": "flicker"})])
-    assert res.status == "fallback"
-    assert "state" in res.message
-
-
-def test_set_status_led_invalid_brightness(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_status_led",
-                                     {"led": "red", "state": "on", "brightness": 250})])
-    assert res.status == "fallback"
-
-
-# --------------------------------------------------------------- blink_status_led
-
-def test_blink_status_led_defaults(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("blink_status_led", {"led": "green"})])
-    assert res.status == "ok"
-    assert hw.calls == [("blink_status_led",
-                         {"led": "green", "count": 3, "speed": "normal"})]
-
-
-def test_blink_status_led_count_and_speed(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("blink_status_led",
-                                     {"led": "red", "count": 5, "speed": "fast"})])
-    assert res.status == "ok"
-    assert hw.calls[0][1] == {"led": "red", "count": 5, "speed": "fast"}
-
-
-def test_blink_status_led_invalid_speed(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("blink_status_led",
-                                     {"led": "red", "speed": "warp"})])
-    assert res.status == "fallback"
-    assert "speed" in res.message
-
-
-def test_blink_status_led_zero_count_rejected(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("blink_status_led",
-                                     {"led": "red", "count": 0})])
-    assert res.status == "fallback"
-
-
-# --------------------------------------------------------------- set_neopixel_effect
-
-def test_set_neopixel_effect_minimal(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect",
-                                     {"effect": "aurora"})])
-    assert res.status == "ok"
-    assert hw.calls[0][1]["effect"] == "aurora"
-
-
-def test_set_neopixel_effect_full_args(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect", {
-        "effect": "plasma", "color": "teal", "palette": "ocean",
-        "speed": "slow", "intensity": "high",
-    })])
-    assert res.status == "ok"
-    call = hw.calls[0][1]
-    assert call["effect"] == "plasma"
-    assert call["color"] == "teal"
-    assert call["palette"] == "ocean"
-    assert call["speed"] == "slow"
-    assert call["intensity"] == "high"
-
-
-def test_set_neopixel_effect_invalid_effect(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect",
-                                     {"effect": "tellmejoke"})])
-    assert res.status == "fallback"
-    assert "effect" in res.message
-
-
-def test_set_neopixel_effect_invalid_palette(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect",
-                                     {"effect": "aurora", "palette": "vibrant"})])
-    assert res.status == "fallback"
-    assert "palette" in res.message
-
-
-def test_set_neopixel_effect_invalid_intensity(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    _, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect",
-                                     {"effect": "fire", "intensity": "extreme"})])
-    assert res.status == "fallback"
-    assert "intensity" in res.message
-
-
-def test_set_neopixel_effect_off(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
-    hw, d = hw_and_dispatcher
-    [res] = d.dispatch_all([ToolCall("set_neopixel_effect",
-                                     {"effect": "off"})])
-    assert res.status == "ok"
-    assert hw.calls[0][1]["effect"] == "off"
-
-
 # ----------------------------------------------- buzzer / status / respond pass-through
 
 def test_buzzer_validates_pattern(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
@@ -227,12 +74,15 @@ def test_respond_passes_message(hw_and_dispatcher: tuple[StubHardware, Dispatche
 # --------------------------------------------------------------- removed tools
 
 @pytest.mark.parametrize("removed", [
+    # v7-era names dropped before v8
     "turn_on_lights", "turn_off_lights", "set_led_color", "blink_lights",
-    "set_neopixel_pattern",  # v7 name, now renamed
+    "set_neopixel_pattern",
+    # v9 LED surface collapsed into set_lights in v10
+    "set_status_led", "blink_status_led", "set_neopixel_effect",
 ])
-def test_removed_v7_tools_rejected(removed: str,
-                                   hw_and_dispatcher: tuple[StubHardware, Dispatcher]
-                                   ) -> None:
+def test_removed_legacy_tools_rejected(removed: str,
+                                       hw_and_dispatcher: tuple[StubHardware, Dispatcher]
+                                       ) -> None:
     _, d = hw_and_dispatcher
     [res] = d.dispatch_all([ToolCall(removed, {})])
     assert res.status == "fallback"
@@ -307,8 +157,9 @@ def test_set_lights_invalid_state_fallback(hw_and_dispatcher: tuple[StubHardware
 def test_dispatch_all_runs_sequence_in_order(hw_and_dispatcher: tuple[StubHardware, Dispatcher]) -> None:
     hw, d = hw_and_dispatcher
     results = d.dispatch_all([
-        ToolCall("set_status_led", {"led": "red", "state": "on"}),
-        ToolCall("set_neopixel_effect", {"effect": "aurora"}),
+        ToolCall("play_buzzer", {"pattern": "beep"}),
+        ToolCall("get_system_status", {"metric": "memory"}),
     ])
     assert all(r.status == "ok" for r in results)
-    assert [c[0] for c in hw.calls] == ["set_status_led", "set_neopixel_effect"]
+    assert [c[0] for c in hw.calls] == ["play_buzzer", "get_system_status"]
+    d.cleanup()
