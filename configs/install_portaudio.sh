@@ -17,14 +17,7 @@ if [[ ! -f "${PORTAUDIO_TGZ}" ]]; then
     exit 1
 fi
 
-echo "[1/2] Installing PortAudio libraries from ${PORTAUDIO_TGZ}..."
+echo "Installing PortAudio libraries from ${PORTAUDIO_TGZ}..."
 tar -xzf "${PORTAUDIO_TGZ}" -C /
-
-echo "[2/2] Updating dynamic linker cache..."
-if command -v ldconfig >/dev/null 2>&1; then
-    ldconfig
-else
-    echo "ldconfig not found; skipping cache update."
-fi
 
 echo "Done."

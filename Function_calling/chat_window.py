@@ -625,7 +625,7 @@ class ChatWindow(QMainWindow):
         # Hardware emits "ALARM FIRED: <label>"; show just the label in the
         # bubble and status line — the chip already says "ALARM".
         label = event.split(": ", 1)[1] if ": " in event else event
-        self._turn_logger.log("alarm_fired", label=label, event=event)
+        self._turn_logger.log("alarm_fired", label=label, raw_event=event)
         self.log.append_alarm(label)
         self._set_status(f"ALARM: {label}", "error")
 

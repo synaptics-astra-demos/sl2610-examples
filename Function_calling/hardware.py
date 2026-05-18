@@ -65,12 +65,6 @@ def _write_sysfs(path: Path, value: str) -> None:
         log.exception("sysfs write failed: %s <- %s", path, value)
 
 
-def _scale_pct_to_byte(pct: int) -> int:
-    """Clamp 0-100 percent and scale to 0-255 sysfs brightness."""
-    pct = max(0, min(100, int(pct)))
-    return int(round(pct * 255 / 100))
-
-
 def _run(cmd: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, check=False,
@@ -261,11 +255,6 @@ class HardwareDevice:
             "yes" if _HAS_GPIOD else "no",
             f"{_BUZZER_LINE[0]} {_BUZZER_LINE[1]}" if _BUZZER_LINE else "absent",
         )
-        if wled is None:
-            log.warning(
-                "no WLED client — set_neopixel_effect will silently no-op "
-                "on the ring. Pass --wled-port to drive it."
-            )
 
     def cleanup(self) -> None:
         """Cancel timers, silence buzzer, kill LEDs, close WLED.
@@ -288,62 +277,6 @@ class HardwareDevice:
                 self._wled.close()
             except Exception:  # noqa: BLE001 — serial close is a boundary
                 log.exception("WLED close failed")
-
-    # -------------------------------------------------- HAT status LEDs (3x)
-
-    def _hat_led_targets(self, led: str) -> list[str]:
-        if led == "all":
-            return ["red", "green", "blue"]
-        return [led]
-
-    def set_status_led(self, led: str, state: str,
-                       brightness: int = 100) -> None:
-        """Set one or all HAT status LEDs on/off.
-
-        ``led`` is one of {red, green, blue, all}. ``state`` is 'on' or 'off'.
-        Each LED is a physically distinct fixed-color emitter — no color
-        mixing happens here, just channel-level on/off with a brightness
-        scale that maps 0-100 → 0-255 sysfs values.
-        """
-        val = _scale_pct_to_byte(brightness) if state == "on" else 0
-        for name in self._hat_led_targets(led):
-            path = STATUS_LEDS.get(name)
-            if path and path.exists():
-                _write_sysfs(path, str(val))
-        log.info("status_led led=%s state=%s brightness=%d", led, state, brightness)
-
-    def blink_status_led(self, led: str, count: int = 3,
-                         speed: str = "normal") -> None:
-        """Blink one or all HAT status LEDs ``count`` times."""
-        period = {"slow": 0.40, "normal": 0.20, "fast": 0.08}.get(speed, 0.20)
-        targets = self._hat_led_targets(led)
-        paths = [STATUS_LEDS[n] for n in targets if STATUS_LEDS[n].exists()]
-        try:
-            for _ in range(max(1, int(count))):
-                for p in paths:
-                    _write_sysfs(p, "255")
-                time.sleep(period)
-                for p in paths:
-                    _write_sysfs(p, "0")
-                time.sleep(period)
-        finally:
-            for p in paths:
-                _write_sysfs(p, "0")
-        log.info("blink_status_led led=%s count=%d speed=%s", led, count, speed)
-
-    # ----------------------------------------------------- Neopixel ring (WLED)
-
-    def set_neopixel_effect(self, effect: str, color: str | None = None,
-                            palette: str | None = None,
-                            speed: str = "normal",
-                            intensity: str | None = None) -> None:
-        if self._wled is None:
-            log.info("set_neopixel_effect %r ignored (no --wled-port)", effect)
-            return
-        self._wled.set_effect(effect=effect, color=color, palette=palette,
-                              speed=speed, intensity=intensity)
-        log.info("effect=%s color=%s palette=%s speed=%s intensity=%s",
-                 effect, color, palette, speed, intensity)
 
     # ---------------------------------------------------------------- Buzzer
 
@@ -391,6 +324,23 @@ class HardwareDevice:
 
     _ALARM_FIRE_CYCLES = 3
 
+    def _alarm_flash_red(self, count: int = 5, period: float = 0.08) -> None:
+        """Flash the red HAT status LED ``count`` times. Internal helper for
+        ``_fire_alarm`` — sole on-HAT path that needed the old v9
+        ``blink_status_led`` surface. Always finishes with the LED off so
+        the alarm strobe doesn't outlive the fire sequence."""
+        path = STATUS_LEDS["red"]
+        if not path.exists():
+            return
+        try:
+            for _ in range(max(1, int(count))):
+                _write_sysfs(path, "255")
+                time.sleep(period)
+                _write_sysfs(path, "0")
+                time.sleep(period)
+        finally:
+            _write_sysfs(path, "0")
+
     def _fire_alarm(self, label: str) -> None:
         # Emit the UI callback before the blocking hardware sequence so the
         # screen updates the instant the timer trips, not 5s later when the
@@ -408,7 +358,7 @@ class HardwareDevice:
                         self._wled.blink(count=5, color="red", speed="fast")
                     except Exception:  # noqa: BLE001 — serial boundary
                         log.exception("WLED alarm blink failed")
-                self.blink_status_led(led="red", count=5, speed="fast")
+                self._alarm_flash_red(count=5, period=0.08)
         finally:
             _all_status_leds_off()
             if self._wled is not None:

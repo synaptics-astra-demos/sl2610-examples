@@ -70,6 +70,9 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 #### Install example-specific dependencies
 
+[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
+
+
 ```bash
 cd gemma_translate
 ```
@@ -110,12 +113,36 @@ Connect a USB or PDM microphone
 
 ## Start
 
+
+### Headless Mode
 If you do not have a display, use the command line version.
+
 ```bash
 python cli_translate.py
 ```
 
 If you have a display, use the pyQt app version.
+
+
+### Display Mode
+
+Set the following environment variables for using the display. 
+
+```bash
+export XDG_RUNTIME_DIR=/var/run/user/0
+export WAYLAND_DISPLAY=wayland-1
+export QT_QPA_PLATFORM=wayland
+export WESTON_DISABLE_GBM_MODIFIERS=true
+```
+
+For portrait mode on 800x480 display:
+```bash
+export ORIENTATION=portrait
+export DISPLAY_HEIGHT=800
+export DISPLAY_WIDTH=480
+```
+
+Start the app
 
 ```bash
 python app_translate.py
