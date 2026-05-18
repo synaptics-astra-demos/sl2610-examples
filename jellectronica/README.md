@@ -1,8 +1,8 @@
-# 🪼 Jellectronica: Coralboard Native Edition
+# 🪼 Jellectronica Lite: Coralboard Native Edition
 
 **Turn any video stream into ambient music using real-time AI object detection**, running entirely on the [Synaptics Coralboard SL2619](https://coral.ai/products/).
 
-Jellectronica watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
+**Jellectronica *Lite*** watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
 
 An optional **MelodyRNN AI accompaniment** layer listens to the triggered notes and generates real-time generative melodies using a pre-trained Magenta LSTM neural network — all running on-device in pure Python/NumPy.
 
@@ -141,6 +141,9 @@ pip install -r requirements.txt
 
 - Install specific dependencies for this example
 
+[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
+
+
 ```bash
 cd jellectronica
 pip install -r requirements.txt
@@ -160,17 +163,40 @@ pip install -r requirements.txt
 
 ### 4. Start the App
 
-#### For headless mode, start the app: 
+#### For headless mode
 
- `python3 server.py`
+Start the app: 
+
+ ```bash
+ python3 server.py
+ ```
 
 Open `http://<board-ip>:5002` in any browser on the same sub-network. 
 
 Audio plays on the board via USB speaker.
 
-#### For display mode, start the app: 
+#### For display mode
 
- `python3 app.py`
+Set the following environment variables for using the display. 
+
+```bash
+export XDG_RUNTIME_DIR=/var/run/user/0
+export WAYLAND_DISPLAY=wayland-1
+export WESTON_DISABLE_GBM_MODIFIERS=true
+```
+
+For portrait mode on 800x480 display:
+```bash
+export ORIENTATION=portrait
+export DISPLAY_HEIGHT=800
+export DISPLAY_WIDTH=480
+```
+
+Start the app: 
+
+```bash
+python3 app.py
+```
 
 It renders directly to the attached DSI display. 
 

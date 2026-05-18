@@ -47,6 +47,8 @@ source .venv/bin/activate
 
 Install dependencies
 
+[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation dependencies when switching between examples.
+
 If online
 ```bash
 pip install -r requirements.txt
@@ -67,6 +69,13 @@ Optionally Set up display environment (Required for visual output).
 ```bash
 export XDG_RUNTIME_DIR=/var/run/user/0
 export WAYLAND_DISPLAY=wayland-1
+```
+
+For portrait mode on 800x480 display:
+```bash
+export ORIENTATION=portrait
+export DISPLAY_HEIGHT=800
+export DISPLAY_WIDTH=480
 ```
 
 ### Change to the Object Detection directory

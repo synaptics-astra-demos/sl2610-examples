@@ -65,13 +65,17 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 ```bash
 # 1. Clone
 git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
-cd sl2610-examples/Function_calling
+cd sl2610-examples
 
 # 2. Shared venv + Python deps
-cd ..
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
+
+# Install general dependencies
 pip install -r requirements.txt
+
+# Install example-specific dependencies
+
 cd Function_calling
 pip install -r requirements.txt
 
@@ -79,18 +83,20 @@ pip install -r requirements.txt
 python setup_demo.py
 
 # 4. Run it
-python3 demo.py                # CLI REPL (works in any terminal)
 
-# For the PyQt UI on the 7" panel, install as a systemd service —
-# it handles the Wayland env vars and autostarts on boot:
-bash scripts/install-service.sh
+python3 demo.py                # CLI REPL (works in any terminal)
 ```
+
+[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
+
 
 The model loads in ~3.6 s, then you're at a prompt. To run the PyQt UI from a fresh terminal without systemd, see [Running the demo](#running-the-demo) for the Wayland env vars.
 
 To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../configs/install_configs.sh portaudio`, then run `bash scripts/install-service.sh --voice moonshine`.
 
-`setup_demo.py` is idempotent — re-run it anytime to repair missing model files. For offline Python dependency installs, use `pip install --no-index --find-links=../wheelhouse -r requirements.txt`.
+`setup_demo.py` is idempotent — re-run it anytime to repair missing model files. 
+
+For offline Python dependency installs, use `pip install --no-index --find-links=../wheelhouse -r requirements.txt`.
 
 ---
 
@@ -165,10 +171,16 @@ export QT_QPA_PLATFORM=wayland
 export WESTON_DISABLE_GBM_MODIFIERS=true
 ```
 
-Activate the venv, then run either entrypoint:
+For portrait mode on 800x480 display:
+```bash
+export ORIENTATION=portrait
+export DISPLAY_HEIGHT=800
+export DISPLAY_WIDTH=480
+```
+
+Run either entrypoint:
 
 ```bash
-source .venv/bin/activate
 
 # Interactive REPL
 python3 demo.py
@@ -184,6 +196,14 @@ python3 app_pyqt.py --fullscreen
 ```
 
 In the PyQt UI: `Ctrl+P` snapshots the window to `/tmp/`. `Esc` quits.
+
+# Install as a service
+
+For the PyQt UI app on the 7" panel, install as a systemd service — it handles the Wayland env vars and autostarts on boot:
+```bash
+bash scripts/install-service.sh
+```
+
 
 ### Expected output (REPL)
 
