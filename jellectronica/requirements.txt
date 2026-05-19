@@ -1,0 +1,12 @@
+numpy>=1.24.0,<2.0
+flask>=3.0
+websockets>=12.0
+
+# YouTube livestream support (optional — falls back to local video)
+yt-dlp
+
+# cv2 - Use headless to avoid X11/XCB dependencies on Wayland/Weston
+opencv-python-headless<4.10
+
+# Sound
+pygame
