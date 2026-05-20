@@ -106,7 +106,7 @@ wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/m
 Install the PortAudio system libraries for microphone input:
 
 ```bash
-../configs/install_configs.sh portaudio
+../configs/install_portaudio.sh
 ```
 
 Connect a USB or PDM microphone
