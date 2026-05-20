@@ -316,7 +316,7 @@ def main() -> None:
             print(_dim(
                 f"voice unavailable: --voice={args.voice} requires "
                 "sounddevice + silero-vad-notorch and libportaudio.so.2 "
-                "(install with ../configs/install_configs.sh portaudio). "
+                "(install with ../configs/install_portaudio.sh). "
                 "Continuing text-only."
             ))
 

@@ -96,7 +96,7 @@ python setup_demo.py
 Install the PortAudio system libraries for microphone input:
 
 ```bash
-../configs/install_configs.sh portaudio
+../configs/install_portaudio.sh
 ```
 
 Connect a USB or PDM microphone

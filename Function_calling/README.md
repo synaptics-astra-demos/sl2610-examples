@@ -92,7 +92,7 @@ python3 demo.py                # CLI REPL (works in any terminal)
 
 The model loads in ~3.6 s, then you're at a prompt. To run the PyQt UI from a fresh terminal without systemd, see [Running the demo](#running-the-demo) for the Wayland env vars.
 
-To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../configs/install_configs.sh portaudio`, then run `bash scripts/install-service.sh --voice moonshine`.
+To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../configs/install_portaudio.sh`, then run `bash scripts/install-service.sh --voice moonshine`.
 
 `setup_demo.py` is idempotent — re-run it anytime to repair missing model files. 
 
@@ -244,7 +244,7 @@ python3 app_pyqt.py --voice moonshine
 python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). `setup_demo.py` downloads the five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_configs.sh portaudio`; the OOBE image doesn't ship it.
+`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). `setup_demo.py` downloads the five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_portaudio.sh`; the OOBE image doesn't ship it.
 
 If `tokenizer.json` is ever missing at runtime, the ASR worker falls back to fetching it from `UsefulSensors/moonshine-tiny`. For fully offline use after a partial install:
 

@@ -72,28 +72,32 @@ pip install --no-index --find-links=./wheelhouse -r requirements.txt
 
 ## Device Configuration
 
-Some demos require kernel modules, native libraries, or display configuration to be installed on the device. A unified installer script is provided:
+Some demos require kernel modules, native libraries, or display configuration to be installed on the device. 
 
+
+Installer scripts are provided:
+
+
+| Script | Type | Description | Require Reboot? | 
+|--------|--------|-------------|------|
+| `patch_kernel.sh` | Required | Update the NPU kernel module (`syna_npu.ko`) | Yes | 
+| `install_portaudio.sh` | Required | Install PortAudio shared libraries for microphone demos | No | 
+| `portrait_setup.sh` | Optional | Configure portrait display orientation (recommended if you connect a MIPI DSI display)| No | 
+| `patch_usb_cdc.sh` | Optional | Install USB CDC/serial modules (For Neopixel controller support) | Yes | 
+
+Run the scripts one at a time:
+
+Required:
 ```bash
-./configs/install_configs.sh <target> [target ...]
+./configs/install_portaudio.sh
+./configs/patch_kernel.sh
 ```
 
-| Target | Description |
-|--------|-------------|
-| `kernel` | Update the NPU kernel module (`syna_npu.ko`) |
-| `usb_cdc` | Install USB CDC/serial modules (`cdc-acm`, `usbserial`, `ch341`) |
-| `portaudio` | Install PortAudio shared libraries for microphone demos |
-| `portrait_setup` | Configure portrait display orientation (weston) |
-| `all` | Install all of the above |
-
-Examples:
+Optional:
 ```bash
-./configs/install_configs.sh all
-./configs/install_configs.sh kernel
-./configs/install_configs.sh usb_cdc portaudio portrait_setup
+./configs/portrait_setup.sh
+./configs/patch_usb_cdc.sh
 ```
-
-The `kernel` and `usb_cdc` targets require a reboot; the script will prompt before rebooting. Each sub-script can also be run standalone (e.g. `./configs/patch_usb_cdc.sh`).
 
 
 ## Examples
