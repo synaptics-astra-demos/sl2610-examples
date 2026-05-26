@@ -113,20 +113,36 @@ Connect a USB or PDM microphone
 
 ## Start
 
+### Voice input (default)
 
-### Headless Mode
-If you do not have a display, use the command line version.
+No display — use the command line version with voice input:
 
 ```bash
 python cli_translate.py
 ```
 
-If you have a display, use the pyQt app version.
+It will ask you to select your microphone:
 
+```
+List of Audio input devices:
+  0 HyperX SoloCast: USB Audio (hw:0,0), ALSA (2 in, 0 out)
+  1 sysdefault, ALSA (128 in, 0 out)
+  2 spdif, ALSA (2 in, 0 out)
+> 3 default, ALSA (128 in, 0 out)
+Enter input device to listen on:
+```
 
-### Display Mode
+### Text input (no microphone required)
 
-Set the following environment variables for using the display. 
+If you do not have a microphone, run in text mode:
+
+```bash
+python cli_translate.py --text
+```
+
+### Display mode
+
+Set the following environment variables for using the display:
 
 ```bash
 export XDG_RUNTIME_DIR=/var/run/user/0
@@ -142,7 +158,7 @@ export DISPLAY_HEIGHT=800
 export DISPLAY_WIDTH=480
 ```
 
-Start the app
+Start the app:
 
 ```bash
 python app_translate.py
@@ -150,32 +166,39 @@ python app_translate.py
 
 ## Usage
 
-It will ask you to select your microphone.
+### Voice mode
 
-```bash
-List of Audio input devices:
-  0 HyperX SoloCast: USB Audio (hw:0,0), ALSA (2 in, 0 out)
-  1 sysdefault, ALSA (128 in, 0 out)
-  2 spdif, ALSA (2 in, 0 out)
-> 3 default, ALSA (128 in, 0 out)
-Enter input device to listen on:
+Press a number key at any time to switch the target language:
+
 ```
-
-In the command-line-only version, it will ask you to choose the language. You can change it by pressing a number key at any time. 
-```bash
-Press 1-2 to change language at any time:
+Press a listed number to change language:
   1: Spanish
   2: French
+
 Speak to translate. Press Ctrl+C to exit.
 ```
 
-The models will be loaded and the app will open. 
+Speak phrases (in English) that are more than a few words but less than 5 seconds. The app will capture your speech and translate it to the selected language.
 
-## Speak into the microphone! 
+### Text mode
 
-Speak phrases (in English) that are more than a few words but less than 5 seconds. 
+Type a phrase and press Enter to translate it:
 
-The app will capture your speech and translate it to the selected language. 
+```
+Type a phrase and press Enter to translate.
+Use /1-/6 to switch language, /q to quit:
+  /1: Spanish
+  /2: French
+
+→ Good morning, how are you?
+[You] Good morning, how are you?
+[Translation] Buenos días, ¿cómo estás?
+→ /2
+[Language changed to: French]
+→ Good morning, how are you?
+[Translation] Bonjour, comment allez-vous ?
+→ /q
+```
 
 
 # Citations
