@@ -80,7 +80,7 @@ export DISPLAY_WIDTH=480
 
 ### Change to the Object Detection directory
 ```bash
-cd object_detection/
+cd Object_detection/
 ```
 
 ### Run the object detection on an image file
