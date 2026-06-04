@@ -19,7 +19,6 @@ MOONSHINE_HF_REPO_MAP: Final[dict[str, str]] = {
 _MOONSHINE_REQUIRED_FILES: Final[tuple[str, ...]] = (
     "encoder.vmfb",
     "decoder.vmfb",
-    "decoder_with_past.vmfb",
     "decoder_token_embeddings.npy",
     "tokenizer.json",
 )
