@@ -18,6 +18,7 @@ class LanguageOption:
 LANGUAGES = {
     "1": LanguageOption("Spanish", "Spanish"),
     "2": LanguageOption("French", "French"),
+    "3": LanguageOption("German", "German"),
 }
 
 
