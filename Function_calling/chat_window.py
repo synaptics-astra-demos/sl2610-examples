@@ -26,10 +26,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QKeySequence
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton,
-    QScrollArea, QShortcut, QSizePolicy, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 import icons
