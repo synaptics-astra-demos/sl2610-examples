@@ -35,9 +35,9 @@ try:
 except ImportError:
     _NEOPIXEL_AVAILABLE = False
 
-from PyQt5.QtCore import QEvent, QObject, QSize, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFontDatabase
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QEvent, QObject, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QFrame,
@@ -284,14 +284,14 @@ class CommSignals(QObject):
 class MessageBubble(QFrame):
     def __init__(self, text: str, *, is_user: bool):
         super().__init__()
-        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
         self.setMaximumWidth(max(240, int(CHAT_WIDTH * 0.82)))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         self.label = QLabel()
         self.label.setWordWrap(True)
-        self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         bg_color = "#007AFF" if is_user else "#E1E1E1"
         text_color = "white" if is_user else "#1C1C1E"
@@ -371,8 +371,8 @@ class ChatWindow(QWidget):
 
     def _make_divider(self) -> QFrame:
         line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Plain)
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Plain)
         line.setStyleSheet("color: #dadce0; border: none; border-top: 1px solid #dadce0;")
         line.setFixedHeight(1)
         return line
@@ -387,7 +387,7 @@ class ChatWindow(QWidget):
         root.setSpacing(8)
 
         title = QLabel("Language Translation with Gemma3 270M")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
             "font-size: 18px; font-weight: 700; color: #202124; border: none;"
         )
@@ -429,7 +429,7 @@ class ChatWindow(QWidget):
                 background: transparent;
             }
         """)
-        self.input_text.setFrameShape(QFrame.NoFrame)
+        self.input_text.setFrameShape(QFrame.Shape.NoFrame)
         self.input_text.installEventFilter(self)
         input_vbox.addWidget(self.input_text, stretch=1)
 
@@ -448,7 +448,7 @@ class ChatWindow(QWidget):
         )
         self.language_dropdown.setCurrentText(self.language_state.current.display_name)
         self.language_dropdown.setMinimumWidth(200)
-        self.language_dropdown.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.language_dropdown.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.language_dropdown.setStyleSheet("""
             QComboBox {
                 font-size: 15px;
@@ -478,7 +478,7 @@ class ChatWindow(QWidget):
             }
             QPushButton:hover { background: #f8f9fa; }
         """)
-        dropdown_arrow_btn.setCursor(Qt.PointingHandCursor)
+        dropdown_arrow_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         dropdown_arrow_btn.clicked.connect(self.language_dropdown.showPopup)
 
         # Force both to the same height so they align as one unit
@@ -489,7 +489,7 @@ class ChatWindow(QWidget):
         output_header.addWidget(dropdown_arrow_btn)
         output_header.addStretch()
         self.clear_button = QPushButton()
-        self.clear_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self.clear_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
         self.clear_button.setFixedSize(36, 36)
         self.clear_button.setFlat(True)
         self.clear_button.setStyleSheet("border: none; background: transparent;")
@@ -500,9 +500,9 @@ class ChatWindow(QWidget):
 
         self.output_text = QLabel()
         self.output_text.setWordWrap(True)
-        self.output_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.output_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.output_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.output_text.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.output_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.output_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.output_text.setStyleSheet("""
             QLabel {
                 font-size: 24px;
@@ -520,7 +520,7 @@ class ChatWindow(QWidget):
         # ── Bottom bar ──────────────────────────────────────────────
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("font-size: 13px; color: #5f6368; border: none;")
-        root.addWidget(self.status_label, alignment=Qt.AlignLeft)
+        root.addWidget(self.status_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         stats_style = f"font-size: {STATS_FONT_SIZE}px; color: #5f6368; border: none;"
         self.stats_stt_label = QLabel("")
@@ -528,15 +528,15 @@ class ChatWindow(QWidget):
         self.stats_stt_label.setStyleSheet(stats_style)
         self.stats_llm_label.setStyleSheet(stats_style)
         if self.show_stats:
-            root.addWidget(self.stats_stt_label, alignment=Qt.AlignRight)
-            root.addWidget(self.stats_llm_label, alignment=Qt.AlignRight)
+            root.addWidget(self.stats_stt_label, alignment=Qt.AlignmentFlag.AlignRight)
+            root.addWidget(self.stats_llm_label, alignment=Qt.AlignmentFlag.AlignRight)
 
     # ── Event handling ──────────────────────────────────────────────
 
     def eventFilter(self, obj, event):
         if obj is self.input_text and event.type() == QEvent.KeyPress:
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-                if not (event.modifiers() & Qt.ShiftModifier):
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
                     self._submit_text_input()
                     return True
         return super().eventFilter(obj, event)
@@ -1176,7 +1176,7 @@ def main() -> int:
     if auto_test is not None:
         auto_test.start()
 
-    exit_code = app.exec_()
+    exit_code = app.exec()
 
     if worker is not None:
         worker.stop()

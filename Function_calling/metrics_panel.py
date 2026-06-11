@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from collections import deque
 
-from PyQt5.QtCore import QPointF, Qt, QTimer
-from PyQt5.QtGui import QColor, QPainter, QPen, QPolygonF
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QPointF, Qt, QTimer
+from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -31,7 +31,7 @@ class Sparkline(QWidget):
     def __init__(self, color: str = PALETTE.accent, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(SPARK_HEIGHT)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._values: deque[float] = deque(maxlen=SPARK_POINTS)
         self._color = QColor(color)
 
@@ -43,7 +43,7 @@ class Sparkline(QWidget):
         if len(self._values) < 2:
             return
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         w = self.width()
         h = self.height()
@@ -62,13 +62,13 @@ class Sparkline(QWidget):
         area_pts.extend(points)
         area_pts.append(QPointF(points[-1].x(), h))
         p.setBrush(area_color)
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         p.drawPolygon(QPolygonF(area_pts))
 
         pen = QPen(self._color)
         pen.setWidth(2)
         p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         for i in range(1, len(points)):
             p.drawLine(points[i - 1], points[i])
 
@@ -107,11 +107,11 @@ class MetricTile(QFrame):
         self._value = QLabel(f"-- {unit}")
         self._value.setObjectName("MetricValue")
         self._value.setStyleSheet(_VALUE_STYLE)
-        self._value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._value.setMinimumHeight(20)
-        head.addWidget(self._label, alignment=Qt.AlignBottom)
+        head.addWidget(self._label, alignment=Qt.AlignmentFlag.AlignBottom)
         head.addStretch(1)
-        head.addWidget(self._value, alignment=Qt.AlignBottom)
+        head.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.spark = Sparkline(color=color)
 
@@ -132,8 +132,8 @@ class MetricsPanel(QFrame):
     def __init__(self, pump: MetricsPump, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("MetricsPanel")
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.pump = pump
         self._tiles: dict[str, MetricTile] = {}
 

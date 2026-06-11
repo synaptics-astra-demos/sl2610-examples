@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase
 
 _FONT_PATH = Path(__file__).resolve().parent / "fonts" / "lucide-subset.ttf"
 _FAMILY: str | None = None
@@ -38,5 +38,5 @@ def icon_font(pixel_size: int) -> QFont:
     family = ensure_loaded()
     font = QFont(family)
     font.setPixelSize(pixel_size)
-    font.setStyleStrategy(QFont.PreferAntialias)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     return font

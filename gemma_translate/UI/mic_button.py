@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QFontMetrics, QPainter, QPen
-from PyQt5.QtWidgets import QSizePolicy, QWidget
+from PyQt6.QtCore import QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 import icons
 from theme import PALETTE
@@ -18,8 +18,8 @@ class MicButton(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(44, 44)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._icon_font = icons.icon_font(20)
         self._checked = False
         self._enabled = True
@@ -56,7 +56,7 @@ class MicButton(QWidget):
         self.update()
 
     def mousePressEvent(self, event) -> None:
-        if not self._enabled or event.button() != Qt.LeftButton:
+        if not self._enabled or event.button() != Qt.MouseButton.LeftButton:
             return
         self.setChecked(not self._checked)
         self.toggled.emit(self._checked)
@@ -67,8 +67,8 @@ class MicButton(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setRenderHint(QPainter.TextAntialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
         if not self._enabled:
             bg = QColor(P.bg_secondary)
@@ -96,7 +96,7 @@ class MicButton(QWidget):
             phase = abs(12 - self._pulse_step) / 12.0
             ripple = QColor(P.text_inverse)
             ripple.setAlphaF(0.18 * (1.0 - phase))
-            p.setPen(Qt.NoPen)
+            p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(ripple)
             shrink = 2 + phase * 8
             p.drawEllipse(rect.adjusted(shrink, shrink, -shrink, -shrink))

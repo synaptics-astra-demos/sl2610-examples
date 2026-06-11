@@ -8,9 +8,9 @@ Three states for the connection dot, set via ``set_state``:
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -70,7 +70,7 @@ class StatusBar(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("StatusBar")
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 9, 12, 9)
@@ -87,15 +87,15 @@ class StatusBar(QFrame):
             f"background: transparent; color: {P.text_primary};"
             f" font-size: 16px; font-weight: 700; letter-spacing: -0.01em;"
         )
-        self._title.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self._title.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._dot = _Dot()
         title_cluster.addWidget(self._title)
-        title_cluster.addWidget(self._dot, alignment=Qt.AlignVCenter)
+        title_cluster.addWidget(self._dot, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         icons.ensure_loaded()
         self._reset_btn = QPushButton(icons.RESET)
         self._reset_btn.setObjectName("GhostButton")
-        self._reset_btn.setCursor(Qt.PointingHandCursor)
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_btn.setFixedSize(32, 32)
         self._reset_btn.setStyleSheet(
             "QPushButton#GhostButton {"
@@ -119,7 +119,7 @@ class StatusBar(QFrame):
             f"background: transparent; color: {P.text_secondary}; font-size: 11px;"
         )
         self._subtitle.setMinimumWidth(40)
-        self._subtitle.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self._subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._pill = QLabel("BrinqAI/functiongemma-270m-physical-ai")
         self._pill.setStyleSheet(
             f"background: {P.bg_tertiary}; color: {P.text_secondary};"
@@ -127,9 +127,9 @@ class StatusBar(QFrame):
             f" padding: 2px 8px; font-family: {T.mono};"
             f" font-size: 10px; font-weight: 500; letter-spacing: -0.01em;"
         )
-        self._pill.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self._pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         row2.addWidget(self._subtitle, stretch=1)
-        row2.addWidget(self._pill, alignment=Qt.AlignVCenter)
+        row2.addWidget(self._pill, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         root.addLayout(row1)
         root.addLayout(row2)
@@ -141,7 +141,7 @@ class StatusBar(QFrame):
     def _elide_subtitle(self) -> None:
         fm = QFontMetrics(self._subtitle.font())
         avail = max(20, self._subtitle.width())
-        self._subtitle.setText(fm.elidedText(self._subtitle_full, Qt.ElideRight, avail))
+        self._subtitle.setText(fm.elidedText(self._subtitle_full, Qt.TextElideMode.ElideRight, avail))
 
     def set_state(self, state: str) -> None:
         self._dot.set_state(state)
