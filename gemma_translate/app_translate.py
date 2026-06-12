@@ -534,7 +534,7 @@ class ChatWindow(QWidget):
     # ── Event handling ──────────────────────────────────────────────
 
     def eventFilter(self, obj, event):
-        if obj is self.input_text and event.type() == QEvent.KeyPress:
+        if obj is self.input_text and event.type() == QEvent.Type.KeyPress:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
                     self._submit_text_input()
