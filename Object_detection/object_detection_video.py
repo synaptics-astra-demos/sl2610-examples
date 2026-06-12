@@ -685,7 +685,7 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", default="../models/yolov8n_od.vmfb")
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--rtsp-url", help="RTSP stream URL")
     source_group.add_argument("--video", help="Path to video file")
@@ -693,7 +693,7 @@ def main():
         "--camera-device",
         help="USB camera device, for example /dev/video0, or 'auto'",
     )
-    parser.add_argument("--labels")
+    parser.add_argument("--labels", default="labels.json")
     parser.add_argument("--device", default="torq")
     parser.add_argument("--output", default=None, help="Output video file (optional)")
     parser.add_argument("--json-results", default="detection_results.json", help="Output JSON file for detections")

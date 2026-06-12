@@ -87,12 +87,9 @@ cd object_detection/
 
 
 ```bash
-python3 object_detection.py \
-  --model ../models/yolov8n_od.vmfb \
-  --image ../samples/dog_bike_car.jpg \
-  --labels labels.json \
-  --device torq
+python3 object_detection.py --image ../samples/dog_bike_car.jpg
 ```
+
 
 ### Run the object detection on USB camera input or video file
 
@@ -107,6 +104,12 @@ To check available cameras, run the command `v4l2-ctl --list-devices`
 For `--camera-device`, select a video device such as `/dev/video0`, or `auto`.
 
 ```bash
+python3 object_detection_video.py --camera-device auto
+```
+
+Optionally, you can pass the model, labels, and device. 
+
+```bash
 python3 object_detection_video.py \
   --model ../models/yolov8n_od.vmfb \
   --camera-device auto \
@@ -114,21 +117,11 @@ python3 object_detection_video.py \
   --device torq
 ```
 
-**Golden Command for Arducam on Portrait Display:**
-This command optimizes the UI for portrait orientation (letterboxing, title, and stats) while ensuring proper hardware exposure control for Arducam modules.
-
-```bash
-python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
-  --camera-device /dev/video0 \
-  --camera-control-device /dev/v4l-subdev2 \
-  --labels labels.json \
-  --device torq \
-  --display \
-  --exposure-auto 0
-```
 
 Optionally you can also set the following configurations:
+- `--model`, Path to model (default: ../models/yolov8n_od.vmfb)
+- `--labels`, Path to lables (default: labels.json)
+- `--device`, Device to run on (default: torq)
 - `--output`, Output video file
 - `--json-results`, Output JSON file for detections
 - `--camera-width`, USB camera width
@@ -138,14 +131,21 @@ Optionally you can also set the following configurations:
 - `--display-sink`, GStreamer video sink for live display
 
 
-#### Run with video file input (filesrc)
+**Golden Command for Arducam on Portrait Display:**
+This command optimizes the UI for portrait orientation (letterboxing, title, and stats) while ensuring proper hardware exposure control for Arducam modules.
 
 ```bash
 python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
-  --video <your_video>.mp4 \
-  --labels labels.json \
-  --device torq
+  --camera-device /dev/video0 \
+  --camera-control-device /dev/v4l-subdev2 \
+  --display \
+  --exposure-auto 0
+```
+
+#### Run with video file input (filesrc)
+
+```bash
+python3 object_detection_video.py --video <your_video>.mp4
 ```
 
 #### Run with RTSP stream input
@@ -154,19 +154,13 @@ To stream from an RTSP source (e.g., IP camera, network stream):
 
 ```bash
 python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
-  --rtsp-url rtsp://<camera_ip>:<port>/<stream_path> \
-  --labels labels.json \
-  --device torq
+  --rtsp-url rtsp://<camera_ip>:<port>/<stream_path>
 ```
 
 Example with a common IP camera:
 ```bash
 python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
   --rtsp-url rtsp://admin:123456@10.46.130.109:8554/stream0 \
-  --labels labels.json \
-  --device torq \
   --display
 ```
 
