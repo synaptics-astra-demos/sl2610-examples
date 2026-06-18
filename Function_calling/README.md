@@ -64,8 +64,11 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 
 ```bash
 # 1. Clone
-git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples.git
 cd sl2610-examples
+
+# Existing clones only:
+git submodule update --init --recursive
 
 # 2. Shared venv + Python deps
 python3 -m venv .venv --system-site-packages
@@ -244,7 +247,7 @@ python3 app_pyqt.py --voice moonshine
 python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). `setup_demo.py` downloads the five Moonshine artifacts (encoder + decoder + decoder-with-past VMFBs, token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_portaudio.sh`; the OOBE image doesn't ship it.
+`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `onnxruntime`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). `setup_demo.py` downloads the Moonshine artifacts managed by `torq-examples` (encoder + decoder VMFBs, decoder token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_portaudio.sh`; the OOBE image doesn't ship it.
 
 If `tokenizer.json` is ever missing at runtime, the ASR worker falls back to fetching it from `UsefulSensors/moonshine-tiny`. For fully offline use after a partial install:
 
@@ -491,9 +494,7 @@ Function_calling/
   Synaptics/moonshine-tiny-bf16-torq/            # only with --voice
     encoder.vmfb
     decoder.vmfb
-    decoder_with_past.vmfb
     decoder_token_embeddings.npy
-    preprocessor.onnx
     tokenizer.json
 ```
 

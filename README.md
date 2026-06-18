@@ -38,15 +38,21 @@ To enable online example updates and installation of dependencies, it is recomme
 
 ### Clone the Repository
 
-Clone the repository using the following command:
+Clone the repository and its torq-examples submodule using the following command:
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
 ```
 Navigate to the Repository Directory:
 
 ```bash
 cd sl2610-examples
+```
+
+If you already cloned the repository without submodules, initialize them once:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ### Setup Python Environment

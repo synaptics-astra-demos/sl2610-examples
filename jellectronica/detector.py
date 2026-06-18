@@ -6,9 +6,15 @@ Backend: torq.runtime VMFBInferenceRunner on /dev/torq NPU.
 Based on Patrick Miller's moon_lightweight.py from seaphony-ml.
 """
 
+import os
+import sys
 import time
 import numpy as np
 import cv2
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.inference import SimpleVMFBInferenceRunner
 
 # ── Configuration ──────────────────────────────────────────────
 INPUT_SIZE = 320            # Must match compiled model input size
@@ -38,15 +44,13 @@ class Detector:
 
     def __init__(self, model_path: str = "../models/moon_jellyfish/moon320.vmfb"):
         self.model_path = model_path
-        self._runner = None      # torq VMFBInferenceRunner
+        self._runner = None      # SimpleVMFBInferenceRunner
         self._backend = None
         self._out_scale = None
         self._out_zp = None
 
     def load(self) -> None:
         """Load model onto the Torq NPU."""
-        import os
-
         vmfb_path = self.model_path if self.model_path.endswith(".vmfb") else \
             os.path.splitext(self.model_path)[0] + ".vmfb"
 
@@ -65,8 +69,7 @@ class Detector:
             )
 
         try:
-            import torq.runtime as torq_rt
-            self._runner = torq_rt.VMFBInferenceRunner(
+            self._runner = SimpleVMFBInferenceRunner(
                 vmfb_path,
                 device_uri="torq",
                 function="main",
@@ -123,10 +126,8 @@ class Detector:
         # ── Inference ──
         try:
             t0 = time.perf_counter()
-            raw = self._runner.infer([blob])
+            raw = self._runner.infer(blob)
             infer_ms = (time.perf_counter() - t0) * 1000
-            if isinstance(raw, (list, tuple)):
-                raw = raw[0]
         except Exception as e:
             print(f"[Detector] Torq inference error: {e}")
             return [], 0.0

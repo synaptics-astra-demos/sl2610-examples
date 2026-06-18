@@ -12,7 +12,10 @@ import time
 import sys
 import shutil
 from PIL import Image, ImageDraw, ImageFont
-import torq.runtime as torq_rt
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.inference import SimpleVMFBInferenceRunner
 
 # ==========================================
 # Ported from helpers/mobilenet.py
@@ -66,17 +69,7 @@ def dequantize_output(output_data, output_bias, output_scale):
 # Main Logic
 # ==========================================
 def run_inference_torq(runner, input_data):
-    outputs = runner.infer([input_data])  # <-- wrap in list
-    if isinstance(outputs, (list, tuple)):
-        if len(outputs) == 1:
-            return outputs[0]
-        raise RuntimeError(
-            f"Expected a single output tensor from the model, but got {len(outputs)} "
-            "outputs. This script currently supports only single-output models. "
-            "Please update the code to select the desired output tensor."
-        )
-    # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
-    return outputs
+    return runner.infer(input_data)
 
 #  NPU Clock 
 def enable_npu_clock():
@@ -111,7 +104,7 @@ def main():
     enable_npu_clock()
 
     # 0. Load the model with Torq Runtime
-    runner = torq_rt.VMFBInferenceRunner(
+    runner = SimpleVMFBInferenceRunner(
         args.model,
         device_uri=args.device,
         function="main",

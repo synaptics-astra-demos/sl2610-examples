@@ -1,37 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
-
-"""Gemma LLM backends with a common streaming interface.
-
-Provides two interchangeable backends:
-- ``GemmaTorq``: VMFB model via torq.runtime (default, ported from
-  torq-examples/gemma3/src/runner.py).
-- ``GemmaLlama``: GGUF model via llama-cpp-python (legacy fallback).
-
-Use ``load_gemma()`` to instantiate the appropriate backend.
-"""
+# SPDX-FileCopyrightText: Copyright (c) 2026 Synaptics Incorporated.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from pathlib import Path
-from typing import Final
-
-import ml_dtypes
-import numpy as np
-from tokenizers import Tokenizer
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_SYS_PROMPT: Final[str] = (
-    "You are a helpful AI assistant named Gemma. "
-    "Answer in 1-2 sentences. No lists, no bullet points, no repetition."
-)
 
 
 class GemmaBackend(ABC):
@@ -75,10 +54,7 @@ class GemmaBackend(ABC):
 
 
 class GemmaTorq(GemmaBackend):
-    """Gemma inference via torq.runtime VMFB models.
-
-    Ported from torq-examples ``Gemma3Static``.
-    """
+    """Compatibility facade over torq-examples Gemma3Static."""
 
     def __init__(
         self,
@@ -93,319 +69,79 @@ class GemmaTorq(GemmaBackend):
         top_p: float = 1.0,
         top_k: int = 64,
         runtime_flags: list[str] | None = None,
+        device_io: bool = False,
         sys_prompt: str | None = None,
         lm_head_path: str | os.PathLike | None = None,
+        disable_lm_head: bool = False,
     ):
-        from ..inference import ManagedSelfAttnCacheRunner, SplitLMHeadRunner
+        from third_party.torq_examples.gemma3.src.runner import Gemma3Static
 
-        self._logger = logging.getLogger(self.__class__.__name__)
-
-        self._model = ManagedSelfAttnCacheRunner(
+        self._runner = Gemma3Static(
             model_path,
+            max_seq_len=max_seq_len,
+            max_prompt_tokens=max_prompt_tokens,
             n_threads=n_threads,
+            instruct_model=instruct_model,
+            cache_keep_n=cache_keep_n,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
             runtime_flags=runtime_flags,
+            device_io=device_io,
+            sys_prompt=sys_prompt,
+            lm_head_path=lm_head_path,
+            disable_lm_head=disable_lm_head,
         )
-        if lm_head_path is not None:
-            self._model = SplitLMHeadRunner(
-                self._model,
-                lm_head_path,
-                n_threads=n_threads,
-                runtime_flags=runtime_flags,
-            )
-
-        model_seq_len = self._query_model_seq_len()
-        if max_seq_len is not None and model_seq_len is not None:
-            if max_seq_len != model_seq_len:
-                self._logger.warning(
-                    "max_seq_len=%d vs model KV dim=%d; using %d",
-                    max_seq_len, model_seq_len, model_seq_len,
-                )
-            max_seq_len = model_seq_len
-        elif max_seq_len is None and model_seq_len is not None:
-            max_seq_len = model_seq_len
-        elif max_seq_len is None:
-            raise ValueError(
-                "Cannot determine max_seq_len: pass it explicitly."
-            )
-
-        self._model_dir = Path(self._model.model_path).parent
-        with open(self._model_dir / "config.json") as f:
-            cfg = json.load(f)
-        self._n_layers: int = cfg["num_hidden_layers"]
-        self._n_kv_heads: int = cfg["num_key_value_heads"]
-        self._head_dim: int = cfg["head_dim"]
-        self._bos_token_id: int = cfg["bos_token_id"]
-        self._eos_token_id: int = cfg["eos_token_id"]
-        self._pad_token_id: int = cfg.get("pad_token_id") or 0
-
-        self._tokenizer = Tokenizer.from_file(
-            str(self._model_dir / "tokenizer.json")
-        )
-        self._nl_token_id: int = self._tokenizer.encode("\n").ids[-1]
-        self._double_nl_token_id: int = self._tokenizer.encode("\n\n").ids[-1]
-        self._end_of_turn_id: int = self._tokenizer.token_to_id(
-            "<end_of_turn>"
-        )
-
-        self._max_prompt_tokens = max_prompt_tokens
-        self._max_seq_len = max_seq_len
-        self._max_user_tokens: int | None = None
-        self._instruct_model = instruct_model
-        if instruct_model:
-            self._sys_prompt = sys_prompt or DEFAULT_SYS_PROMPT
-        else:
-            self._sys_prompt = None
-        self._cache_keep_n = cache_keep_n
-        self._temperature = temperature
-        self._top_p = top_p
-        self._top_k = top_k
-
-        self._token_embeddings = self._load_embeddings()
-        self._token_id_lut = self._load_token_id_lut()
-        if self._token_id_lut is not None:
-            self._logger.info(
-                "Loaded token ID LUT (%d entries)", len(self._token_id_lut)
-            )
-        self._pos_buf = np.zeros((1, 1), dtype=np.int32)
-        if self._token_embeddings is not None:
-            self._emb_buf = np.zeros(
-                (1, 1, self._token_embeddings.shape[-1]),
-                dtype=self._token_embeddings.dtype,
-            )
-        else:
-            self._emb_buf = None
-
-        # Warmup with system prompt
-        self._warmup_len = self._warmup() if instruct_model else 0
-        if self._warmup_len > 0:
-            self._reset_cache_state = self._model.save_kv_state()
-        else:
-            self._reset_cache_state = []
-
-        # Stats
-        self._n_input_tokens: int = 0
-        self._n_prefill_tokens: int = 0
-        self._n_tokens_gen: int = 0
-        self._last_infer_ns: int = 0
-        self._time_to_first_token_ns: int = 0
-
-        self._logger.info("Loaded Gemma torq model '%s'", str(model_path))
-
-    @property
-    def last_infer_time_ms(self) -> float:
-        return self._last_infer_ns / 1e6
-
-    @property
-    def time_to_first_token_ms(self) -> float:
-        return self._time_to_first_token_ns / 1e6
-
-    @property
-    def last_n_input_tokens(self) -> int:
-        return self._n_input_tokens
-
-    @property
-    def last_n_output_tokens(self) -> int:
-        return self._n_tokens_gen
-
-    @property
-    def last_n_prefill_tokens(self) -> int:
-        return self._n_prefill_tokens
-
-    @property
-    def last_prefill_tps(self) -> float:
-        ttft_s = self.time_to_first_token_ms / 1000
-        return self._n_prefill_tokens / ttft_s if ttft_s > 0 else 0.0
+        self._last_n_input_tokens = 0
+        self._last_n_prefill_tokens = 0
 
     @property
     def max_seq_len(self) -> int:
-        return self._max_seq_len
+        return self._runner.max_seq_len
 
-    def _load_embeddings(self) -> np.ndarray | None:
-        paths = list(self._model_dir.glob("token_embeddings.npy"))
-        if not paths:
-            return None
-        arr = np.load(paths[0], mmap_mode="r")
-        if arr.dtype == np.dtype("V2"):
-            arr = arr.view(ml_dtypes.bfloat16)
-        return arr
+    @property
+    def last_infer_time_ms(self) -> float:
+        return self._runner.last_infer_time
 
-    def _load_token_id_lut(self) -> np.ndarray | None:
-        paths = list(self._model_dir.glob("token_id_lut.npy"))
-        if not paths:
-            return None
-        return np.load(paths[0])
+    @property
+    def time_to_first_token_ms(self) -> float:
+        return self._runner.time_to_first_token
 
-    def _query_model_seq_len(self) -> int | None:
-        info = self._model.inputs_info
-        if info is None or len(info) < 3:
-            return None
-        kv_shape = info[2].shape
-        if len(kv_shape) >= 3 and isinstance(kv_shape[2], int):
-            return kv_shape[2]
-        return None
+    @property
+    def last_n_input_tokens(self) -> int:
+        return self._last_n_input_tokens
 
-    def _reset_cache(self):
-        if self._reset_cache_state:
-            self._model.restore_kv_state(self._reset_cache_state)
-        else:
-            self._model.reset_kv()
+    @property
+    def last_n_output_tokens(self) -> int:
+        return int(getattr(self._runner, "generated_tokens"))
 
-    def _tokenize(self, text: str, role: str | None = None) -> list[int]:
-        if not self._instruct_model or role is None:
-            return self._tokenizer.encode(text).ids
-        # Gemma 3 chat format: <start_of_turn>role\ntext<end_of_turn>\n
-        # BOS is added once at warmup start; strip auto-prepended BOS here.
-        if role == "model":
-            ids = self._tokenizer.encode("<start_of_turn>model\n").ids
-        else:
-            ids = self._tokenizer.encode(
-                f"<start_of_turn>{role}\n{text}<end_of_turn>\n"
-            ).ids
-        if ids and ids[0] == self._bos_token_id:
-            ids = ids[1:]
-        return ids
-
-    def _llm_step(self, token: int, seq_pos: int, *, sample: bool = True) -> int:
-        if self._emb_buf is not None:
-            self._emb_buf[0, 0, :] = self._token_embeddings[token]
-            first = self._emb_buf
-        else:
-            self._pos_buf[0, 0] = token
-            first = self._pos_buf.copy()
-
-        self._pos_buf[0, 0] = seq_pos
-        results = self._model.infer([first, self._pos_buf])
-
-        if not sample:
-            return 0
-        compact_idx = self._sample(results[0].to_host()[0, -1])
-        if self._token_id_lut is not None:
-            return int(self._token_id_lut[compact_idx])
-        return compact_idx
-
-    def _sample(self, logits: np.ndarray) -> int:
-        logits = logits.astype(np.float32, copy=False)
-        if self._temperature <= 0:
-            return int(logits.argmax())
-
-        k = min(self._top_k, logits.shape[-1])
-        top_k_idx = np.argpartition(logits, -k)[-k:]
-        x = logits[top_k_idx]
-        x /= self._temperature
-        x -= x.max()
-        np.exp(x, out=x)
-        x /= x.sum()
-
-        order = np.argsort(x)[::-1]
-        cdf = np.cumsum(x[order])
-        cut = int(np.searchsorted(cdf, self._top_p)) + 1
-        keep = order[:cut]
-        p = x[keep]
-        p /= p.sum()
-        return int(np.random.choice(top_k_idx[keep], p=p))
-
-    def _prefill(self, tokens: list[int], start: int = 0) -> tuple[int, int]:
-        pos = start
-        for tok_id in tokens[:-1]:
-            self._llm_step(tok_id, pos, sample=False)
-            pos += 1
-        if tokens:
-            tok = self._llm_step(tokens[-1], pos)
-        else:
-            tok = 0
-        pos += 1
-        return tok, pos
-
-    def _stop(self, token: int, gen: list[int]) -> bool:
-        if token == self._eos_token_id:
-            return True
-        if self._end_of_turn_id is not None and token == self._end_of_turn_id:
-            return True
-        if not self._instruct_model and len(gen) > 2:
-            if token == self._double_nl_token_id:
-                return True
-            return all(t == self._nl_token_id for t in gen[-2:])
-        return False
-
-    def _warmup(self) -> int:
-        self._logger.info("Warm-up started...")
-        sys_tokens = [self._bos_token_id] + self._tokenize(
-            self._sys_prompt, "system"
-        )
-        if isinstance(self._max_prompt_tokens, int):
-            sys_tokens = sys_tokens[: self._max_prompt_tokens]
-            self._max_user_tokens = max(
-                0, self._max_prompt_tokens - len(sys_tokens)
-            )
-        n = len(sys_tokens)
-        self._prefill(sys_tokens)
-        self._logger.info(
-            "Warm-up complete: %d system tokens, %d remaining capacity",
-            n, self._max_seq_len - n,
-        )
-        return n
+    @property
+    def last_n_prefill_tokens(self) -> int:
+        return self._last_n_prefill_tokens
 
     def stream_response(self, query: str) -> Generator[str, None, None]:
-        self._reset_cache()
-        self._n_tokens_gen = 0
-        self._n_prefill_tokens = 0
-        self._last_infer_ns = 0
-        self._time_to_first_token_ns = 0
-
-        tokens = self._tokenize(query, "user")
-        if self._instruct_model:
-            tokens += self._tokenize("", "model")
-
-        self._n_input_tokens = len(tokens)
-
-        limit = (
-            self._max_user_tokens
-            if self._max_user_tokens is not None
-            else self._max_prompt_tokens
-        )
-        if isinstance(limit, int):
-            if len(tokens) > limit:
-                tokens = tokens[:limit]
-            elif len(tokens) < limit:
-                tokens += [self._pad_token_id] * (limit - len(tokens))
-        self._n_prefill_tokens = len(tokens)
-
-        gen: list[int] = []
-        start_ns = time.perf_counter_ns()
-        yield_ns = 0  # time spent suspended at yield (consumer time)
-        try:
-            next_tok, pos = self._prefill(tokens, start=self._warmup_len)
-            self._time_to_first_token_ns = time.perf_counter_ns() - start_ns
-
-            gen = [next_tok]
-            full_text = self._tokenizer.decode(gen)
-            _t = time.perf_counter_ns()
+        self._record_prompt_stats(query)
+        full_text = ""
+        for chunk in self._runner.run_stream(query):
+            full_text += str(chunk)
             yield full_text
-            yield_ns += time.perf_counter_ns() - _t
 
-            while not self._stop(next_tok, gen):
-                if pos >= self._max_seq_len:
-                    if self._cache_keep_n is not None:
-                        self._model.shift_kv(
-                            self._cache_keep_n,
-                            protect_first_n=self._warmup_len,
-                        )
-                        pos = self._warmup_len + self._cache_keep_n
-                    else:
-                        self._logger.warning("Max generation tokens reached")
-                        break
-                next_tok = self._llm_step(next_tok, pos)
-                gen.append(next_tok)
-                pos += 1
-                if self._stop(next_tok, gen):
-                    break
-                full_text = self._tokenizer.decode(gen)
-                _t = time.perf_counter_ns()
-                yield full_text
-                yield_ns += time.perf_counter_ns() - _t
-        finally:
-            self._n_tokens_gen = max(0, len(gen) - 1)
-            self._last_infer_ns = (time.perf_counter_ns() - start_ns) - yield_ns
+    def _record_prompt_stats(self, query: str) -> None:
+        try:
+            prompt_tokens = self._runner._build_prompt_tokens(query)
+            prefill_tokens = self._runner._apply_prompt_limit(prompt_tokens)
+        except Exception:
+            prompt_tokens = self._fallback_prompt_tokens(query)
+            prefill_tokens = prompt_tokens
+        self._last_n_input_tokens = len(prompt_tokens)
+        self._last_n_prefill_tokens = len(prefill_tokens)
+
+    def _fallback_prompt_tokens(self, query: str) -> list[int]:
+        if self._runner.is_instruct_model:
+            return self._runner.tokenize(query, "user") + self._runner.tokenize(
+                "", "model"
+            )
+        return self._runner.tokenize(query)
 
 
 class GemmaLlama(GemmaBackend):
@@ -538,7 +274,8 @@ def load_gemma(
         for k in (
             "max_seq_len", "max_prompt_tokens", "instruct_model",
             "cache_keep_n", "temperature", "top_p", "top_k",
-            "runtime_flags", "sys_prompt", "lm_head_path",
+            "runtime_flags", "device_io", "sys_prompt", "lm_head_path",
+            "disable_lm_head",
         )
         if k in kwargs
     }

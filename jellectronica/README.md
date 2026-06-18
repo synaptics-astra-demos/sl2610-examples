@@ -69,8 +69,14 @@ Optionally, if you have the supported WiFi/BT module, you can use WiFi for the n
 - Clone the repositiory on your host machine.
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples 
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
 cd sl2610-examples
+```
+
+If you already cloned without submodules, run:
+
+```bash
+git submodule update --init --recursive
 ```
 
 - Copy over the files.
@@ -115,7 +121,7 @@ ssh root@<board-ip>
 - Clone the repository using the following command:
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
 ```
 
 - Navigate to the repository directory:
@@ -123,6 +129,8 @@ git clone https://github.com/synaptics-astra-demos/sl2610-examples
 ```bash
 cd sl2610-examples
 ```
+
+If you already cloned without submodules, run `git submodule update --init --recursive`.
 
 ### Setup Python Environment
 
