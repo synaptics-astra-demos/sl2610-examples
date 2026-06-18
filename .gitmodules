@@ -1,0 +1,4 @@
+[submodule "third_party/torq_examples"]
+	path = third_party/torq_examples
+	url = git@github.com:synaptics-torq/torq-examples.git
+	branch = main
