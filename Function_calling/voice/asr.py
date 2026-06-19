@@ -70,11 +70,11 @@ class MoonshineASR:
       2. ``Function_calling/../models/Synaptics/moonshine-tiny-bf16-torq/`` (default; populated by
          ``setup_demo.py``)
 
-    Heavy deps (torq.runtime, onnxruntime, ml_dtypes, tokenizers, etc.)
-    are imported lazily inside ``__init__`` so a host without them keeps
-    the rest of the demo importable. The factory in ``voice/pipeline.py``
-    catches the resulting VoiceUnavailable + FileNotFoundError so voice
-    degrades to "disabled" rather than crashing the app.
+    Heavy deps (torq.runtime, ml_dtypes, tokenizers, sounddevice, etc.) are
+    imported lazily inside ``__init__`` so a host without them keeps the rest
+    of the demo importable. The factory in ``voice/pipeline.py`` catches the
+    resulting VoiceUnavailable + FileNotFoundError so voice degrades to
+    "disabled" rather than crashing the app.
     """
 
     def __init__(
@@ -95,8 +95,8 @@ class MoonshineASR:
         except ImportError as e:
             raise VoiceUnavailable(
                 f"moonshine deps not available: {e}. The Moonshine voice "
-                "path requires torq_runtime, onnxruntime, ml_dtypes, "
-                "tokenizers, and sounddevice to be installed."
+                "path requires torq_runtime, ml_dtypes, tokenizers, "
+                "sounddevice, and silero-vad-notorch to be installed."
             ) from e
 
         logger.info("loading Moonshine via shared MoonshineTranscriber from %s", resolved)
