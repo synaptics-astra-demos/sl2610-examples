@@ -204,9 +204,9 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", default="../models/yolov8n_od.vmfb")
     parser.add_argument("--image", required=True)
-    parser.add_argument("--labels")
+    parser.add_argument("--labels", default="labels.json")
     parser.add_argument("--device", default="torq")
     parser.add_argument("--save-image", action="store_true", help="If set, output annotated image")
     parser.add_argument("--display", action="store_true", help="Display annotated frame")
