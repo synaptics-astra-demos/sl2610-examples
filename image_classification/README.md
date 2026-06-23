@@ -48,6 +48,8 @@ source .venv/bin/activate
 
 Install dependencies
 
+[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
+
 If online
 ```bash
 pip install -r requirements.txt
