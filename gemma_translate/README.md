@@ -176,6 +176,7 @@ Press a number key at any time to switch the target language:
 Press a listed number to change language:
   1: Spanish
   2: French
+  3: German
 
 Speak to translate. Press Ctrl+C to exit.
 ```
@@ -191,6 +192,7 @@ Type a phrase and press Enter to translate.
 Use /1-/6 to switch language, /q to quit:
   /1: Spanish
   /2: French
+  /3: German
 
 → Good morning, how are you?
 [You] Good morning, how are you?
