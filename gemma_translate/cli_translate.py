@@ -51,13 +51,19 @@ class CliPrinter:
         self._lock = threading.Lock()
         self._translation_line_width = 0
 
-    def show_header(self):
+    def show_header(self, text_mode: bool = False):
         with self._lock:
             print("\n=== Astra SL2610 Voice Translation Engine ===")
-            print("Press a listed number to change language:")
+            if text_mode:
+                print("Type a phrase and press Enter to translate.")
+                print("Use /1-/6 to switch language, /q to quit:")
+            else:
+                print("Press a listed number to change language:")
             for key, language in LANGUAGES.items():
-                print(f"  {key}: {language.display_name}")
-            print("Speak to translate. Press Ctrl+C to exit.\n")
+                print(f"  /{key}: {language.display_name}" if text_mode else f"  {key}: {language.display_name}")
+            if not text_mode:
+                print("Speak to translate. Press Ctrl+C to exit.")
+            print()
 
     def status(self, message: str):
         with self._lock:
@@ -161,6 +167,11 @@ def parse_args() -> argparse.Namespace:
 def add_cli_output_args(parser: argparse.ArgumentParser):
     group = parser.add_argument_group("CLI output options")
     group.add_argument(
+        "--text",
+        action="store_true",
+        help="Text input mode: type phrases instead of using voice.",
+    )
+    group.add_argument(
         "--hide-stats",
         action="store_true",
         help="Do not print STT/LLM inference stats.",
@@ -253,6 +264,48 @@ def build_speech_recognizer(
     )
 
 
+def run_text_mode(
+    *,
+    printer: CliPrinter,
+    translator: GemmaTranslationService,
+    language_state: LanguageState,
+    stop_event: threading.Event,
+):
+    printer.show_header(text_mode=True)
+    while not stop_event.is_set():
+        try:
+            line = input("→ ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not line:
+            continue
+        if line.startswith("/"):
+            cmd = line[1:].strip()
+            if cmd == "q":
+                break
+            elif cmd in LANGUAGES:
+                language = LANGUAGES[cmd]
+                language_state.set_language(language)
+                printer.status(f"[Language changed to: {language.display_name}]")
+            else:
+                printer.status(f"[Unknown command: {line!r}]  (use /1-/6 or /q)")
+        else:
+            printer.status(f"[You] {line}")
+            language = language_state.current
+            try:
+                result = translator.translate(
+                    line,
+                    target_language=language.prompt_name,
+                    on_partial=printer.translation_partial,
+                )
+                printer.translation_final(result)
+            except KeyboardInterrupt:
+                break
+            except Exception as exc:
+                printer.error(str(exc))
+    stop_event.set()
+
+
 def main():
     args = parse_args()
     configure_logging(args.logging)
@@ -281,44 +334,53 @@ def main():
             printer.status(f"[NPU] {message}" if ok else f"[NPU] {message}")
 
         translator = build_translation_service(args)
-        audio_device = choose_audio_device(args.audio_device)
-        recognizer = build_speech_recognizer(args, audio_device=audio_device)
 
-        keyboard.start()
-        printer.show_header()
+        if args.text:
+            run_text_mode(
+                printer=printer,
+                translator=translator,
+                language_state=language_state,
+                stop_event=stop_event,
+            )
+        else:
+            audio_device = choose_audio_device(args.audio_device)
+            recognizer = build_speech_recognizer(args, audio_device=audio_device)
 
-        with recognizer:
-            while not stop_event.is_set():
-                language = language_state.current
-                printer.ready(language)
+            keyboard.start()
+            printer.show_header()
 
-                transcript = recognizer.listen_once(stop_event=stop_event)
-                if transcript is None:
-                    break
+            with recognizer:
+                while not stop_event.is_set():
+                    language = language_state.current
+                    printer.ready(language)
 
-                accepted, reason = transcript_is_accepted(
-                    transcript,
-                    min_words=args.min_words,
-                )
-                if not accepted:
-                    printer.ignored(transcript, reason)
-                    continue
+                    transcript = recognizer.listen_once(stop_event=stop_event)
+                    if transcript is None:
+                        break
 
-                printer.user(transcript)
-                language = language_state.current
-                try:
-                    result = translator.translate(
-                        transcript.text,
-                        target_language=language.prompt_name,
-                        on_partial=printer.translation_partial,
+                    accepted, reason = transcript_is_accepted(
+                        transcript,
+                        min_words=args.min_words,
                     )
-                    printer.translation_final(result)
-                except KeyboardInterrupt:
-                    raise
-                except Exception as exc:
-                    printer.error(str(exc))
-                finally:
-                    recognizer.drain()
+                    if not accepted:
+                        printer.ignored(transcript, reason)
+                        continue
+
+                    printer.user(transcript)
+                    language = language_state.current
+                    try:
+                        result = translator.translate(
+                            transcript.text,
+                            target_language=language.prompt_name,
+                            on_partial=printer.translation_partial,
+                        )
+                        printer.translation_final(result)
+                    except KeyboardInterrupt:
+                        raise
+                    except Exception as exc:
+                        printer.error(str(exc))
+                    finally:
+                        recognizer.drain()
 
     except KeyboardInterrupt:
         stop_event.set()
