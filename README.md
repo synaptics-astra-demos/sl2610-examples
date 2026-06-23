@@ -104,7 +104,7 @@ Optional:
 
 Check out the README.md files in each of these example directories to run the examples. 
 
-- object_detection - detect objects with YoloV8 - [README.md](Object_detection/README.md)
+- object_detection - detect objects with YoloV8 - [README.md](object_detection/README.md)
 - image_classification - classify images with MobileNetV2 - [README.md](image_classification/README.md)
 - speech_to_text - capture speech with Moonshine - [README.md](speech_to_text/README.md)
 - gemma_translation - translate text to other languages using Gemma3 - [README.md](gemma_translate/README.md)

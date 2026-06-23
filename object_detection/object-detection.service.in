@@ -6,7 +6,7 @@ Wants=weston.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=@ROOT@/Object_detection
+WorkingDirectory=@ROOT@/object_detection
 Environment=XDG_RUNTIME_DIR=/var/run/user/0
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=QT_QPA_PLATFORM=wayland

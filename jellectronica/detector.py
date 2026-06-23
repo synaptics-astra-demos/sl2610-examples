@@ -17,7 +17,7 @@ IOU_THRESHOLD = 0.45
 MAX_DETECTIONS = 15
 
 # INT8 quantization parameters for the moon320.vmfb model
-# (from seaphony-ml Object_detection calibration)
+# (from seaphony-ml object_detection calibration)
 IN_SCALE = 0.003921568859368563
 IN_ZP = -128
 
