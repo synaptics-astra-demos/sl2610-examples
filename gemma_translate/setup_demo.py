@@ -5,7 +5,7 @@
 
 Usage::
 
-    python download_models.py
+    python setup_demo.py
 """
 
 import sys
