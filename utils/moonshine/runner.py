@@ -28,7 +28,7 @@ InferenceBackend = Union[ORTInferenceRunner, VMFBInferenceRunner]
 
 def _find_models(model_dir: Path) -> dict[str, Path]:
     """Discover Moonshine model files in a directory."""
-    known = {"preprocessor", "encoder", "decoder", "decoder_with_past"}
+    known = {"preprocessor", "encoder", "decoder"}
     models: dict[str, Path] = {}
     for f in model_dir.iterdir():
         if f.is_file() and f.suffix in (".vmfb", ".onnx") and f.stem in known:
@@ -61,8 +61,7 @@ def _get_runner(
 class MoonshineRunner:
     """Moonshine speech-to-text inference runner.
 
-    Requires ``encoder.vmfb``, ``decoder.vmfb``, and
-    ``decoder_with_past.vmfb`` in the model directory.
+    Requires ``encoder.vmfb`` and ``decoder.vmfb`` in the model directory.
     An optional ``preprocessor.vmfb`` is applied before encoding,
     and ``decoder_token_embeddings.npy`` enables embedding-lookup
     input to the decoder.
@@ -74,7 +73,6 @@ class MoonshineRunner:
         "_preprocessor",
         "_encoder",
         "_decoder",
-        "_decoder_cached",
         "_token_embeddings",
         "_max_inp_len",
         "_input_freq",
@@ -96,7 +94,7 @@ class MoonshineRunner:
         self._model_dir = model_dir
 
         components = _find_models(model_dir)
-        for req in ("encoder", "decoder", "decoder_with_past"):
+        for req in ("encoder", "decoder"):
             if req not in components:
                 raise ValueError(
                     f"Missing required model '{req}.vmfb' in {model_dir}"
@@ -110,10 +108,9 @@ class MoonshineRunner:
             else None
         )
         self._encoder = _get_runner(components["encoder"], **rk)
-        self._decoder = _get_runner(components["decoder"], **rk)
-        self._decoder_cached = ManagedEncDecCacheRunner(
-            components["decoder_with_past"],
-            input_cache_start_idx=2,  # [token_emb, seq_len, *cache]
+        self._decoder = ManagedEncDecCacheRunner(
+            components["decoder"],
+            input_cache_start_idx=2,  # [token_emb, current_len, *cache]
             cache_start_idx=1,  # [logits, *self_cache]
             **rk,
         )
@@ -208,13 +205,13 @@ class MoonshineRunner:
             return np.expand_dims(self._token_embeddings[token_id], axis=(0, 1))
         return np.array([[token_id]], dtype=np.int32)
 
-    def _run_encoder(self, audio: np.ndarray) -> np.ndarray:
+    def _run_encoder(self, audio: np.ndarray) -> list[np.ndarray]:
         if self._preprocessor is not None:
             audio = self._preprocessor.infer([audio])[0]
         enc_info = self._encoder.inputs_info
         if enc_info:
             audio = audio.astype(np.dtype(enc_info[0].dtype), copy=False)
-        enc_out = self._encoder.infer([audio])[0]
+        enc_out = self._encoder.infer([audio])
         self._logger.debug(
             "Encoder infer: %.3f ms", self._encoder.infer_time_ms
         )
@@ -243,53 +240,48 @@ class MoonshineRunner:
 
         start_ns = perf_counter_ns()
 
+        # Encode -> cross-attention KV caches
         encoder_out = self._run_encoder(audio)
+
+        # Initialize decoder caches
         dec_info = self._decoder.inputs_info
-        if dec_info and len(dec_info) > 1:
-            encoder_out = encoder_out.astype(
-                np.dtype(dec_info[1].dtype), copy=False
-            )
-
-        # first decoder step -> initial cache
-        token_emb = self._get_token_input(_START_TOKEN_ID)
+        cross_cache = list(encoder_out)
         if dec_info:
-            token_emb = token_emb.astype(np.dtype(dec_info[0].dtype), copy=False)
+            # Cast cross-cache to the dtype the decoder expects for encoder KV
+            cross_dtype = np.dtype(dec_info[self._decoder._input_cache_start + 2].dtype)
+            cross_cache = [c.astype(cross_dtype, copy=False) for c in cross_cache]
+        self._decoder.reset_kv()
+        self._decoder.set_cross_cache(cross_cache)
 
-        results = self._decoder.infer([token_emb, encoder_out])
-        self._logger.debug(
-            "First decoder infer: %.3f ms", self._decoder.infer_time_ms
-        )
-        logits = results[0]
-        initial_cache = results[1:]
-        self._decoder_cached.set_cache(initial_cache)
+        # Autoregressive decoding
+        next_token = _START_TOKEN_ID
+        tokens = []
 
-        next_token = int(np.asarray(logits)[0, -1].argmax())
-        self._n_tokens_gen += 1
-        self._time_to_first_token_ns = perf_counter_ns() - start_ns
-        tokens = [_START_TOKEN_ID, next_token]
-
-        # autoregressive decoding with cached decoder
-        dec_cached_info = self._decoder_cached.inputs_info
-        for i in range(max_tokens - 1):
-            if next_token == _END_TOKEN_ID:
-                break
+        for i in range(max_tokens):
             token_emb = self._get_token_input(next_token)
-            seq_len = np.array([[i + 1]], dtype=np.int32)
-            if dec_cached_info:
+            current_len = np.array([[i]], dtype=np.int64)
+            if dec_info:
                 token_emb = token_emb.astype(
-                    np.dtype(dec_cached_info[0].dtype), copy=False
+                    np.dtype(dec_info[0].dtype), copy=False
                 )
-                seq_len = seq_len.astype(
-                    np.dtype(dec_cached_info[1].dtype), copy=False
+                current_len = current_len.astype(
+                    np.dtype(dec_info[1].dtype), copy=False
                 )
-            [logits] = self._decoder_cached.infer([token_emb, seq_len])
+            [logits] = self._decoder.infer([token_emb, current_len])
             self._logger.debug(
-                "Cached decoder infer: %.3f ms",
-                self._decoder_cached.infer_time_ms,
+                "Decoder infer: %.3f ms",
+                self._decoder.infer_time_ms,
             )
+
+            if i == 0:
+                self._time_to_first_token_ns = perf_counter_ns() - start_ns
+
             next_token = int(np.asarray(logits)[0, -1].argmax())
             self._n_tokens_gen += 1
             tokens.append(next_token)
+
+            if next_token == _END_TOKEN_ID:
+                break
 
         self._last_infer_ns = perf_counter_ns() - start_ns
         return np.array([tokens])

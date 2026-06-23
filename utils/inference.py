@@ -315,6 +315,23 @@ class ManagedEncDecCacheRunner(BaseManagedCacheRunner):
                 z = np.zeros(info.shape, dtype=np.dtype(info.dtype))
                 self._self_cache[2 * layer + j] = self.allocate_device_array(z)
 
+    def set_cross_cache(self, cross_tensors: list[npt.NDArray | DeviceArray]) -> None:
+        """Set cross-attention caches from a flat list (2 per layer: key, value).
+
+        Typically called with encoder outputs that produce the cross-attn
+        KV caches directly.
+        """
+        expected = 2 * self._n_layers
+        if len(cross_tensors) != expected:
+            raise ValueError(
+                f"Expected {expected} cross-attn cache tensors "
+                f"({self._n_layers} layers * 2), got {len(cross_tensors)}."
+            )
+        for i, c in enumerate(cross_tensors):
+            if isinstance(c, np.ndarray):
+                c = self.allocate_device_array(c)
+            self._cross_cache[i] = c
+
     def save_kv_state(self) -> tuple[list[np.ndarray], list[np.ndarray]]:
         self_state = [c.to_host().copy() for c in self._self_cache]
         cross_state = [c.to_host().copy() for c in self._cross_cache]
