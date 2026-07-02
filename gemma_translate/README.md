@@ -35,65 +35,24 @@ Optionally connect a display and USB keyboard/mouse and open a terminal directly
 
 ## Installation
 
-Clone the repository and its torq-examples submodule using the following command:
+### Setup the base environment
 
-```bash
-git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples.git
-```
-Navigate to the Repository Directory:
-
-```bash
-cd sl2610-examples
-```
-
-If you already cloned without submodules, run:
-
-```bash
-git submodule update --init --recursive
-```
-
-### Setup Python Environment
-
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
-
-```bash
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-```
-
-#### Install general dependencies
-
-If online
-```bash
-pip install -r requirements.txt
-```
-
-If offline
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
-```
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
 
 
-#### Install example-specific dependencies
-
-[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
-
+### Install example-specific dependencies
 
 ```bash
 cd gemma_translate
-```
 
-Now install the additional dependencies for this specific example. 
-
-```bash
 pip install -r requirements.txt
 ```
 
-If offline
-```bash
-pip install --no-index --find-links=../wheelhouse -r requirements.txt
-```
+Install the PortAudio system libraries for microphone input:
 
+```bash
+../configs/install_portaudio.sh
+```
 
 ### Download Models
 
@@ -105,23 +64,11 @@ Download the Moonshine and Gemma3 model files from HuggingFace:
 python setup_demo.py
 ```
 
-**Optional:** If you plan to use the llama.cpp backend (`--use-llama-gemma`), download the GGUF model as well:
-
-```bash
-wget -P ../models https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf
-```
-
-Install the PortAudio system libraries for microphone input:
-
-```bash
-../configs/install_portaudio.sh
-```
-
-Connect a USB or PDM microphone
-
 ## Start
 
+
 ### Voice input (default)
+
 
 No display — use the command line version with voice input:
 

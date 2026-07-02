@@ -60,34 +60,34 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 
 ---
 
-## Quick start
+## 🔧 Installation
+ 
+### Setup the base environment
+
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
+
+### Install example-specific Python dependencies
 
 ```bash
-# 1. Clone
-git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples.git
-cd sl2610-examples
-
-# Existing clones only:
-git submodule update --init --recursive
-
-# 2. Shared venv + Python deps
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-
-# Install general dependencies
-pip install -r requirements.txt
-
-# Install example-specific dependencies
-
 cd Function_calling
+
 pip install -r requirements.txt
+```
 
-# 3. Download FunctionGemma + Moonshine model files
+### Download Models
+
+```bash
 python setup_demo.py
+```
 
-# 4. Run it
+## Start
 
+```bash
+# CLI version
 python3 demo.py                # CLI REPL (works in any terminal)
+
+# or pyQt app version
+python3 app_pyqt.py
 ```
 
 [!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.

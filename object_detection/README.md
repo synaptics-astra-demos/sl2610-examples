@@ -23,48 +23,17 @@ Ensure your board has the following installed:
 
 ## 🔧 Installation
  
-### Clone the Repository
+### Setup the base environment
 
-Clone the repository and its torq-examples submodule using the following command:
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
 
-```bash
-git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples.git
-```
-Navigate to the Repository Directory:
+### Install example-specific dependencies
 
 ```bash
-cd sl2610-examples
-```
+cd object_detection
 
-If you already cloned without submodules, run:
-
-```bash
-git submodule update --init --recursive
-```
-
-### Setup Python Environment
-
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
-
-```bash
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-```
-
-Install dependencies
-
-[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation dependencies when switching between examples.
-
-If online
-```bash
 pip install -r requirements.txt
 ```
-
-If offline
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
-```
-
 
 ## 🖼️ Running Object Detection Example
 

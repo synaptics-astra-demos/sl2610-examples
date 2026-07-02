@@ -1,6 +1,5 @@
 # Local wheel files
 ./wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
-./wheelhouse/torq_runtime-1.5.1-cp312-cp312-manylinux_2_28_aarch64.whl
 
 # Other standard dependencies from PyPI
 numpy<2.0
@@ -11,7 +10,6 @@ pyserial>=3.5
 ml_dtypes
 packaging
 
-# Voice input (optional; enabled when CORAL_VOICE=stub|moonshine).
-# Requires libportaudio2 system package for sounddevice.
+# Voice input
 sounddevice>=0.4
 silero-vad-notorch

@@ -5,7 +5,7 @@
 
 # --- Core demo (always required) ---------------------------------------------
 ../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
-../wheelhouse/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl
+
 numpy<2.0
 Pillow
 PyQt5>=5.15

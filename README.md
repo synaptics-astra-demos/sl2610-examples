@@ -66,14 +66,10 @@ source .venv/bin/activate
 
 Install dependencies
 
-If online
 ```bash
-pip install -r requirements.txt
-```
+pip install https://github.com/synaptics-torq/torq-examples/releases/download/torq-runtime-v2.0-alpha/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl
 
-If offline (supported for Object detection and Image Classification examples)
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Device Configuration
