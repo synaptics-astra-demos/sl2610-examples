@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from third_party.torq_examples.utils import llm as _torq_llm
+from platform.torq_examples.utils import llm as _torq_llm
 
 DecoderOnlyLLMRunner = _torq_llm.DecoderOnlyLLMRunner
 InferenceInterrupted = _torq_llm.InferenceInterrupted

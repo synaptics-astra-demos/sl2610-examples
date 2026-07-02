@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Final
 
 from utils.download import DownloadError, default_models_dir, verify_manifest
-from third_party.torq_examples.moonshine import setup_demo as _torq_moonshine_setup
+from platform.torq_examples.moonshine import setup_demo as _torq_moonshine_setup
 
 logger = logging.getLogger(__name__)
 

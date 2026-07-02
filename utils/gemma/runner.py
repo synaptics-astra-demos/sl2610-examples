@@ -74,7 +74,7 @@ class GemmaTorq(GemmaBackend):
         lm_head_path: str | os.PathLike | None = None,
         disable_lm_head: bool = False,
     ):
-        from third_party.torq_examples.gemma3.src.runner import Gemma3Static
+        from platform.torq_examples.gemma3.src.runner import Gemma3Static
 
         self._runner = Gemma3Static(
             model_path,

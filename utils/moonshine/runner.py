@@ -11,7 +11,7 @@ _TorqMoonshineRunner = None
 def _runner_class():
     global _TorqMoonshineRunner
     if _TorqMoonshineRunner is None:
-        from third_party.torq_examples.moonshine.src.runner import (
+        from platform.torq_examples.moonshine.src.runner import (
             MoonshineRunner as TorqMoonshineRunner,
         )
 
