@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Final
 
 from utils.download import DownloadError, default_models_dir, verify_manifest
-from platform.torq_examples.gemma3 import setup_demo as _torq_gemma_setup
+from utils.torq_examples.gemma3 import setup_demo as _torq_gemma_setup
 
 logger = logging.getLogger(__name__)
 

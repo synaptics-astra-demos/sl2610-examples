@@ -7,6 +7,7 @@ from .download import (
     local_moonshine_model_dir,
     moonshine_repo_id,
 )
+from .runner import MoonshineRunner, load_moonshine
 
 __all__ = [
     "MoonshineRunner",
@@ -16,14 +17,3 @@ __all__ = [
     "moonshine_repo_id",
     "MOONSHINE_HF_REPO_MAP",
 ]
-
-
-def __getattr__(name):
-    if name in {"MoonshineRunner", "load_moonshine"}:
-        from .runner import MoonshineRunner, load_moonshine
-
-        return {
-            "MoonshineRunner": MoonshineRunner,
-            "load_moonshine": load_moonshine,
-        }[name]
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

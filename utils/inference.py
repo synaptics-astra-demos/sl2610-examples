@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from platform.torq_examples.utils import inference as _torq_inference
+from utils.torq_examples.utils import inference as _torq_inference
 
 BaseManagedCacheRunner = _torq_inference.BaseManagedCacheRunner
 ManagedEncDecCacheRunner = _torq_inference.ManagedEncDecCacheRunner

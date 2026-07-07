@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from platform.torq_examples.utils import download as _torq_download
+from utils.torq_examples.utils import download as _torq_download
 
 DownloadError = _torq_download.DownloadError
 ModelStatus = _torq_download.ModelStatus

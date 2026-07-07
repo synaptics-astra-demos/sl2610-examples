@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from platform.torq_examples.utils import deps as _torq_deps
+from utils.torq_examples.utils import deps as _torq_deps
 
 MissingRequirementsError = _torq_deps.MissingRequirementsError
 check_requirements = _torq_deps.check_requirements

@@ -11,7 +11,7 @@ from utils.download import default_models_dir, read_manifest, verify_manifest, w
 
 class TorqExamplesIntegrationTest(unittest.TestCase):
     def test_torq_examples_import_points_at_submodule(self):
-        torq_examples = importlib.import_module("platform.torq_examples")
+        torq_examples = importlib.import_module("utils.torq_examples")
         self.assertEqual(
             Path(torq_examples.__path__[0]).name,
             "torq_examples",
@@ -103,12 +103,12 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
 
         fake_runner = FakeGemma3Static()
 
-        fake_module = types.ModuleType("platform.torq_examples.gemma3.src.runner")
+        fake_module = types.ModuleType("utils.torq_examples.gemma3.src.runner")
         fake_module.Gemma3Static = mock.Mock(return_value=fake_runner)
 
         with mock.patch.dict(
             sys.modules,
-            {"platform.torq_examples.gemma3.src.runner": fake_module},
+            {"utils.torq_examples.gemma3.src.runner": fake_module},
         ):
             backend = gemma_runner.GemmaTorq("model.vmfb")
             partials = list(backend.stream_response("translate me"))

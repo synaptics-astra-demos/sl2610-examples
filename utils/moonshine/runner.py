@@ -5,22 +5,7 @@ from __future__ import annotations
 
 import os
 
-_TorqMoonshineRunner = None
-
-
-def _runner_class():
-    global _TorqMoonshineRunner
-    if _TorqMoonshineRunner is None:
-        from platform.torq_examples.moonshine.src.runner import (
-            MoonshineRunner as TorqMoonshineRunner,
-        )
-
-        _TorqMoonshineRunner = TorqMoonshineRunner
-    return _TorqMoonshineRunner
-
-
-def MoonshineRunner(*args, **kwargs):
-    return _runner_class()(*args, **kwargs)
+from utils.torq_examples.moonshine.src.runner import MoonshineRunner
 
 
 def load_moonshine(
@@ -40,7 +25,7 @@ def load_moonshine(
             dirs = download_moonshine([model_name])
             model_path = dirs[model_name]
 
-    return _runner_class()(
+    return MoonshineRunner(
         model_path,
         input_freq=input_freq,
         n_threads=n_threads,

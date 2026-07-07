@@ -8,6 +8,7 @@ from .download import (
     local_gemma3_model_dir,
     local_gemma3_model_path,
 )
+from .runner import GemmaBackend, GemmaTorq, GemmaLlama, load_gemma
 
 __all__ = [
     "GemmaBackend",
@@ -20,16 +21,3 @@ __all__ = [
     "local_gemma3_model_path",
     "GEMMA3_HF_REPO_MAP",
 ]
-
-
-def __getattr__(name):
-    if name in {"GemmaBackend", "GemmaTorq", "GemmaLlama", "load_gemma"}:
-        from .runner import GemmaBackend, GemmaTorq, GemmaLlama, load_gemma
-
-        return {
-            "GemmaBackend": GemmaBackend,
-            "GemmaTorq": GemmaTorq,
-            "GemmaLlama": GemmaLlama,
-            "load_gemma": load_gemma,
-        }[name]
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
