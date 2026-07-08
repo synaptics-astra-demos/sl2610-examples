@@ -15,9 +15,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import logging
 
-from utils.moonshine import download_moonshine
-from utils.gemma import download_gemma3
 from utils.demo_utils import run_demo_setup_cli
+from utils.paths import MODELS_DIR
+from utils.torq_examples.gemma3.setup_demo import download_gemma3
+from utils.torq_examples.moonshine.setup_demo import download_moonshine
 
 logger = logging.getLogger("gemma_translate.setup")
 
@@ -28,8 +29,8 @@ def setup_gemma_translate(
 ):
 
     def _download_models():
-        download_moonshine(moonshine_models)
-        download_gemma3(gemma3_models)
+        download_moonshine(moonshine_models, base_dir=MODELS_DIR)
+        download_gemma3(gemma3_models, base_dir=MODELS_DIR)
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(

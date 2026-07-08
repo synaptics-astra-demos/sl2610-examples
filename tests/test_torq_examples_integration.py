@@ -6,7 +6,8 @@ import types
 from pathlib import Path
 from unittest import mock
 
-from utils.download import default_models_dir, read_manifest, verify_manifest, write_manifest
+from utils.paths import MODELS_DIR
+from utils.torq_examples.utils.download import read_manifest, verify_manifest, write_manifest
 
 
 class TorqExamplesIntegrationTest(unittest.TestCase):
@@ -18,9 +19,9 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         )
         self.assertTrue((Path(torq_examples.__path__[0]) / "README.md").is_file())
 
-    def test_default_models_dir_is_sl2610_rooted(self):
+    def test_models_dir_is_sl2610_rooted(self):
         self.assertEqual(
-            default_models_dir(),
+            MODELS_DIR,
             Path(__file__).resolve().parents[1] / "models",
         )
 
@@ -38,46 +39,40 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         self.assertTrue(is_valid)
 
     def test_public_gemma_and_moonshine_imports_stay_stable(self):
-        from utils.gemma import download_gemma3, load_gemma, local_gemma3_model_dir
-        from utils.moonshine import download_moonshine, load_moonshine, local_moonshine_model_dir
+        from utils.gemma import load_gemma
+        from utils.moonshine import load_moonshine
+        from utils.torq_examples.gemma3.setup_demo import download_gemma3
+        from utils.torq_examples.moonshine.setup_demo import download_moonshine
+        from utils.torq_examples.utils.download import local_model_dir, resolve_repo_id
 
         self.assertTrue(callable(download_gemma3))
         self.assertTrue(callable(load_gemma))
-        self.assertTrue(callable(local_gemma3_model_dir))
         self.assertTrue(callable(download_moonshine))
         self.assertTrue(callable(load_moonshine))
-        self.assertTrue(callable(local_moonshine_model_dir))
+        self.assertTrue(callable(local_model_dir))
+        self.assertTrue(callable(resolve_repo_id))
 
     def test_gemma_download_delegates_to_torq_refresh(self):
-        from utils.gemma import download as gemma_download
+        from utils.torq_examples.gemma3 import setup_demo as gemma_setup
 
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
-            with (
-                mock.patch.object(gemma_download, "default_models_dir", return_value=base_dir),
-                mock.patch.object(gemma_download._torq_gemma_setup, "_refresh_gemma3") as refresh,
-            ):
-                result = gemma_download.download_gemma3(["instruct"])
+            with mock.patch.object(gemma_setup, "_refresh_gemma3") as refresh:
+                result = gemma_setup.download_gemma3(["instruct"], base_dir=base_dir)
 
-        repo_id = gemma_download.GEMMA3_HF_REPO_MAP["instruct"]
+        repo_id = gemma_setup.GEMMA3_HF_REPO_MAP["instruct"]
         self.assertEqual(result["instruct"], base_dir / repo_id)
         refresh.assert_called_once_with(repo_id, base_dir / repo_id, base_dir)
 
     def test_moonshine_download_delegates_to_torq_refresh(self):
-        from utils.moonshine import download as moonshine_download
+        from utils.torq_examples.moonshine import setup_demo as moonshine_setup
 
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
-            with (
-                mock.patch.object(moonshine_download, "default_models_dir", return_value=base_dir),
-                mock.patch.object(
-                    moonshine_download._torq_moonshine_setup,
-                    "_refresh_moonshine",
-                ) as refresh,
-            ):
-                result = moonshine_download.download_moonshine(["tiny-en"])
+            with mock.patch.object(moonshine_setup, "_refresh_moonshine") as refresh:
+                result = moonshine_setup.download_moonshine(["tiny-en"], base_dir=base_dir)
 
-        repo_id = moonshine_download.MOONSHINE_HF_REPO_MAP["tiny-en"]
+        repo_id = moonshine_setup.MOONSHINE_HF_REPO_MAP["tiny-en"]
         self.assertEqual(result["tiny-en"], base_dir / repo_id)
         refresh.assert_called_once_with(repo_id, base_dir / repo_id, base_dir)
 

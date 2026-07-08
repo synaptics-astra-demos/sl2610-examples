@@ -256,17 +256,20 @@ def load_gemma(
 
     # Torq backend
     if model_path is None:
-        from .download import default_models_dir, gemma3_repo_id
-
-        model_path = (
-            default_models_dir()
-            / gemma3_repo_id("instruct")
-            / "model.vmfb.trim"
+        from utils.paths import MODELS_DIR
+        from utils.torq_examples.gemma3.setup_demo import (
+            GEMMA3_HF_REPO_MAP,
+            local_gemma3_model_path,
         )
-        if not model_path.exists():
+        from utils.torq_examples.utils.download import resolve_repo_id
+
+        model_path = local_gemma3_model_path("instruct", base_dir=MODELS_DIR)
+        if model_path is None:
+            repo_id = resolve_repo_id("instruct", GEMMA3_HF_REPO_MAP)
+            default_path = MODELS_DIR / repo_id / "model.vmfb.trim"
             raise FileNotFoundError(
                 "Default Gemma model not found at "
-                f"'{model_path}'. Pass --gemma-model to use a different VMFB."
+                f"'{default_path}'. Pass --gemma-model to use a different VMFB."
             )
 
     torq_kw = {

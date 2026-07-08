@@ -16,8 +16,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.demo_utils import run_demo_setup_cli
-from utils.download import default_models_dir, download_from_url
-from utils.moonshine import download_moonshine
+from utils.paths import MODELS_DIR
+from utils.torq_examples.moonshine.setup_demo import download_moonshine
+from utils.torq_examples.utils.download import download_from_url
 
 logger = logging.getLogger("function_calling.setup")
 
@@ -35,7 +36,7 @@ def download_functiongemma(
 ) -> Path:
     """Download the FunctionGemma GGUF used by the demo."""
 
-    models_dir = Path(base_dir) if base_dir is not None else default_models_dir()
+    models_dir = Path(base_dir) if base_dir is not None else MODELS_DIR
     model_path = models_dir / FUNCTIONGEMMA_FILENAME
     if model_path.exists():
         logger.info("Using local FunctionGemma model from '%s'", model_path)
@@ -58,7 +59,7 @@ def setup_function_calling(
     def _download_models():
         download_functiongemma()
         if not skip_moonshine:
-            download_moonshine(moonshine_models)
+            download_moonshine(moonshine_models, base_dir=MODELS_DIR)
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(

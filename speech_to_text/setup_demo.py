@@ -15,8 +15,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import logging
 
-from utils.moonshine import download_moonshine
 from utils.demo_utils import run_demo_setup_cli
+from utils.paths import MODELS_DIR
+from utils.torq_examples.moonshine.setup_demo import download_moonshine
 
 logger = logging.getLogger("speech_to_text.setup")
 
@@ -26,7 +27,7 @@ def setup_speech_to_text(
 ):
 
     def _download_models():
-        download_moonshine(moonshine_models)
+        download_moonshine(moonshine_models, base_dir=MODELS_DIR)
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
