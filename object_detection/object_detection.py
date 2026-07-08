@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.inference import SimpleVMFBInferenceRunner
+from utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 # ==========================================
 # Helpers (Ported from helpers/yolo.py)

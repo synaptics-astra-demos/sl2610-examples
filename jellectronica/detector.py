@@ -14,7 +14,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.inference import SimpleVMFBInferenceRunner
+from utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 # ── Configuration ──────────────────────────────────────────────
 INPUT_SIZE = 320            # Must match compiled model input size
