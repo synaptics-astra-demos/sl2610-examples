@@ -91,7 +91,7 @@ class MoonshineASR:
             )
 
         try:
-            from utils.speech import MoonshineTranscriber
+            from app_utils.speech import MoonshineTranscriber
         except ImportError as e:
             raise VoiceUnavailable(
                 f"moonshine deps not available: {e}. The Moonshine voice "

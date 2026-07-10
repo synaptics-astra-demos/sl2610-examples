@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 
-from utils.torq_examples.moonshine.src.runner import MoonshineRunner
+from app_utils.torq_examples.moonshine.src.runner import MoonshineRunner
 
 
 def load_moonshine(
@@ -18,12 +18,12 @@ def load_moonshine(
     device_io: bool = False,
 ) -> MoonshineRunner:
     if model_path is None:
-        from utils.paths import MODELS_DIR
-        from utils.torq_examples.moonshine.setup_demo import (
+        from app_utils.paths import MODELS_DIR
+        from app_utils.torq_examples.moonshine.setup_demo import (
             MOONSHINE_HF_REPO_MAP,
             download_moonshine,
         )
-        from utils.torq_examples.utils.download import local_model_dir
+        from app_utils.torq_examples.utils.download import local_model_dir
 
         model_path = local_model_dir(model_name, MOONSHINE_HF_REPO_MAP, base_dir=MODELS_DIR)
         if model_path is None:

@@ -74,6 +74,14 @@ pip install https://github.com/synaptics-torq/torq-examples/releases/download/to
 pip install -r requirements.txt
 ```
 
+> [!NOTE]
+> This error message can be safely ignored.
+
+```
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+torq-runtime 2.0.0 requires numpy>2.0.0b1, but you have numpy 1.26.4 which is incompatible.
+```
+
 ## Device Configuration
 
 Some demos require kernel modules, native libraries, or display configuration to be installed on the device. 

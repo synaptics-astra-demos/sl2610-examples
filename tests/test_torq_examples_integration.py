@@ -6,13 +6,13 @@ import types
 from pathlib import Path
 from unittest import mock
 
-from utils.paths import MODELS_DIR
-from utils.torq_examples.utils.download import read_manifest, verify_manifest, write_manifest
+from app_utils.paths import MODELS_DIR
+from app_utils.torq_examples.utils.download import read_manifest, verify_manifest, write_manifest
 
 
 class TorqExamplesIntegrationTest(unittest.TestCase):
     def test_torq_examples_import_points_at_submodule(self):
-        torq_examples = importlib.import_module("utils.torq_examples")
+        torq_examples = importlib.import_module("app_utils.torq_examples")
         self.assertEqual(
             Path(torq_examples.__path__[0]).name,
             "torq_examples",
@@ -39,11 +39,11 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         self.assertTrue(is_valid)
 
     def test_public_gemma_and_moonshine_imports_stay_stable(self):
-        from utils.gemma import load_gemma
-        from utils.moonshine import load_moonshine
-        from utils.torq_examples.gemma3.setup_demo import download_gemma3
-        from utils.torq_examples.moonshine.setup_demo import download_moonshine
-        from utils.torq_examples.utils.download import local_model_dir, resolve_repo_id
+        from app_utils.gemma import load_gemma
+        from app_utils.moonshine import load_moonshine
+        from app_utils.torq_examples.gemma3.setup_demo import download_gemma3
+        from app_utils.torq_examples.moonshine.setup_demo import download_moonshine
+        from app_utils.torq_examples.utils.download import local_model_dir, resolve_repo_id
 
         self.assertTrue(callable(download_gemma3))
         self.assertTrue(callable(load_gemma))
@@ -53,7 +53,7 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         self.assertTrue(callable(resolve_repo_id))
 
     def test_gemma_download_delegates_to_torq_refresh(self):
-        from utils.torq_examples.gemma3 import setup_demo as gemma_setup
+        from app_utils.torq_examples.gemma3 import setup_demo as gemma_setup
 
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
@@ -65,7 +65,7 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         refresh.assert_called_once_with(repo_id, base_dir / repo_id, base_dir)
 
     def test_moonshine_download_delegates_to_torq_refresh(self):
-        from utils.torq_examples.moonshine import setup_demo as moonshine_setup
+        from app_utils.torq_examples.moonshine import setup_demo as moonshine_setup
 
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
@@ -77,7 +77,7 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
         refresh.assert_called_once_with(repo_id, base_dir / repo_id, base_dir)
 
     def test_gemma_torq_stream_accumulates_chunks_and_stats(self):
-        from utils.gemma import runner as gemma_runner
+        from app_utils.gemma import runner as gemma_runner
 
         class FakeGemma3Static:
             max_seq_len = 16
@@ -98,12 +98,12 @@ class TorqExamplesIntegrationTest(unittest.TestCase):
 
         fake_runner = FakeGemma3Static()
 
-        fake_module = types.ModuleType("utils.torq_examples.gemma3.src.runner")
+        fake_module = types.ModuleType("app_utils.torq_examples.gemma3.src.runner")
         fake_module.Gemma3Static = mock.Mock(return_value=fake_runner)
 
         with mock.patch.dict(
             sys.modules,
-            {"utils.torq_examples.gemma3.src.runner": fake_module},
+            {"app_utils.torq_examples.gemma3.src.runner": fake_module},
         ):
             backend = gemma_runner.GemmaTorq("model.vmfb")
             partials = list(backend.stream_response("translate me"))

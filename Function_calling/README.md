@@ -475,8 +475,8 @@ Function_calling/
 ├── turn_log.py            # per-turn JSONL diagnostics log
 ├── wled.py                # Mini Sparkle Motion serial client
 ├── voice/
-│   ├── asr.py             # StubASR + MoonshineASR (delegates to utils.speech)
-│   ├── pipeline.py        # start/stop/callback API on top of utils.speech
+│   ├── asr.py             # StubASR + MoonshineASR (delegates to app_utils.speech)
+│   ├── pipeline.py        # start/stop/callback API on top of app_utils.speech
 │   └── __init__.py        # make_voice_pipeline factory
 ├── scripts/
 │   ├── install-service.sh # systemd autostart installer

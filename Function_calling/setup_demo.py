@@ -15,10 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from utils.demo_utils import run_demo_setup_cli
-from utils.paths import MODELS_DIR
-from utils.torq_examples.moonshine.setup_demo import download_moonshine
-from utils.torq_examples.utils.download import download_from_url
+from app_utils.demo_utils import run_demo_setup_cli
+from app_utils.paths import MODELS_DIR
+from app_utils.torq_examples.moonshine.setup_demo import download_moonshine
+from app_utils.torq_examples.utils.download import download_from_url
 
 logger = logging.getLogger("function_calling.setup")
 
@@ -66,7 +66,7 @@ def setup_function_calling(
         _download_models,
         requirements_txt,
         logger,
-        version_map={"torq.runtime": ">=2.0.0a1"},
+        #version_map={"torq.runtime": ">=2.0.0a1"},
         demo_name="Function_calling",
     )
 
@@ -74,7 +74,7 @@ def setup_function_calling(
 if __name__ == "__main__":
     import argparse
 
-    from utils.log import add_logging_args, configure_logging
+    from app_utils.log import add_logging_args, configure_logging
 
     parser = argparse.ArgumentParser(
         description="Download FunctionGemma and Moonshine model files.",

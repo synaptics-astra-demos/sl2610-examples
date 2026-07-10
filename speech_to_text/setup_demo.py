@@ -15,9 +15,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import logging
 
-from utils.demo_utils import run_demo_setup_cli
-from utils.paths import MODELS_DIR
-from utils.torq_examples.moonshine.setup_demo import download_moonshine
+from app_utils.demo_utils import run_demo_setup_cli
+from app_utils.paths import MODELS_DIR
+from app_utils.torq_examples.moonshine.setup_demo import download_moonshine
 
 logger = logging.getLogger("speech_to_text.setup")
 
@@ -32,14 +32,14 @@ def setup_speech_to_text(
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
-        version_map={"torq.runtime": ">=2.0.0a1"},
+        #version_map={"torq.runtime": ">=2.0.0a1"},
         demo_name="speech_to_text",
     )
 
 
 if __name__ == "__main__":
     import argparse
-    from utils.log import add_logging_args, configure_logging
+    from app_utils.log import add_logging_args, configure_logging
     from pathlib import Path
 
     parser = argparse.ArgumentParser(

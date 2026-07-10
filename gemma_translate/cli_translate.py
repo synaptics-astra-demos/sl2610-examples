@@ -16,13 +16,13 @@ from gemma_translate.common_args import (
     resolve_gemma_model_path,
 )
 from gemma_translate.translation import GemmaTranslationService, TranslationResult
-from utils.cli import TerminalMode, install_cli_shutdown_handlers
-from utils.log import configure_logging
-from utils.npu import enable_npu_clock
-from utils.stats import Gemma3InferenceStats, MoonshineInferenceStats
+from app_utils.cli import TerminalMode, install_cli_shutdown_handlers
+from app_utils.log import configure_logging
+from app_utils.npu import enable_npu_clock
+from app_utils.stats import Gemma3InferenceStats, MoonshineInferenceStats
 
 if TYPE_CHECKING:
-    from utils.speech import SpeechRecognizer, SpeechTranscript
+    from app_utils.speech import SpeechRecognizer, SpeechTranscript
 
 
 SAMPLING_RATE = 16_000
@@ -184,7 +184,7 @@ def add_cli_output_args(parser: argparse.ArgumentParser):
 
 
 def choose_audio_device(device_arg: str | None) -> int | str | None:
-    from utils.speech import query_input_devices
+    from app_utils.speech import query_input_devices
 
     if device_arg is None:
         print("List of Audio input devices:")
@@ -216,7 +216,7 @@ def transcript_is_accepted(transcript: SpeechTranscript, *, min_words: int) -> t
 
 
 def build_translation_service(args: argparse.Namespace) -> GemmaTranslationService:
-    from utils.gemma import load_gemma
+    from app_utils.gemma import load_gemma
 
     backend = load_gemma(
         use_llama=args.use_llama_gemma,
@@ -231,7 +231,7 @@ def build_speech_recognizer(
     *,
     audio_device: int | str | None,
 ) -> SpeechRecognizer:
-    from utils.speech import (
+    from app_utils.speech import (
         MoonshineTranscriber,
         SileroSpeechSegmenter,
         SoundDeviceAudioSource,

@@ -9,6 +9,7 @@ psutil>=5.9
 pyserial>=3.5
 ml_dtypes
 packaging
+hf_xet
 
 # Voice input
 sounddevice>=0.4

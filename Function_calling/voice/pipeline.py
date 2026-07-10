@@ -1,7 +1,7 @@
 """VoicePipeline — thread-managed mic → VAD → ASR → text emit.
 
 Delegates the audio capture, VAD segmentation, and Moonshine transcription
-to the shared ``utils.speech`` module. This thin wrapper adds the
+to the shared ``app_utils.speech`` module. This thin wrapper adds the
 start/stop/callback API the Function_calling UI and CLI use.
 
 UI usage:
@@ -41,7 +41,7 @@ class VoicePipeline:
     """Run mic + VAD + ASR in a background thread.
 
     For ``mode="moonshine"`` the full pipeline (audio source, speech
-    segmenter, transcriber) is built from ``utils.speech``.
+    segmenter, transcriber) is built from ``app_utils.speech``.
 
     For ``mode="stub"`` a lightweight fallback loops raw mic chunks
     through the shared VAD and hands completed utterances to the
@@ -99,8 +99,8 @@ class VoicePipeline:
             self._run_stub()
 
     def _run_recognizer(self) -> None:
-        """Full Moonshine pipeline via utils.speech.SpeechRecognizer."""
-        from utils.speech import (
+        """Full Moonshine pipeline via app_utils.speech.SpeechRecognizer."""
+        from app_utils.speech import (
             MoonshineTranscriber,
             SileroSpeechSegmenter,
             SoundDeviceAudioSource,
@@ -147,7 +147,7 @@ class VoicePipeline:
         """Stub mode: real mic + VAD, fake ASR (canned phrases)."""
         import time
 
-        from utils.speech import SileroSpeechSegmenter, SoundDeviceAudioSource
+        from app_utils.speech import SileroSpeechSegmenter, SoundDeviceAudioSource
 
         logger.info("voice pipeline thread starting (stub mode)")
 

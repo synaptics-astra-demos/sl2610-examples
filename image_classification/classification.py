@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
+from app_utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 # ==========================================
 # Ported from helpers/mobilenet.py

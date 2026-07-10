@@ -74,7 +74,7 @@ class GemmaTorq(GemmaBackend):
         lm_head_path: str | os.PathLike | None = None,
         disable_lm_head: bool = False,
     ):
-        from utils.torq_examples.gemma3.src.runner import Gemma3Static
+        from app_utils.torq_examples.gemma3.src.runner import Gemma3Static
 
         self._runner = Gemma3Static(
             model_path,
@@ -256,12 +256,12 @@ def load_gemma(
 
     # Torq backend
     if model_path is None:
-        from utils.paths import MODELS_DIR
-        from utils.torq_examples.gemma3.setup_demo import (
+        from app_utils.paths import MODELS_DIR
+        from app_utils.torq_examples.gemma3.setup_demo import (
             GEMMA3_HF_REPO_MAP,
             local_gemma3_model_path,
         )
-        from utils.torq_examples.utils.download import resolve_repo_id
+        from app_utils.torq_examples.utils.download import resolve_repo_id
 
         model_path = local_gemma3_model_path("instruct", base_dir=MODELS_DIR)
         if model_path is None:
