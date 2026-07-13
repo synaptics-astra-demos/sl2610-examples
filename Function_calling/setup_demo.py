@@ -66,7 +66,7 @@ def setup_function_calling(
         _download_models,
         requirements_txt,
         logger,
-        #version_map={"torq.runtime": ">=2.0.0a1"},
+        version_map={"torq.runtime": ">=2.0.0a1"},
         demo_name="Function_calling",
     )
 
