@@ -58,8 +58,15 @@ export DISPLAY_WIDTH=480
 cd object_detection/
 ```
 
-### Run the object detection on an image file
+### Download Models
 
+Download the YoloV8n model files from HuggingFace by running this setup script.
+
+```bash
+python setup_demo.py
+```
+
+### Run the object detection on an image file
 
 ```bash
 python3 object_detection.py --image ../samples/dog_bike_car.jpg
@@ -154,10 +161,12 @@ torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quan
 
 ## Testing YOLOv8s alternative
 
-  Also provided is a compiled model for YOLOv8 Small. This is a better performing model at the expense of approximately 2x inference time.
+  This example also works with YOLOv8 Small. This is a better performing model at the expense of approximately 2x inference time.
   
-  To test, switch the model to `yolov8s_od.vmfb` and update the output quantization parameters in `object_detection.py` to the following.
-
+  To test it out Yolov8 Small, follow these steps:
+  - Manually download a compiled model file (e.g. yolov_8n_2.0.0_npu.vmfb) from [Synaptics/yolov8-od-small-320-int8-torq](https://huggingface.co/Synaptics/yolov8-od-small-320-int8-torq) to the `models` directory.
+  
+  - Update the output quantization parameters in `object_detection.py` to the following.
 
 ```python
     out_scale = 0.0051302798092365265
@@ -165,7 +174,13 @@ torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quan
 
 ```
 
+  - Run the application, passing in the path to the model file.
 
+```bash
+  python3 object_detection_video.py \
+  --model ../models/yolov_8n_2.0.0_npu.vmfb \
+  --camera-device auto \
+```
 
 ## Expected Output
 

@@ -678,7 +678,7 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="../models/yolov8n_od.vmfb")
+    parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb")
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--rtsp-url", help="RTSP stream URL")
     source_group.add_argument("--video", help="Path to video file")

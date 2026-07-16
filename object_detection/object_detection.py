@@ -197,7 +197,7 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="../models/yolov8n_od.vmfb")
+    parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb")
     parser.add_argument("--image", required=True)
     parser.add_argument("--labels", default="labels.json")
     parser.add_argument("--device", default="torq")
