@@ -93,7 +93,7 @@ Optionally, you can pass the model, labels, and device.
 
 ```bash
 python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
+  --model ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb \
   --camera-device auto \
   --labels labels.json \
   --device torq
@@ -101,7 +101,7 @@ python3 object_detection_video.py \
 
 
 Optionally you can also set the following configurations:
-- `--model`, Path to model (default: ../models/yolov8n_od.vmfb)
+- `--model`, Path to model (default: ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb)
 - `--labels`, Path to lables (default: labels.json)
 - `--device`, Device to run on (default: torq)
 - `--output`, Output video file
