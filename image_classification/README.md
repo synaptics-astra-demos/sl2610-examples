@@ -31,33 +31,30 @@ Clone the repository including submodules, run setup scripts, and install base P
 ### Install example-specific dependencies
 
 ```bash
+cd image_classification/
 pip install -r requirements.txt
 ```
 
-## Runing the Image Classification Example
+### Download Models
 
-Optionally Set up display environment (Required for visual output).
-
-```bash
-export XDG_RUNTIME_DIR=/var/run/user/0
-export WAYLAND_DISPLAY=wayland-1
-```
-
-### Go to the directory
+Download the MobileNetV2 model files from HuggingFace by running this setup script.
 
 ```bash
-cd image_classification/
+python setup_demo.py
 ```
-### Run the image classification on an image file
 
+## Runing the Image Classification Example on an Image File
 
 ```bash
-python3 classification.py \
-  --model ../models/mbv2.vmfb \
-  --image ../samples/cat.jpg \
-  --labels labels.json \
-  --device torq
+python3 classification.py --image ../samples/cat.jpg 
 ```
+
+Optionally you can also set the following configurations:
+- `--model`, Path to model (default: ../models/Synaptics/mobilenet_v2-int8-torq/MobileNetv2_int8.vmfb)
+- `--labels`, Path to lables (default: labels.json)
+- `--device`, Device to run on (default: torq)
+- `--display`, Display annotated image
+
 
 ---
 

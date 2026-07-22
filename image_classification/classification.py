@@ -83,14 +83,16 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser(description="Run complete inference workflow on board")
-    parser.add_argument("--model", required=True, help="Path to .vmfb model file")
+    parser.add_argument("--model", default="../models/Synaptics/mobilenet_v2-int8-torq/MobileNetv2_int8.vmfb", help="Path to .vmfb model file")
     parser.add_argument("--image", required=True, help="Path to input image file")
-    parser.add_argument("--labels", help="Path to labels json file")
+    parser.add_argument("--labels", default="../models/Synaptics/mobilenet_v2-int8-torq/labels.json", help="Path to labels json file")
     parser.add_argument("--device", default="torq", help="Device to target (default: torq)")
+    parser.add_argument("--display", action="store_true", help="Display the image (requires Wayland)")
     args = parser.parse_args()
 
-    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if args.display:
+        os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     if not os.path.exists(args.model):
         print(f"Model file not found: {args.model}")
@@ -263,6 +265,9 @@ def main():
         print(f"Result image saved to: {output_image_path}")
 
         # 6. Attempt Display
+        if not args.display:
+            print("Display not requested. Use --display to show the image.")
+            return
         print("Attempting to display image...")
         
         # Option A: GStreamer (Wayland/Embedded)

@@ -10,6 +10,7 @@ pyserial>=3.5
 ml_dtypes
 packaging
 hf_xet
+huggingface_hub
 
 # Voice input
 sounddevice>=0.4
