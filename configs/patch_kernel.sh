@@ -3,7 +3,7 @@ set -euo pipefail
 
 SRC_DIR="${1:-$(dirname "$(realpath "$0")")}"
 MODULE_PATH="/usr/lib/modules/6.12.62/updates/syna_npu.ko"
-EXPECTED_MD5="ec65a918860b05ed8f9e840f3a35e598"
+EXPECTED_MD5="5da15ae4fa99e6e5af986243fee10b1e"
 
 if [[ ! -f "$SRC_DIR/syna_npu.ko" ]]; then
     echo "ERROR: $SRC_DIR/syna_npu.ko not found"

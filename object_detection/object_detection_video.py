@@ -12,7 +12,10 @@ import subprocess
 import sys
 import threading
 import time
-import torq.runtime as torq_rt
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app_utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 MAX_DETECTIONS_TO_KEEP = 60
 
@@ -259,17 +262,7 @@ def postprocess(outputs, orig_shape, pad_info, labels=None):
     return results
 
 def run_inference_torq(runner, input_data):
-    outputs = runner.infer([input_data])  # <-- wrap in list
-    if isinstance(outputs, (list, tuple)):
-        if len(outputs) == 1:
-            return outputs[0]
-        raise RuntimeError(
-            f"Expected a single output tensor from the model, but got {len(outputs)} "
-            "outputs. This script currently supports only single-output models. "
-            "Please update the code to select the desired output tensor."
-        )
-    # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
-    return outputs
+    return runner.infer(input_data)
 
 def find_working_camera():
     try:
@@ -685,7 +678,7 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="../models/yolov8n_od.vmfb")
+    parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb")
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--rtsp-url", help="RTSP stream URL")
     source_group.add_argument("--video", help="Path to video file")
@@ -740,7 +733,7 @@ def main():
         configure_camera(ctrl_device, cam_ctrls)
 
     # 0. Load the model with Torq Runtime
-    runner = torq_rt.VMFBInferenceRunner(
+    runner = SimpleVMFBInferenceRunner(
         args.model,
         device_uri=args.device,
         function="main",
@@ -766,4 +759,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

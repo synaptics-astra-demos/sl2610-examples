@@ -27,9 +27,10 @@ import sounddevice as sd
 from sounddevice import InputStream
 from tokenizers import Tokenizer
 
-from utils.cli import suppress_native_stderr, suppress_native_stderr_at_exit
-from utils.download import download_from_hf
-from utils.stats import MoonshineInferenceStats
+from app_utils.cli import suppress_native_stderr, suppress_native_stderr_at_exit
+from app_utils.paths import MODELS_DIR
+from app_utils.torq_examples.utils.download import download_from_hf
+from app_utils.stats import MoonshineInferenceStats
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +308,7 @@ class MoonshineTranscriber:
             model_dir if model_dir is not None else "default",
         )
         with suppress_native_stderr(suppress_native_logs):
-            from utils.moonshine import load_moonshine
+            from app_utils.moonshine import load_moonshine
 
             self.runner = load_moonshine(model_dir)
         self.model_dir = self.runner.model_dir
@@ -346,7 +347,9 @@ class MoonshineTranscriber:
         try:
             return Tokenizer.from_file(str(local_path))
         except (FileNotFoundError, OSError):
-            tokenizer_file = download_from_hf("UsefulSensors/moonshine-tiny", "tokenizer.json")
+            tokenizer_file = download_from_hf(
+                "UsefulSensors/moonshine-tiny", "tokenizer.json", base_dir=MODELS_DIR
+            )
             return Tokenizer.from_file(str(tokenizer_file))
 
 

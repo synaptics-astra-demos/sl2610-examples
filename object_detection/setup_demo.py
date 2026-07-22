@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
 
-"""Download Moonshine model files from HuggingFace.
+"""Download Yolo v8 object detection model files from HuggingFace.
 
 Usage::
 
@@ -17,23 +17,23 @@ import logging
 
 from app_utils.demo_utils import run_demo_setup_cli
 from app_utils.paths import MODELS_DIR
-from app_utils.torq_examples.moonshine.setup_demo import download_moonshine
+from app_utils.torq_examples.object_detection.setup_demo import download_object_detection
 
-logger = logging.getLogger("speech_to_text.setup")
+logger = logging.getLogger("object_detection.setup")
 
 
-def setup_speech_to_text(
-    moonshine_models: list[str] | None = None,
+def setup_object_detection(
+    object_detection_models: list[str] | None = None,
 ):
 
     def _download_models():
-        download_moonshine(moonshine_models, base_dir=MODELS_DIR)
+        download_object_detection(object_detection_models, base_dir=MODELS_DIR)
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
         version_map={"torq.runtime": ">=2.0.0a1"},
-        demo_name="speech_to_text",
+        demo_name="object_detection",
     )
 
 
@@ -43,15 +43,15 @@ if __name__ == "__main__":
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
-        description="Download Moonshine model files.",
+        description="Download Yolo v8 model files.",
     )
     parser.add_argument(
-        "--moonshine-models",
+        "--object-detection-models",
         nargs="*",
         default=None,
-        help="Moonshine model names or HF repo IDs.",
+        help="Object detection model names or HF repo IDs.",
     )
     add_logging_args(parser)
     args = parser.parse_args()
     configure_logging(args.logging, args.log_file)
-    setup_speech_to_text(args.moonshine_models)
+    setup_object_detection(args.object_detection_models)

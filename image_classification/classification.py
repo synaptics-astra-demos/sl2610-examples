@@ -12,7 +12,10 @@ import time
 import sys
 import shutil
 from PIL import Image, ImageDraw, ImageFont
-import torq.runtime as torq_rt
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app_utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 # ==========================================
 # Ported from helpers/mobilenet.py
@@ -66,17 +69,7 @@ def dequantize_output(output_data, output_bias, output_scale):
 # Main Logic
 # ==========================================
 def run_inference_torq(runner, input_data):
-    outputs = runner.infer([input_data])  # <-- wrap in list
-    if isinstance(outputs, (list, tuple)):
-        if len(outputs) == 1:
-            return outputs[0]
-        raise RuntimeError(
-            f"Expected a single output tensor from the model, but got {len(outputs)} "
-            "outputs. This script currently supports only single-output models. "
-            "Please update the code to select the desired output tensor."
-        )
-    # If the runtime already returns a single tensor (e.g., a NumPy array), return it as-is.
-    return outputs
+    return runner.infer(input_data)
 
 #  NPU Clock 
 def enable_npu_clock():
@@ -90,14 +83,16 @@ def enable_npu_clock():
 
 def main():
     parser = argparse.ArgumentParser(description="Run complete inference workflow on board")
-    parser.add_argument("--model", required=True, help="Path to .vmfb model file")
+    parser.add_argument("--model", default="../models/Synaptics/mobilenet_v2-int8-torq/MobileNetv2_int8.vmfb", help="Path to .vmfb model file")
     parser.add_argument("--image", required=True, help="Path to input image file")
-    parser.add_argument("--labels", help="Path to labels json file")
+    parser.add_argument("--labels", default="../models/Synaptics/mobilenet_v2-int8-torq/labels.json", help="Path to labels json file")
     parser.add_argument("--device", default="torq", help="Device to target (default: torq)")
+    parser.add_argument("--display", action="store_true", help="Display the image (requires Wayland)")
     args = parser.parse_args()
 
-    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if args.display:
+        os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     if not os.path.exists(args.model):
         print(f"Model file not found: {args.model}")
@@ -111,7 +106,7 @@ def main():
     enable_npu_clock()
 
     # 0. Load the model with Torq Runtime
-    runner = torq_rt.VMFBInferenceRunner(
+    runner = SimpleVMFBInferenceRunner(
         args.model,
         device_uri=args.device,
         function="main",
@@ -270,6 +265,9 @@ def main():
         print(f"Result image saved to: {output_image_path}")
 
         # 6. Attempt Display
+        if not args.display:
+            print("Display not requested. Use --display to show the image.")
+            return
         print("Attempting to display image...")
         
         # Option A: GStreamer (Wayland/Embedded)

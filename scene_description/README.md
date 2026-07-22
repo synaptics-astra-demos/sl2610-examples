@@ -12,15 +12,21 @@ Visual scene description demonstrating image understanding
 
 ### Clone the Repository
 
-Clone the repository using the following command:
+Clone the repository and its torq-examples submodule using the following command:
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples.git
 ```
 Navigate to the Repository Directory:
 
 ```bash
 cd sl2610-examples
+```
+
+If you already cloned without submodules, run:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ### Setup Python Environment

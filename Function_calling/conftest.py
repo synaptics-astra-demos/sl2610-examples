@@ -1,6 +1,6 @@
 """Pytest configuration for Function_calling tests.
 
-Ensures the repo root is on sys.path so ``utils.*`` is importable,
+Ensures the repo root is on sys.path so ``app_utils.*`` is importable,
 and adds Function_calling/ itself so ``voice``, ``llamacpp``, etc.
 resolve as top-level packages.
 """

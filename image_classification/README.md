@@ -24,66 +24,37 @@ Ensure your board has the following installed:
 
 ## 🔧 Installation
  
-### Clone the Repository
+### Setup the base environment
 
-Clone the repository using the following command:
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
 
-```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
-```
-Navigate to the Repository Directory:
-
-```bash
-cd sl2610-examples
-```
-
-### Setup Python Environment
-
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
-
-```bash
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-```
-
-Install dependencies
-
-[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
-
-If online
-```bash
-pip install -r requirements.txt
-```
-
-If offline
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
-```
-
-## Runing the Image Classification Example
-
-Optionally Set up display environment (Required for visual output).
-
-```bash
-export XDG_RUNTIME_DIR=/var/run/user/0
-export WAYLAND_DISPLAY=wayland-1
-```
-
-### Go to the directory
+### Install example-specific dependencies
 
 ```bash
 cd image_classification/
+pip install -r requirements.txt
 ```
-### Run the image classification on an image file
 
+### Download Models
+
+Download the MobileNetV2 model files from HuggingFace by running this setup script.
 
 ```bash
-python3 classification.py \
-  --model ../models/mbv2.vmfb \
-  --image ../samples/cat.jpg \
-  --labels labels.json \
-  --device torq
+python setup_demo.py
 ```
+
+## Runing the Image Classification Example on an Image File
+
+```bash
+python3 classification.py --image ../samples/cat.jpg 
+```
+
+Optionally you can also set the following configurations:
+- `--model`, Path to model (default: ../models/Synaptics/mobilenet_v2-int8-torq/MobileNetv2_int8.vmfb)
+- `--labels`, Path to lables (default: labels.json)
+- `--device`, Device to run on (default: torq)
+- `--display`, Display annotated image
+
 
 ---
 

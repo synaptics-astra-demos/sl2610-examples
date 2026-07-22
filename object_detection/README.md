@@ -23,42 +23,17 @@ Ensure your board has the following installed:
 
 ## 🔧 Installation
  
-### Clone the Repository
+### Setup the base environment
 
-Clone the repository using the following command:
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
 
-```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples.git
-```
-Navigate to the Repository Directory:
+### Install example-specific dependencies
 
 ```bash
-cd sl2610-examples
-```
+cd object_detection
 
-### Setup Python Environment
-
-To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
-
-```bash
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-```
-
-Install dependencies
-
-[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation dependencies when switching between examples.
-
-If online
-```bash
 pip install -r requirements.txt
 ```
-
-If offline
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
-```
-
 
 ## 🖼️ Running Object Detection Example
 
@@ -83,8 +58,15 @@ export DISPLAY_WIDTH=480
 cd object_detection/
 ```
 
-### Run the object detection on an image file
+### Download Models
 
+Download the YoloV8n model files from HuggingFace by running this setup script.
+
+```bash
+python setup_demo.py
+```
+
+### Run the object detection on an image file
 
 ```bash
 python3 object_detection.py --image ../samples/dog_bike_car.jpg
@@ -111,7 +93,7 @@ Optionally, you can pass the model, labels, and device.
 
 ```bash
 python3 object_detection_video.py \
-  --model ../models/yolov8n_od.vmfb \
+  --model ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb \
   --camera-device auto \
   --labels labels.json \
   --device torq
@@ -119,7 +101,7 @@ python3 object_detection_video.py \
 
 
 Optionally you can also set the following configurations:
-- `--model`, Path to model (default: ../models/yolov8n_od.vmfb)
+- `--model`, Path to model (default: ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb)
 - `--labels`, Path to lables (default: labels.json)
 - `--device`, Device to run on (default: torq)
 - `--output`, Output video file
@@ -179,10 +161,12 @@ torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quan
 
 ## Testing YOLOv8s alternative
 
-  Also provided is a compiled model for YOLOv8 Small. This is a better performing model at the expense of approximately 2x inference time.
+  This example also works with YOLOv8 Small. This is a better performing model at the expense of approximately 2x inference time.
   
-  To test, switch the model to `yolov8s_od.vmfb` and update the output quantization parameters in `object_detection.py` to the following.
-
+  To test it out Yolov8 Small, follow these steps:
+  - Manually download a compiled model file (e.g. yolov_8n_2.0.0_npu.vmfb) from [Synaptics/yolov8-od-small-320-int8-torq](https://huggingface.co/Synaptics/yolov8-od-small-320-int8-torq) to the `models` directory.
+  
+  - Update the output quantization parameters in `object_detection.py` to the following.
 
 ```python
     out_scale = 0.0051302798092365265
@@ -190,7 +174,13 @@ torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quan
 
 ```
 
+  - Run the application, passing in the path to the model file.
 
+```bash
+  python3 object_detection_video.py \
+  --model ../models/yolov_8n_2.0.0_npu.vmfb \
+  --camera-device auto \
+```
 
 ## Expected Output
 

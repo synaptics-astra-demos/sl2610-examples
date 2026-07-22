@@ -38,15 +38,21 @@ To enable online example updates and installation of dependencies, it is recomme
 
 ### Clone the Repository
 
-Clone the repository using the following command:
+Clone the repository and its torq-examples submodule using the following command:
 
 ```bash
-git clone https://github.com/synaptics-astra-demos/sl2610-examples
+git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
 ```
 Navigate to the Repository Directory:
 
 ```bash
 cd sl2610-examples
+```
+
+If you already cloned the repository without submodules, initialize them once:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ### Setup Python Environment
@@ -60,14 +66,20 @@ source .venv/bin/activate
 
 Install dependencies
 
-If online
 ```bash
+pip install --upgrade pip
+
+pip install https://github.com/synaptics-torq/torq-examples/releases/download/torq-runtime-v2.0-alpha/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl
+
 pip install -r requirements.txt
 ```
 
-If offline (supported for Object detection and Image Classification examples)
-```bash
-pip install --no-index --find-links=./wheelhouse -r requirements.txt
+> [!NOTE]
+> This error message can be safely ignored.
+
+```
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+torq-runtime 2.0.0 requires numpy>2.0.0b1, but you have numpy 1.26.4 which is incompatible.
 ```
 
 ## Device Configuration

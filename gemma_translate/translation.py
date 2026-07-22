@@ -13,10 +13,10 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Callable
 
-from utils.stats import Gemma3InferenceStats
+from app_utils.stats import Gemma3InferenceStats
 
 if TYPE_CHECKING:
-    from utils.gemma import GemmaBackend
+    from app_utils.gemma import GemmaBackend
 
 logger = logging.getLogger(__name__)
 

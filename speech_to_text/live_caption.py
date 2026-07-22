@@ -9,9 +9,9 @@ import threading
 import time
 import logging
 
-from utils.log import configure_logging
-from utils.npu import enable_npu_clock
-from utils.speech import (
+from app_utils.log import configure_logging
+from app_utils.npu import enable_npu_clock
+from app_utils.speech import (
     MoonshineTranscriber,
     SileroSpeechSegmenter,
     SoundDeviceAudioSource,
