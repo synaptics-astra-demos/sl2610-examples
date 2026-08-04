@@ -95,7 +95,7 @@ python3 app_pyqt.py
 
 The model loads in ~3.6 s, then you're at a prompt. To run the PyQt UI from a fresh terminal without systemd, see [Running the demo](#running-the-demo) for the Wayland env vars.
 
-To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../configs/install_portaudio.sh`, then run `bash scripts/install-service.sh --voice moonshine`.
+To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system libraries once with `../setup/install_portaudio.sh`, then run `bash scripts/install-service.sh --voice moonshine`.
 
 `setup_demo.py` is idempotent — re-run it anytime to repair missing model files. 
 
@@ -247,7 +247,7 @@ python3 app_pyqt.py --voice moonshine
 python3 app_pyqt.py --voice moonshine --mic 0
 ```
 
-`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). Silero VAD pulls ONNX Runtime for its backend. `setup_demo.py` downloads the Moonshine artifacts managed by `torq-examples` (encoder + decoder VMFBs, decoder token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../configs/install_portaudio.sh`; the OOBE image doesn't ship it.
+`requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). Silero VAD pulls ONNX Runtime for its backend. `setup_demo.py` downloads the Moonshine artifacts managed by `torq-examples` (encoder + decoder VMFBs, decoder token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../setup/install_portaudio.sh`; the OOBE image doesn't ship it.
 
 If `tokenizer.json` is ever missing at runtime, the ASR worker falls back to fetching it from `UsefulSensors/moonshine-tiny`. For fully offline use after a partial install:
 
@@ -486,7 +486,7 @@ Function_calling/
 
 # Shared with the rest of the repo:
 ../utils/speech.py         # mic capture + silero VAD + Moonshine transcriber
-../configs/                # device/native library installers
+../setup/                # device/native library installers
 ../library/                # shared native archives (portaudio_libs.tgz, etc.)
 ../wheelhouse/             # pre-built aarch64 wheels
 ../models/                 # GGUF + Moonshine artifacts (populated by setup_demo.py)

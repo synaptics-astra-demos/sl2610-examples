@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ### Install the PortAudio system libraries for microphone input:
 
 ```bash
-../configs/install_portaudio.sh
+../setup/install_portaudio.sh
 ```
 
 

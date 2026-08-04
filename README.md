@@ -101,14 +101,14 @@ Run the scripts one at a time:
 
 Required:
 ```bash
-./configs/install_portaudio.sh
-./configs/patch_kernel.sh
+./setup/install_portaudio.sh
+./setup/patch_kernel.sh
 ```
 
 Optional:
 ```bash
-./configs/portrait_setup.sh
-./configs/patch_usb_cdc.sh
+./setup/portrait_setup.sh
+./setup/patch_usb_cdc.sh
 ```
 
 
