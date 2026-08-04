@@ -12,6 +12,7 @@ import signal
 import sys
 import threading
 import time
+import locale
 from typing import TYPE_CHECKING
 
 try:
@@ -34,6 +35,13 @@ try:
     _NEOPIXEL_AVAILABLE = True
 except ImportError:
     _NEOPIXEL_AVAILABLE = False
+
+# Must be set before importing PyQt6
+os.environ["LC_ALL"] = "C.UTF-8"
+os.environ["LANG"] = "C.UTF-8"
+
+# Set the C-level locale explicitly
+locale.setlocale(locale.LC_ALL, "en_US.utf8")
 
 from PyQt6.QtCore import QEvent, QObject, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFontDatabase

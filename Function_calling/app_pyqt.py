@@ -14,6 +14,7 @@ import glob
 import logging
 import os
 import sys
+import locale
 from pathlib import Path
 
 # Make the shared utils/ package importable from Function_calling/.
@@ -23,6 +24,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+# Must be set before importing PyQt6
+os.environ["LC_ALL"] = "C.UTF-8"
+os.environ["LANG"] = "C.UTF-8"
+
+# Set the C-level locale explicitly
+locale.setlocale(locale.LC_ALL, "en_US.utf8")
 
 from PyQt6.QtWidgets import QApplication
 
