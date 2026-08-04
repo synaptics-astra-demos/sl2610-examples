@@ -8,5 +8,5 @@ requests==2.33.1
 tokenizers==0.23.1
 silero-vad-notorch==6.2.1.1
 sounddevice==0.5.5
-PyQt5
+PyQt6
 huggingface-hub==0.31.4

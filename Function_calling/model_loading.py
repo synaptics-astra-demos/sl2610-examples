@@ -7,9 +7,9 @@ ticks ``set_remaining_seconds`` every second.
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QRectF, Qt, QTimer
-from PyQt5.QtGui import QColor, QPainter, QPen
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QRectF, Qt, QTimer
+from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -43,7 +43,7 @@ class _Spinner(QWidget):
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(3, 3, 30, 30)
 
         track = QPen(QColor("#e2e8f0"))
@@ -53,7 +53,7 @@ class _Spinner(QWidget):
 
         arc = QPen(QColor(P.accent))
         arc.setWidth(3)
-        arc.setCapStyle(Qt.RoundCap)
+        arc.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(arc)
         start_angle = (-self._angle) * 16
         span_angle = -72 * 16  # 20% of 360
@@ -68,13 +68,13 @@ class ModelLoadingPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(6)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._spinner = _Spinner()
-        layout.addWidget(self._spinner, alignment=Qt.AlignHCenter)
+        layout.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         title = QLabel("Loading model")
-        title.setAlignment(Qt.AlignHCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         title.setStyleSheet(
             f"background: transparent; color: {P.text_primary};"
             f" font-size: 14px; font-weight: 600;"
@@ -83,7 +83,7 @@ class ModelLoadingPanel(QWidget):
         layout.addWidget(title)
 
         sub = QLabel("BrinqAI/functiongemma-270m-physical-ai · llamacpp")
-        sub.setAlignment(Qt.AlignHCenter)
+        sub.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         sub.setStyleSheet(
             f"background: transparent; color: {P.text_muted};"
             f" font-family: {T.mono}; font-size: 10px; letter-spacing: -0.01em;"
@@ -116,17 +116,17 @@ class ModelLoadingPanel(QWidget):
             f"background: transparent; color: {P.text_secondary};"
             f" font-family: {T.mono}; font-size: 10px;"
         )
-        self._remaining.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._remaining.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         stage = QLabel("mmap weights · 248 MB")
         stage.setStyleSheet(
             f"background: transparent; color: {P.text_muted};"
             f" font-family: {T.mono}; font-size: 10px;"
         )
-        stage.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        stage.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         meta_inner_widget = QWidget()
         meta_inner_widget.setMinimumWidth(260)
         meta_inner_widget.setMaximumWidth(300)
-        meta_inner_widget.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        meta_inner_widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         inner_layout = QHBoxLayout(meta_inner_widget)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.setSpacing(10)
@@ -139,7 +139,7 @@ class ModelLoadingPanel(QWidget):
         layout.addLayout(meta_row)
 
         hint = QLabel("Input is disabled until the model is ready.")
-        hint.setAlignment(Qt.AlignHCenter)
+        hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         hint.setWordWrap(True)
         hint.setMaximumWidth(280)
         hint.setStyleSheet(

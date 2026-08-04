@@ -4,7 +4,7 @@ Backed by the interfaces in Grinn's OOBE image report for the Coral Dev
 Board (SL2619, AstraSOM-261x):
 
     Status LEDs : /sys/class/leds/{red,green,blue}:status/brightness  (0-255)
-    Buzzer      : gpioset `gpiofind BUZZERn`  (binary, ACTIVE-LOW: 0=ON, 1=OFF)
+    Buzzer      : gpiod Python — line named "BUZZERn" (active-low: low=ON, high=OFF)
     Camera      : gst-launch-1.0 v4l2src device=/dev/video0 (OV5647 NV12)
     Thermal     : /sys/class/thermal/thermal_zone0/temp  (millidegrees C)
 
@@ -30,6 +30,12 @@ from typing import Any, Callable
 
 from wled import WLEDSerialClient
 
+try:
+    import gpiod
+    _GPIOD_PYTHON = True
+except ImportError:
+    _GPIOD_PYTHON = False
+
 log = logging.getLogger("functiongemma.hardware")
 
 LED_ROOT = Path("/sys/class/leds")
@@ -39,6 +45,9 @@ STATUS_LEDS = {
     "blue":  LED_ROOT / "blue:status"  / "brightness",
 }
 THERMAL_ZONE = Path("/sys/class/thermal/thermal_zone0/temp")
+
+# Buzzer GPIO line name as it appears in the DTS / gpioinfo output.
+_BUZZER_LINE_NAME = "BUZZERn"
 
 BUZZER_PATTERNS: dict[str, list[tuple[float, float]]] = {
     "beep":        [(0.15, 0.0)],
@@ -71,57 +80,75 @@ def _run(cmd: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[st
     )
 
 
-_HAS_GPIOD = (
-    shutil.which("gpiofind") is not None
-    and shutil.which("gpioset") is not None
-)
+def _find_gpio_line(name: str) -> tuple[str, int] | None:
+    """Search all gpiochip devices for a line with the given name.
 
-# BUZZERn is ACTIVE-LOW: gpioset value 0 = beeping, 1 = silent. The chip
-# driver also LATCHES the last-driven value across `gpioset --mode=exit`
-# calls (default mode), so once a value is set the line holds it
-# until something else drives it. This means we only need to write the
-# inverse polarity to play_buzzer's pulse semantics: state=True (pulse on)
-# → 0, state=False (silence) → 1. And every pattern MUST end with state=False
-# or the buzzer will be stuck on after exit.
-_BUZZER_OFF = "1"
-_BUZZER_ON = "0"
+    Returns (chip_path, offset) or None if not found.
+    """
+    import glob
+    for chip_path in sorted(glob.glob("/dev/gpiochip*")):
+        try:
+            with gpiod.Chip(chip_path) as chip:
+                n = chip.get_info().num_lines
+                for offset in range(n):
+                    if chip.get_line_info(offset).name == name:
+                        return chip_path, offset
+        except Exception:  # noqa: BLE001
+            pass
+    return None
 
 
-def _resolve_buzzer_line() -> tuple[str, str] | None:
-    """Return (chip, line) for the BUZZERn GPIO, or None if unavailable."""
-    if not _HAS_GPIOD:
+def _probe_buzzer() -> tuple[str, int] | None:
+    """Locate and probe the buzzer GPIO line by name.
+
+    Returns (chip_path, offset) if found and accessible, else None.
+    """
+    if not _GPIOD_PYTHON:
+        log.warning("gpiod Python library not available — buzzer disabled")
         return None
+    found = _find_gpio_line(_BUZZER_LINE_NAME)
+    if found is None:
+        log.warning("GPIO line %r not found — buzzer disabled", _BUZZER_LINE_NAME)
+        return None
+    chip_path, offset = found
     try:
-        find = _run(["gpiofind", "BUZZERn"])
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        log.warning("gpiofind not callable")
+        with gpiod.request_lines(
+            chip_path,
+            consumer="functiongemma-buzzer",
+            config={offset: gpiod.LineSettings(
+                direction=gpiod.line.Direction.OUTPUT,
+                output_value=gpiod.line.Value.ACTIVE,  # HIGH = silent
+            )},
+        ):
+            pass
+        log.info("buzzer: %s line %d (%s) OK", chip_path, offset, _BUZZER_LINE_NAME)
+        return chip_path, offset
+    except Exception as exc:
+        log.warning("gpiod buzzer probe failed: %s", exc)
         return None
-    if find.returncode != 0 or not find.stdout.strip():
-        log.warning("gpiofind BUZZERn empty (rc=%d, stderr=%r)",
-                    find.returncode, find.stderr)
-        return None
-    chip, _, line = find.stdout.strip().partition(" ")
-    return chip, line
 
 
-_BUZZER_LINE: tuple[str, str] | None = _resolve_buzzer_line()
+_BUZZER: tuple[str, int] | None = _probe_buzzer()
+_BUZZER_AVAILABLE = _BUZZER is not None
 
 
-def _drive_buzzer(value: str) -> None:
-    """Drive BUZZERn to '0' or '1'. Releases the line on exit, but the
-    Synaptics chip driver retains the latched value until next write."""
-    if _BUZZER_LINE is None:
+def _buzzer_silent() -> None:
+    """Drive the buzzer to silent (HIGH). Best-effort, safe for atexit/signal handlers."""
+    if _BUZZER is None:
         return
-    chip, line = _BUZZER_LINE
+    chip_path, offset = _BUZZER
     try:
-        _run(["gpioset", chip, f"{line}={value}"])
-    except subprocess.TimeoutExpired:
-        log.warning("gpioset BUZZERn=%s timed out", value)
-
-
-def _gpio_buzzer(state: bool) -> None:
-    """Drive BUZZERn for one half-pulse. ``state=True`` beeps, ``False`` silences."""
-    _drive_buzzer(_BUZZER_ON if state else _BUZZER_OFF)
+        with gpiod.request_lines(
+            chip_path,
+            consumer="functiongemma-buzzer",
+            config={offset: gpiod.LineSettings(
+                direction=gpiod.line.Direction.OUTPUT,
+                output_value=gpiod.line.Value.ACTIVE,
+            )},
+        ):
+            pass
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
 
 
 def _all_status_leds_off() -> None:
@@ -137,7 +164,7 @@ def _safe_shutdown_outputs() -> None:
     """Drive buzzer + status LEDs to silent/off. No instance state required —
     this is the bare minimum we always want, callable from a signal handler
     or atexit on a half-constructed/destroyed process."""
-    _drive_buzzer(_BUZZER_OFF)
+    _buzzer_silent()
     _all_status_leds_off()
 
 
@@ -176,7 +203,7 @@ def _install_shutdown_handlers() -> None:
 
     NOT covered: SIGKILL, kernel OOM kill, segfault, power loss. Those
     require an OS-level safety net (e.g. a systemd unit with ExecStopPost
-    that runs `gpioset gpiochip0 6=1`).
+    that drives `gpioset -c 0 6=1`).
     """
     global _HANDLERS_INSTALLED
     if _HANDLERS_INSTALLED:
@@ -239,10 +266,11 @@ class HardwareDevice:
         self._on_async_event = on_async_event
         self._alarms: dict[str, _Alarm] = {}
         self._alarm_lock = threading.Lock()
-        if not _HAS_GPIOD:
-            log.warning("libgpiod (gpiofind/gpioset) not in PATH — buzzer is a no-op")
-        elif _BUZZER_LINE is None:
-            log.warning("BUZZERn line not found via gpiofind — buzzer is a no-op")
+        if not _GPIOD_PYTHON:
+            log.warning("gpiod Python library not available — buzzer is a no-op")
+        elif not _BUZZER_AVAILABLE:
+            log.warning("GPIO line %r not accessible — buzzer is a no-op",
+                        _BUZZER_LINE_NAME)
         # Drive everything to a safe state on construction in case a prior
         # process crashed mid-pulse and left a stuck output.
         _safe_shutdown_outputs()
@@ -252,8 +280,8 @@ class HardwareDevice:
             "HardwareDevice ready (status_leds=%d, wled=%s, gpiod=%s, buzzer=%s)",
             sum(1 for p in STATUS_LEDS.values() if p.exists()),
             "yes" if wled else "no",
-            "yes" if _HAS_GPIOD else "no",
-            f"{_BUZZER_LINE[0]} {_BUZZER_LINE[1]}" if _BUZZER_LINE else "absent",
+            "yes" if _GPIOD_PYTHON else "no",
+            "available" if _BUZZER_AVAILABLE else "absent",
         )
 
     def cleanup(self) -> None:
@@ -283,15 +311,30 @@ class HardwareDevice:
     def play_buzzer(self, pattern: str) -> None:
         seq = BUZZER_PATTERNS.get(pattern, BUZZER_PATTERNS["beep"])
         log.info("buzzer pattern=%s pulses=%d", pattern, len(seq))
+        if _BUZZER is None:
+            return
+        chip_path, offset = _BUZZER
         try:
-            for on_s, off_s in seq:
-                _gpio_buzzer(True)
-                time.sleep(on_s)
-                _gpio_buzzer(False)
-                if off_s > 0:
-                    time.sleep(off_s)
-        finally:
-            _gpio_buzzer(False)
+            with gpiod.request_lines(
+                chip_path,
+                consumer="functiongemma-buzzer",
+                config={offset: gpiod.LineSettings(
+                    direction=gpiod.line.Direction.OUTPUT,
+                    output_value=gpiod.line.Value.ACTIVE,  # start silent
+                )},
+            ) as req:
+                try:
+                    for on_s, off_s in seq:
+                        # Active-low: INACTIVE (LOW) = buzzer ON
+                        req.set_value(offset, gpiod.line.Value.INACTIVE)
+                        time.sleep(on_s)
+                        req.set_value(offset, gpiod.line.Value.ACTIVE)
+                        if off_s > 0:
+                            time.sleep(off_s)
+                finally:
+                    req.set_value(offset, gpiod.line.Value.ACTIVE)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("buzzer gpiod error: %s", exc)
 
     # ---------------------------------------------------------------- Alarms
 

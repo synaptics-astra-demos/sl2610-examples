@@ -16,8 +16,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget,
 )
@@ -58,7 +58,7 @@ def _chip(text: str, *, fg: str, bg: str, border: str) -> QLabel:
         f"border-radius: 999px; padding: 2px 7px; "
         f"font-size: 10px; font-weight: 700; letter-spacing: 0.06em;"
     )
-    lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+    lbl.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
     return lbl
 
 
@@ -73,7 +73,7 @@ class _UserBubble(QFrame):
         layout.setSpacing(5)
 
         chip = _chip("YOU", fg=P.accent_dark, bg=P.bg_secondary, border="#bfdbfe")
-        layout.addWidget(chip, alignment=Qt.AlignLeft)
+        layout.addWidget(chip, alignment=Qt.AlignmentFlag.AlignLeft)
 
         body = QLabel(text)
         body.setWordWrap(True)
@@ -128,14 +128,14 @@ class _ToolBubble(QFrame):
                     f'<span style="color:{P.text_muted}">=</span>'
                     f'<span style="color:{P.text_primary};font-weight:600">{v_esc}</span>'
                 )
-                chip_w.setTextFormat(Qt.RichText)
+                chip_w.setTextFormat(Qt.TextFormat.RichText)
                 chip_w.setStyleSheet(
                     f"background: {P.bg_secondary}; "
                     f"border: 1px solid {chip_border}; "
                     f"border-radius: 5px; padding: 2px 7px; "
                     f"font-family: {T.mono}; font-size: 11px;"
                 )
-                chip_w.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+                chip_w.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
                 args_row.addWidget(chip_w)
             args_row.addStretch(1)
             layout.addLayout(args_row)
@@ -193,7 +193,7 @@ class _AssistantBubble(QFrame):
         layout.setSpacing(5)
 
         chip = _chip("ASSISTANT", fg=P.text_secondary, bg=P.bg_tertiary, border=P.border)
-        layout.addWidget(chip, alignment=Qt.AlignLeft)
+        layout.addWidget(chip, alignment=Qt.AlignmentFlag.AlignLeft)
 
         body = QLabel(text)
         body.setWordWrap(True)
@@ -228,17 +228,17 @@ class _EmptyState(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 24, 14, 24)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         title = QLabel("Ready when you are")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
             f"font-size: 14px; font-weight: 600; color: {P.text_secondary}; "
             "background: transparent;"
         )
 
         sub = QLabel('Try: "turn on the lights" or "beep three times"')
-        sub.setAlignment(Qt.AlignCenter)
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub.setStyleSheet(
             f"font-size: 11px; color: {P.text_muted}; "
             f"font-family: {T.mono}; background: transparent;"
@@ -307,7 +307,7 @@ class CommandLog(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("CommandLog")
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
 
         self._turns: deque[LogTurn] = deque(maxlen=MAX_TURNS)
         self._thinking_bubble: _ThinkingBubble | None = None
@@ -337,8 +337,8 @@ class CommandLog(QFrame):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QFrame.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         self._container = QWidget()

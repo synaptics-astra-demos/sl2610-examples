@@ -1,4 +1,4 @@
-"""Main PyQt5 window: status bar, metrics, scrolling tool log, input row.
+"""Main PyQt6 window: status bar, metrics, scrolling tool log, input row.
 
 Designed for a 480x800 portrait 7" panel — same target size used in the
 Claude Design handoff for the Coralboard. Visual structure:
@@ -25,11 +25,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton,
-    QScrollArea, QShortcut, QSizePolicy, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 import icons
@@ -135,7 +135,7 @@ class _AnimatedStatusLine(QWidget):
         self._dot = QFrame()
         self._dot.setFixedSize(6, 6)
         self._dot.hide()
-        layout.addWidget(self._dot, alignment=Qt.AlignVCenter)
+        layout.addWidget(self._dot, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self._label = QLabel("Ready.")
         self._label.setStyleSheet(
@@ -360,7 +360,7 @@ class ChatWindow(QMainWindow):
         icons.ensure_loaded()
         self.send_btn = QPushButton(icons.SEND)
         self.send_btn.setObjectName("PrimaryButton")
-        self.send_btn.setCursor(Qt.PointingHandCursor)
+        self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_btn.setFixedSize(44, 44)
         self.send_btn.setStyleSheet(
             "QPushButton#PrimaryButton {"
@@ -384,8 +384,8 @@ class ChatWindow(QMainWindow):
         input_row.setSpacing(7)
         input_row.addWidget(self.input, stretch=1)
         if self.mic_btn is not None:
-            input_row.addWidget(self.mic_btn, alignment=Qt.AlignVCenter)
-        input_row.addWidget(self.send_btn, alignment=Qt.AlignVCenter)
+            input_row.addWidget(self.mic_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        input_row.addWidget(self.send_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.status = _AnimatedStatusLine()
 
@@ -396,10 +396,10 @@ class ChatWindow(QMainWindow):
         chip_row.setSpacing(6)
         for category, pool in PROMPT_CATEGORIES:
             chip = QPushButton(category)
-            chip.setCursor(Qt.PointingHandCursor)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
             chip.setStyleSheet(_CHIP_QSS)
             chip.setFixedHeight(CHIP_HEIGHT)
-            chip.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
             chip.clicked.connect(
                 lambda _checked, pool=pool: self._on_category_chip(pool)
             )
@@ -414,11 +414,11 @@ class ChatWindow(QMainWindow):
         chip_scroll = QScrollArea()
         chip_scroll.setWidget(chip_container)
         chip_scroll.setWidgetResizable(False)
-        chip_scroll.setFrameShape(QFrame.NoFrame)
-        chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        chip_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         chip_scroll.setFixedHeight(46)
-        chip_scroll.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        chip_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         chip_scroll.setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
         )
@@ -443,8 +443,8 @@ class ChatWindow(QMainWindow):
         container.setLayout(root)
         self.setCentralWidget(container)
 
-        QShortcut(QKeySequence("Ctrl+P"), self, activated=self._screenshot)
-        QShortcut(QKeySequence("Esc"), self, activated=self.close)
+        QShortcut(QKeySequence("Ctrl+P"), self).activated.connect(self._screenshot)
+        QShortcut(QKeySequence("Esc"), self).activated.connect(self.close)
 
         self._turn_logger = TurnLogger()
 

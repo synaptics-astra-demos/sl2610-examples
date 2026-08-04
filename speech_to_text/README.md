@@ -8,7 +8,7 @@ This example uses the following models:
 
 - [Silero VAD (Voice Activity Detection)](https://github.com/snakers4/silero-vad), a lightweight, high-performance model designed to detect the presence of human speech in audio streams.
 
-The User Interface is based on pyQt5, a set of Python bindings for Qt5.
+The User Interface is based on PyQt6, a set of Python bindings for Qt6.
 
 ## Project Structure
 ```

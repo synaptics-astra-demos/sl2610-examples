@@ -1,4 +1,4 @@
-"""PyQt5 launcher for the FunctionGemma physical-AI demo.
+"""PyQt6 launcher for the FunctionGemma physical-AI demo.
 
 By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
 to drive an Adafruit Mini Sparkle Motion over USB-CDC.
@@ -24,7 +24,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication
 
 from chat_window import AlarmSignals, ChatWindow
 from cpu_governor import ensure_performance_governor
@@ -142,7 +142,7 @@ def main() -> int:
     else:
         win.show()
     try:
-        return app.exec_()
+        return app.exec()
     finally:
         if voice is not None:
             voice.stop()
