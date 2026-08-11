@@ -1,0 +1,3 @@
+sounddevice
+tokenizers==0.23.1
+soundfile==0.13.1
