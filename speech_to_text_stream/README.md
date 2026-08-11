@@ -132,14 +132,17 @@ python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq \
 
 To try the Silero neural VAD instead of the default energy detector (see the
 VAD step under [Step by step](#step-by-step) below for the tradeoff), install
-`onnxruntime` and pass `--vad-backend silero`:
+`silero-vad-notorch` (already listed in `requirements.txt`) and pass
+`--vad-backend silero`:
 
 ```sh
-pip install onnxruntime
+pip install -r requirements.txt
 python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --vad-backend silero
 ```
 
-The Silero onnx model (~2 MB) is auto-downloaded on first use.
+This is the same `silero-vad-notorch` package used by the `speech_to_text`
+example's live captioning. Its Silero ONNX model ships as bundled package
+data, so no network download or separate model directory is needed.
 
 List audio input devices and pick a different one:
 
@@ -295,15 +298,16 @@ quiet) / `silence`.
   line only prints with `--profile`.) Zero extra dependencies, but it can't
   tell speech from any other sound of similar loudness.
 - `silero` (`SileroVAD`): runs [Silero's](https://github.com/snakers4/silero-vad)
-  small neural VAD (ONNX, ~2 MB) instead of raw RMS — actually models
+  small neural VAD via the `silero-vad-notorch` package (the same one used by
+  `speech_to_text`'s live captioning) instead of raw RMS — actually models
   speech's spectral/temporal structure, so it's far more robust to
   non-stationary background noise (coughs, TV, keyboard, HVAC). Each 1280-sample
   pipeline chunk is split into 512-sample windows fed through the model in
   sequence (max probability across windows = the chunk's score), compared
   against `--vad-threshold` (default `0.5`, a probability). Requires
-  `onnxruntime` (`pip install onnxruntime`); the onnx model itself is
-  auto-downloaded on first use into `models/silero_vad/silero_vad.onnx`, or
-  point `--vad-model` at a local copy.
+  `silero-vad-notorch` (`pip install -r requirements.txt`); its onnx model
+  ships as bundled package data, so nothing is downloaded at runtime — or
+  point `--vad-model` at a custom onnx file to override it.
 
 **5. Encoder step** (`process_audio_chunk`, runs on every speech chunk). Builds a
 feed dict keyed by the encoder's input names (audio, the three rolling buffers, a

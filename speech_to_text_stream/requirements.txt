@@ -1,3 +1,4 @@
 sounddevice
 tokenizers==0.23.1
 soundfile==0.13.1
+silero-vad-notorch==6.2.1.1

@@ -37,173 +37,17 @@ except ImportError:
     print("  pip install tokenizers", file=sys.stderr)
     sys.exit(1)
 
-from app_utils.torq_examples.moonshine_streaming.src.runner import MoonshineStaticStreamingModel, find_asset  # noqa: E402 (sibling import)
-#from app_utils.torq_examples.moonshine_streaming.src.infer import EnergyVAD, SileroVAD
-
-from utils.download import default_models_dir, download_from_url
+from app_utils.torq_examples.moonshine_streaming.src.runner import MoonshineStaticStreamingModel, find_asset
 from app_utils.log import add_logging_args, configure_logging
 from app_utils.npu import enable_npu_clock
+from profiling import WorkerProfiler
+from vad import EnergyVAD, SileroVAD
 
 logger = logging.getLogger("speech_to_text_stream")
 
 # Sentinel put on the audio queue to mark end-of-input in --wav mode (never
 # emitted by the live mic path, which just keeps streaming until Ctrl+C).
 _END_OF_STREAM = object()
-
-
-# ── VAD ───────────────────────────────────────────────────────────────────────
-
-# Pinned release of https://github.com/snakers4/silero-vad — same ONNX graph
-# published under the `silero-vad` PyPI package, fetched directly so this demo
-# doesn't need to pull in Silero's torch/torchaudio dependencies just to reach
-# a 2 MB onnx file.
-_SILERO_VAD_URL = "https://github.com/snakers4/silero-vad/raw/v5.1.2/src/silero_vad/data/silero_vad.onnx"
-
-
-class _HangoverVAD:
-    """
-    Shared speech/silence endpointing: given a per-chunk score from a
-    subclass, tracks speech_start/speech_end transitions with a fixed
-    silence-duration hangover before ending an utterance. Both VAD backends
-    below are driven by this identical state machine — only how the score is
-    computed differs.
-    """
-    def __init__(self, threshold, silence_duration, sample_rate):
-        self.threshold                = threshold
-        self.silence_duration_samples = int(silence_duration * sample_rate)
-        self.sample_rate              = sample_rate
-        self.silence_counter          = 0
-        self.is_speaking              = False
-        self.last_score               = 0.0
-        self.silence_remaining_sec    = 0.0
-
-    def _score(self, audio_chunk) -> float:
-        raise NotImplementedError
-
-    def process_chunk(self, audio_chunk):
-        score = self._score(audio_chunk)
-        self.last_score = score
-
-        is_speech = score > self.threshold
-        if is_speech:
-            self.silence_counter       = 0
-            self.silence_remaining_sec = 0.0
-            if not self.is_speaking:
-                self.is_speaking = True
-                return "speech_start"
-            return "speech"
-        else:
-            if self.is_speaking:
-                self.silence_counter += len(audio_chunk)
-                remaining = max(0, self.silence_duration_samples - self.silence_counter)
-                self.silence_remaining_sec = remaining / self.sample_rate
-                if self.silence_counter >= self.silence_duration_samples:
-                    self.is_speaking           = False
-                    self.silence_counter        = 0
-                    self.silence_remaining_sec  = 0.0
-                    return "speech_end"
-                return "speech"
-            self.silence_remaining_sec = 0.0
-            return "silence"
-
-
-class EnergyVAD(_HangoverVAD):
-    """
-    Simple RMS energy-based voice activity detector for streaming.
-    Self-calibrating: samples ambient noise during the first 12 chunks (~960 ms).
-    """
-    def __init__(self, threshold=0.015, silence_duration=2.5, sample_rate=16000,
-                 report_calibration=False):
-        super().__init__(threshold, silence_duration, sample_rate)
-        self.base_threshold     = threshold
-        self.report_calibration = report_calibration
-        self.ambient_rms        = []
-        self.calibrated         = False
-
-    def _score(self, audio_chunk):
-        return np.sqrt(np.mean(audio_chunk ** 2)) if len(audio_chunk) > 0 else 0.0
-
-    def process_chunk(self, audio_chunk):
-        if not self.calibrated:
-            rms = self._score(audio_chunk)
-            self.last_score = rms
-            self.ambient_rms.append(rms)
-            if len(self.ambient_rms) >= 12:
-                mean_rms = np.mean(self.ambient_rms)
-                std_rms  = np.std(self.ambient_rms)
-                self.threshold = max(mean_rms + 4 * std_rms, self.base_threshold)
-                if self.report_calibration:
-                    print(
-                        f"\n[VAD Calibration] Ambient Noise RMS: {mean_rms:.5f} "
-                        f"(std: {std_rms:.5f}). Threshold set to: {self.threshold:.5f}",
-                        file=sys.stderr,
-                    )
-                self.calibrated = True
-            return "silence"
-        return super().process_chunk(audio_chunk)
-
-
-class SileroVAD(_HangoverVAD):
-    """
-    Neural VAD using Silero's ONNX model (https://github.com/snakers4/silero-vad).
-    The exported graph only accepts fixed-size windows (validated here for
-    192-512 samples at 16 kHz); each incoming pipeline chunk is split into
-    512-sample (32 ms) windows, zero-padding a short final window, and the max
-    per-window speech probability becomes the chunk's score — so one utterance
-    onset anywhere in the chunk is enough to trigger speech_start.
-    """
-    _WINDOW = 512  # samples per native inference call at 16 kHz
-
-    def __init__(self, model_path, threshold=0.5, silence_duration=2.5, sample_rate=16000,
-                 report_calibration=False):
-        if sample_rate != 16000:
-            raise ValueError("SileroVAD only supports 16 kHz audio")
-        super().__init__(threshold, silence_duration, sample_rate)
-        try:
-            import onnxruntime as ort
-        except ImportError:
-            print("Error: onnxruntime is required for --vad-backend silero. Install it with:",
-                  file=sys.stderr)
-            print("  pip install onnxruntime", file=sys.stderr)
-            sys.exit(1)
-        self.session     = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
-        self._state      = np.zeros((2, 1, 128), dtype=np.float32)
-        self._sr         = np.array(sample_rate, dtype=np.int64)
-        self.calibrated  = True  # fixed probability threshold, no ambient-noise warm-up needed
-        if report_calibration:
-            print(f"\n[VAD] Silero neural VAD ready — probability threshold: {threshold:.2f}",
-                  file=sys.stderr)
-
-    def _score(self, audio_chunk):
-        if len(audio_chunk) == 0:
-            return 0.0
-        prob = 0.0
-        for start in range(0, len(audio_chunk), self._WINDOW):
-            window = audio_chunk[start:start + self._WINDOW]
-            if len(window) < self._WINDOW:
-                window = np.pad(window, (0, self._WINDOW - len(window)))
-            out, self._state = self.session.run(
-                None,
-                {
-                    "input": window[np.newaxis, :].astype(np.float32),
-                    "state": self._state,
-                    "sr":    self._sr,
-                },
-            )
-            prob = max(prob, float(out[0, 0]))
-        return prob
-
-
-def _resolve_silero_model_path(explicit_path):
-    """Return a local path to the Silero VAD onnx model, downloading it into
-    the shared models dir (next to the ASR model files) on first use."""
-    if explicit_path:
-        return Path(explicit_path)
-    target = default_models_dir() / "silero_vad" / "silero_vad.onnx"
-    if not target.exists():
-        logger.info("Downloading Silero VAD model to %s ...", target)
-        download_from_url(_SILERO_VAD_URL, target)
-    return target
 
 
 # ── Terminal renderer ─────────────────────────────────────────────────────────
@@ -281,131 +125,6 @@ def _buf_bar(fill_frames, max_frames, width=10):
     secs     = fill_frames * 0.020
     max_secs = int(max_frames * 0.020)
     return f"[{col}{bar}\033[0m] {secs:.1f}/{max_secs}s"
-
-
-# ── Worker profiler ─────────────────────────────────────────────────────────
-
-class WorkerProfiler:
-    def __init__(self, chunk_budget_ms: float):
-        self.chunk_budget_ms = chunk_budget_ms
-        self.chunk_ms          = []
-        self.chunk_had_decode  = []
-        self.encode_ms         = []
-        self.decode_ms         = []
-        self.decode_steps      = []
-        self.queue_depth       = []
-        self.missed            = 0
-        self.t_start           = time.perf_counter()
-
-    def record_chunk(self, ms: float, had_decode: bool):
-        self.chunk_ms.append(ms)
-        self.chunk_had_decode.append(had_decode)
-        if ms > self.chunk_budget_ms:
-            self.missed += 1
-
-    @staticmethod
-    def _stats(samples):
-        if not len(samples):
-            return dict(n=0, mean=0.0, p50=0.0, p95=0.0, p99=0.0, max=0.0)
-        a = np.asarray(samples, dtype=np.float64)
-        return dict(n=len(a), mean=float(a.mean()),
-                    p50=float(np.percentile(a, 50)), p95=float(np.percentile(a, 95)),
-                    p99=float(np.percentile(a, 99)), max=float(a.max()))
-
-    def summary(self, out_dir=None):
-        import numpy as _np
-        cm  = _np.asarray(self.chunk_ms, dtype=_np.float64)
-        had = _np.asarray(self.chunk_had_decode, dtype=bool)
-        cheap = cm[~had] if had.any() else cm
-        heavy = cm[had]
-
-        def row(label, s):
-            return (f"    {label:18s} n={s['n']:>5d}  p50={s['p50']:7.2f}  "
-                     f"p95={s['p95']:7.2f}  p99={s['p99']:7.2f}  max={s['max']:7.2f} ms")
-
-        n = len(cm)
-        miss_pct = 100.0 * self.missed / n if n else 0.0
-        col = "\033[32m" if miss_pct < 1 else "\033[33m" if miss_pct < 5 else "\033[31m"
-        print("\n" + "=" * 64, file=sys.stderr)
-        print("  Worker profile — real-time keep-up (2-Split)", file=sys.stderr)
-        print("=" * 64, file=sys.stderr)
-        print(f"  chunk budget: {self.chunk_budget_ms:.1f} ms/chunk   "
-              f"chunks processed: {n}", file=sys.stderr)
-        print(f"  missed real-time: {col}{self.missed} ({miss_pct:.1f}%)\033[0m",
-              file=sys.stderr)
-        print(row("chunk (all)",      self._stats(cm)),    file=sys.stderr)
-        print(row("chunk (cheap)",    self._stats(cheap)), file=sys.stderr)
-        print(row("chunk (w/ decode)",self._stats(heavy)), file=sys.stderr)
-        print(row("encode/chunk",     self._stats(self.encode_ms)), file=sys.stderr)
-        print(row("decode/call",      self._stats(self.decode_ms)), file=sys.stderr)
-        print(row("decode steps/call", self._stats(self.decode_steps)), file=sys.stderr)
-
-        # Amortize decoder forward passes over the audio cadence.
-        # 1 chunk = feature_stride (4) frames; decode runs only on trigger chunks.
-        steps     = _np.asarray(self.decode_steps, dtype=_np.float64)
-        n_decodes = len(steps)
-        total_steps = float(steps.sum()) if n_decodes else 0.0
-        frames_per_chunk = 4  # feature_stride
-        steps_per_chunk  = total_steps / n if n else 0.0
-        steps_per_frame  = total_steps / (n * frames_per_chunk) if n else 0.0
-        print(f"    decoder forward passes: {int(total_steps)} over {n_decodes} decode calls",
-              file=sys.stderr)
-        print(f"    amortized: {steps_per_chunk:.2f} steps/chunk   "
-              f"{steps_per_frame:.2f} steps/frame", file=sys.stderr)
-        if self.queue_depth:
-            qd = _np.asarray([q for _, q in self.queue_depth], dtype=_np.float64)
-            print(f"    queue depth        max={int(qd.max())}  "
-                  f"mean={qd.mean():.2f}  (sustained growth ⇒ falling behind)",
-                  file=sys.stderr)
-
-        # ── Real-time keep-up: work-time / audio-time (≥1.0× ⇒ cannot keep up) ──
-        # Each processed chunk == chunk_budget_ms of audio (e.g. 80 ms).
-        audio_ms   = n * self.chunk_budget_ms
-        audio_s    = audio_ms / 1000.0
-        enc_total  = float(_np.sum(self.encode_ms)) if self.encode_ms else 0.0
-        dec_total  = float(_np.sum(self.decode_ms)) if self.decode_ms else 0.0
-        work_total = float(cm.sum())
-
-        def _rtf_row(label, work_ms):
-            rtf = work_ms / audio_ms if audio_ms else 0.0
-            c = "\033[32m" if rtf < 0.8 else "\033[33m" if rtf < 1.0 else "\033[31m"
-            return (f"    {label:8s} {c}{rtf:5.2f}x real-time\033[0m"
-                    f"  ({work_ms/1000:6.1f}s work / {audio_s:5.1f}s audio)")
-
-        print("  ── keep-up (work/audio; total ≥ 1.0x ⇒ cannot keep up) ──", file=sys.stderr)
-        print(_rtf_row("total",   work_total), file=sys.stderr)
-        print(_rtf_row("encoder", enc_total),  file=sys.stderr)
-        print(_rtf_row("decoder", dec_total),  file=sys.stderr)
-
-        if total_steps and audio_s:
-            print(f"    decoder: {dec_total / total_steps:5.1f} ms/token   "
-                  f"{total_steps / audio_s:5.1f} steps/s  "
-                  f"(speech is ~4-6.5 tok/s; more ⇒ re-decode waste)", file=sys.stderr)
-
-        # Queue-depth slope: a sustained positive trend is the definitive
-        # "falling behind" signal (max/mean alone can hide it).
-        if self.queue_depth and len(self.queue_depth) >= 2:
-            ts = _np.asarray([t for t, _ in self.queue_depth], dtype=_np.float64)
-            qz = _np.asarray([q for _, q in self.queue_depth], dtype=_np.float64)
-            if ts.max() > ts.min():
-                slope = float(_np.polyfit(ts, qz, 1)[0])  # queue items / second
-                c = "\033[32m" if slope < 0.5 else "\033[33m" if slope < 2 else "\033[31m"
-                print(f"    queue growth: {c}{slope:+.2f} items/s\033[0m"
-                      f"  (>0 sustained ⇒ backlog growing)", file=sys.stderr)
-
-        if out_dir is not None:
-            out_dir = Path(out_dir)
-            out_dir.mkdir(parents=True, exist_ok=True)
-            _np.save(out_dir / "worker_chunk_ms.npy", cm)
-            _np.save(out_dir / "worker_chunk_had_decode.npy", had)
-            _np.save(out_dir / "worker_encode_ms.npy", _np.asarray(self.encode_ms))
-            _np.save(out_dir / "worker_decode_ms.npy", _np.asarray(self.decode_ms))
-            _np.save(out_dir / "worker_decode_steps.npy", _np.asarray(self.decode_steps))
-            _np.save(out_dir / "worker_queue_depth.npy",
-                     _np.asarray(self.queue_depth, dtype=_np.float64))
-            _np.save(out_dir / "chunk_budget_ms.npy", _np.array(self.chunk_budget_ms))
-            print(f"  dumped raw arrays to {out_dir}/", file=sys.stderr)
-        print("=" * 64, file=sys.stderr)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -535,9 +254,9 @@ def main(args: argparse.Namespace):
     if vad_threshold is None:
         vad_threshold = 0.5 if args.vad_backend == "silero" else 0.010
     if args.vad_backend == "silero":
-        vad_model_path = _resolve_silero_model_path(args.vad_model)
-        logger.info("VAD backend:      silero (%s, threshold %.2f)", vad_model_path, vad_threshold)
-        vad = SileroVAD(vad_model_path, threshold=vad_threshold, silence_duration=args.vad_silence,
+        logger.info("VAD backend:      silero (%s, threshold %.2f)",
+                     args.vad_model or "bundled silero-vad-notorch model", vad_threshold)
+        vad = SileroVAD(args.vad_model, threshold=vad_threshold, silence_duration=args.vad_silence,
                          report_calibration=args.profile)
     else:
         logger.info("VAD backend:      energy (self-calibrating, floor %.4f)", vad_threshold)
@@ -810,7 +529,7 @@ if __name__ == "__main__":
     parser.add_argument("--vad-backend",   type=str,   default="energy",
                         choices=["energy", "silero"],
                         help="VAD implementation: self-calibrating RMS energy, or Silero's neural VAD (default: energy)")
-    parser.add_argument("--vad-model",     type=str,   default=None,           help="Path to the Silero VAD onnx file (only used with --vad-backend silero; default: auto-download into the shared models dir)")
+    parser.add_argument("--vad-model",     type=str,   default=None,           help="Path to a custom Silero VAD onnx file (only used with --vad-backend silero; default: bundled model from silero-vad-notorch, no download needed)")
     parser.add_argument("--vad-threshold", type=float, default=None,           help="VAD trigger threshold: RMS floor for 'energy' (default: 0.010), speech probability for 'silero' (default: 0.5)")
     parser.add_argument("--vad-silence",   type=float, default=2.5,            help="Silence gap to split utterances in seconds (default: 2.5)")
     parser.add_argument("--vad-lookback",  type=int,   default=None,           help="Pre-speech chunks to replay into the encoder on speech_start, to avoid clipping word onsets (default: model.warmup_chunks; 0 disables)")
