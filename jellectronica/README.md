@@ -12,7 +12,7 @@ An optional **MelodyRNN AI accompaniment** layer listens to the triggered notes 
 
 The detection model and video source are fully configurable. Swap in your own YOLOv8 model and any livestream to turn *anything* into music:
 
-- 🐕 **Your dog at home** — Train a dog detection model, point it at a Google Nest camera. Sit the Coral on your desk — every time your dog wanders through the living room, music plays. Your dog is composing for you while you’re at work.
+- 🐕 **Your dog at home** — Train a dog detection model, point it at a Google Nest camera. Sit the Coralboard on your desk — every time your dog wanders through the living room, music plays. Your dog is composing for you while you’re at work.
 - 🐦 **Birds in your backyard** — Point a camera at a bird feeder with a bird classification model. Each species triggers a different timbre.
 - 🚗 **Street traffic** — Mount a camera at a window. Cars become bass notes, pedestrians become chimes, cyclists become arpeggios.
 - 🌊 **Waves at the beach** — Any object, any stream, any sound palette.
@@ -21,9 +21,8 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 
 ---
 
-## Prerequisites
+## 🔧 Hardware Setup
 
-### Hardware
 
 | Component | Required |
 |-----------|----------|
@@ -33,6 +32,8 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 | **Network** | For installation and YouTube livestream (optional — local video fallback included) |
 | **Power** | USB Type C |
 
+## Installation
+
 ### Board Firmware
 
 - Astra SDK v2.0+ (Yocto scarthgap, Python 3.12)
@@ -41,126 +42,28 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 
 - Android Debug Bridge (ADB) from [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) (recommended)
 
----
 
+### Setup the base environment
 
-## Set Up
+Clone the repository including submodules, run setup scripts, and install base Python dependencies according to the [Top Level Readme Installation Section](../README.md#installation)
 
-- Connect to the network
-
-The Synaptics Coralboards support network sharing over USB. Connect to a host machine and enable network sharing. See [Coralboard Documentation](https://developers.google.com/coral/products/SL2610-dev-board) for details. 
-
-Optionally, if you have the supported WiFi/BT module, you can use WiFi for the network and Bluetooth for the audio device. This module comes standard with the Machina Kit, but sold separately with the Coralboard.
-
-
-- Attach USB audio device such as speaker or headset.
-
-
-### Choose an installation mdethod
-
-1. Indirect - clone on your host machine than copy the files to the Coralboard
-
-2. Direct - clone directly onto the coralboard
-
-
-### 🔧 Installation (Indirect Method)
-
-
-- Clone the repositiory on your host machine.
-
-```bash
-git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
-cd sl2610-examples
-```
-
-If you already cloned without submodules, run:
-
-```bash
-git submodule update --init --recursive
-```
-
-- Copy over the files.
-
-```bash
-# Push the files to the target
-
-adb push . /home/root/sl2610-examples
-
-# Or use SCP (if network configured)
-scp -r . root@<board-ip>:/home/root/sl2610-examples
-```
-
-- Connect to the target 
-
-```bash
-# Use ADB
-adb shell
-
-# or us SSH
-ssh root@<board-ip>
-```
-
-- On the target, navigate to the repository directory:
-
-```bash
-cd /home/root/sl2610-examples
-```
-
-### 🔧 Installation (Direct Method)
- 
-- Connect to the target 
-
-```bash
-# Use ADB
-adb shell
-
-# or us SSH
-ssh root@<board-ip>
-```
-
-- Clone the repository using the following command:
-
-```bash
-git clone --recurse-submodules https://github.com/synaptics-astra-demos/sl2610-examples
-```
-
-- Navigate to the repository directory:
-
-```bash
-cd sl2610-examples
-```
-
-If you already cloned without submodules, run `git submodule update --init --recursive`.
-
-### Setup Python Environment
-
-- To get started, set up your Python environment. This step ensures all required dependencies are installed and isolated within a virtual environment:
-
-```bash
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-```
-
-- Install general dependencies for sl2610-examples
-
-```bash
-pip install -r requirements.txt
-```
-
-- Install specific dependencies for this example
-
-[!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
-
+### Install example-specific dependencies
 
 ```bash
 cd jellectronica
+
 pip install -r requirements.txt
 ```
+### Download Models
 
+Download the files from HuggingFace:
+
+```bash
+python setup_demo.py
+```
 #### Optionally Pair a Bluetooth Device
 
 - If you have the WiFi/BT module, follow the [bluetooth guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#using-bluetooth) to pair a bluetooth headset or speaker. 
-
 
 
 ### 3. Choose Your Display Mode
@@ -345,10 +248,10 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 jellectronica
 ├── server.py                 # Headless server (MJPEG + WebSocket)
 ├── app.py                    # Standalone DSI/HDMI display
-├── detector.py               # YOLOv8 — Torq NPU (primary) + ONNX CPU (fallback)
+├── detector.py               # YOLOv8 — Torq NPU
 ├── tracker.py                # Multi-object tracker with grid mapping
 ├── music_engine.py           # Audio engine (5 channels + effects)
-├── soft_synth.py             # Built-in synthesizer (pure Python/NumPy, zero dependencies)
+├── soft_synth.py             # Built-in synthesizer (pure Python/NumPy)
 ├── melody_rnn.py             # MelodyRNN AI accompaniment (pure NumPy LSTM inference)
 ├── requirements.txt          # Python dependencies
 ├── ../models/moon_jellyfish
@@ -360,13 +263,13 @@ jellectronica
 └── docs/
     ├── architecture.md       # Technical architecture deep-dive
     └── model-conversion.md   # How to retrain/convert the YOLOv8 model
- ``
+ ```
 
 ---
 
 ## Dependencies
 
-### Pre-installed on Board (Yocto)
+### Pre-installed on Board (Astra SDK OOBE image v2.3 or later)
 
 - Python 3.12
 - OpenCV (with FFMPEG)
@@ -384,7 +287,7 @@ Jellyfish video content included in this project is provided courtesy of the Mon
 
 ## Credits
 
-- **Jellectronica Coral Board Native Edition**: [jellectronica-coral](https://github.com/raphdixon/jellectronica-coral) by Raphael Dixon
+- **Jellectronica Coralboard Native Edition**: [jellectronica-coral](https://github.com/raphdixon/jellectronica-coral) by Raphael Dixon
 - **Jellyfish Detection Model**: [seaphony-ml](https://github.com/patrickdmiller/seaphony-ml) by Patrick Miller
 - **Live Stream**: [Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) Moon Jelly Cam
 - **MelodyRNN Weights**: [Magenta](https://magenta.tensorflow.org/) basic_rnn checkpoint by Google Brain

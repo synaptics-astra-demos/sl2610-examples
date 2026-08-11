@@ -700,7 +700,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Jellectronica — Native Server")
     parser.add_argument("--video", default=DEFAULT_VIDEO, help="Video source (YouTube URL, file, or stream)")
-    parser.add_argument("--model", default="../models/moon_jellyfish/moon320.vmfb", help="Model path (.vmfb for NPU, .onnx for CPU)")
+    parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-jellyfish-int8-torq/moon320_int8.vmfb", help="Model path (.vmfb for NPU, .onnx for CPU)")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host")
     parser.add_argument("--port", type=int, default=5002, help="HTTP port")
     parser.add_argument("--ws-port", type=int, default=5003, help="WebSocket port")
