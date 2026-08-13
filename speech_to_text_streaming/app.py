@@ -43,7 +43,7 @@ from app_utils.npu import enable_npu_clock
 from profiling import WorkerProfiler
 from vad import EnergyVAD, SileroVAD
 
-logger = logging.getLogger("speech_to_text_stream")
+logger = logging.getLogger("speech_to_text_streaming")
 
 # Sentinel put on the audio queue to mark end-of-input in --wav mode (never
 # emitted by the live mic path, which just keeps streaming until Ctrl+C).
@@ -538,7 +538,7 @@ if __name__ == "__main__":
     parser.add_argument("--commit-delay",  type=float, default=3.0,            help="Only commit tokens at least this many seconds of audio behind the live frontier (default: 3.0)")
     parser.add_argument("--full-decode",   action="store_true",               help="Disable incremental decode; re-decode from BOS each time (baseline behaviour)")
     parser.add_argument("--profile",       action="store_true",               help="Record per-chunk worker timing, missed-real-time count, decode/encode latency and queue depth; print + dump on exit")
-    parser.add_argument("--profile-out",   type=str,   default=None,           help="Directory for --profile dumps (default: speech_to_text_stream/profile_results)")
+    parser.add_argument("--profile-out",   type=str,   default=None,           help="Directory for --profile dumps (default: speech_to_text_streaming/profile_results)")
     parser.add_argument("--list-devices",  "-l", action="store_true",         help="List audio devices and exit")
     parser.add_argument("--no-refresh",    action="store_true", default=False, help="Skip the Hugging Face check for updated models (offline/airgapped runs)")
     add_logging_args(parser)

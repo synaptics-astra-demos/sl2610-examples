@@ -48,7 +48,7 @@ Clone the repository including submodules, run setup scripts, and install base P
 ### Install example-specific dependencies
 
 ```sh
-cd speech_to_text_stream
+cd speech_to_text_streaming
 pip install -r requirements.txt
 ```
 
@@ -69,7 +69,7 @@ This downloads the default model files from our HuggingFace repo to: `models/Syn
 
 ## Running
 
-Run the demo from the `speech_to_text_stream` directory:
+Run the demo from the `speech_to_text_streaming` directory:
 
 ```sh
 python app.py
@@ -86,7 +86,7 @@ Press `Ctrl+C` to exit.
 
 You can optionally pass in the location to the model file: 
 ```sh
-cd speech_to_text_stream
+cd speech_to_text_streaming
 python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq
 ```
 

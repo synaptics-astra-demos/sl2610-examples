@@ -19,7 +19,7 @@ from app_utils.demo_utils import run_demo_setup_cli
 from app_utils.paths import MODELS_DIR
 from app_utils.torq_examples.moonshine_streaming.setup_demo import download_moonshine_streaming
 
-logger = logging.getLogger("speech_to_text_stream.setup")
+logger = logging.getLogger("speech_to_text_streaming.setup")
 
 
 def setup_speech_to_text(
@@ -33,7 +33,7 @@ def setup_speech_to_text(
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
         version_map={"torq.runtime": ">=2.0.0a1"},
-        demo_name="speech_to_text_stream",
+        demo_name="speech_to_text_streaming",
     )
 
 

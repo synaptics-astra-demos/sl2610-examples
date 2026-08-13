@@ -8,7 +8,7 @@ Run after a profiled session:
     python src/infer.py -m ../models/... --wav sample.wav --profile
     python src/plot_profile.py
 
-Reads ``profile_results/*.npy`` (default: ``speech_to_text_stream/profile_results``,
+Reads ``profile_results/*.npy`` (default: ``speech_to_text_streaming/profile_results``,
 i.e. sibling to ``src/``) and writes PNGs to ``profile_results/plots/``.
 """
 

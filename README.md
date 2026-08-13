@@ -114,13 +114,15 @@ Optional:
 
 ## Examples
 
-Check out the README.md files in each of these example directories to run the examples. 
+Check out the README.md files in each of the example folders. 
 
-- object_detection - detect objects with YoloV8 - [README.md](object_detection/README.md)
-- image_classification - classify images with MobileNetV2 - [README.md](image_classification/README.md)
-- speech_to_text - capture speech with Moonshine - [README.md](speech_to_text/README.md)
-- gemma_translation - translate text to other languages using Gemma3 - [README.md](gemma_translate/README.md)
-- function_calling - control the system with voice/text - [README.md](Function_calling/README.md)
+- [object_detection](object_detection/README.md) - detect objects with YoloV8
+- [image_classification](image_classification/README.md) - classify images with MobileNetV2
+- [speech_to_text](speech_to_text/README.md) - capture speech sentences with Moonshine
+- [speech_to_text_streaming](speech_to_text_streaming/README.md) - capture speech word-by-word with Moonshine V2
+- [gemma_translation](gemma_translate/README.md) - translate text to other languages using Gemma3
+- [function_calling](Function_calling/README.md) - control a device with natural language
+- [jellectronica](jellectronica/README.md) - turn a video stream into ambient music with Melody RNN
 
 
 ## Auto-start with Systemd (GUI Demos)
