@@ -105,11 +105,6 @@ class WorkerProfiler:
         print(_rtf_row("encoder", enc_total),  file=sys.stderr)
         print(_rtf_row("decoder", dec_total),  file=sys.stderr)
 
-        if total_steps and audio_s:
-            print(f"    decoder: {dec_total / total_steps:5.1f} ms/token   "
-                  f"{total_steps / audio_s:5.1f} steps/s  "
-                  f"(speech is ~4-6.5 tok/s; more ⇒ re-decode waste)", file=sys.stderr)
-
         # Queue-depth slope: a sustained positive trend is the definitive
         # "falling behind" signal (max/mean alone can hide it).
         if self.queue_depth and len(self.queue_depth) >= 2:

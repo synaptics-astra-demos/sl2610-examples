@@ -526,7 +526,7 @@ if __name__ == "__main__":
     parser.add_argument("--wav",           type=str,   default=None,           help="Transcribe a WAV file instead of the live microphone")
     parser.add_argument("--realtime",      action="store_true",               help="With --wav, pace the feed to match real-time playback speed (default: feed as fast as possible)")
     parser.add_argument("-m", "--model-dir", type=str, default="../models/Synaptics/moonshine-streaming-tiny-torq", metavar="DIR", help="Path to the flat moonshine-streaming-tiny model dir (required)")
-    parser.add_argument("--vad-backend",   type=str,   default="energy",
+    parser.add_argument("--vad-backend",   type=str,   default="silero",
                         choices=["energy", "silero"],
                         help="VAD implementation: self-calibrating RMS energy, or Silero's neural VAD (default: energy)")
     parser.add_argument("--vad-model",     type=str,   default=None,           help="Path to a custom Silero VAD onnx file (only used with --vad-backend silero; default: bundled model from silero-vad-notorch, no download needed)")
