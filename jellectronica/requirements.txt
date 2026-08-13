@@ -1,4 +1,3 @@
-../wheelhouse/torq_runtime-1.5.1-cp312-cp312-manylinux_2_28_aarch64.whl
 
 numpy>=1.24.0,<2.0
 flask>=3.0

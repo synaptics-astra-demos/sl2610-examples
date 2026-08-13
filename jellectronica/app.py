@@ -485,7 +485,7 @@ def main():
     parser = argparse.ArgumentParser(description="Jellectronica Display APp (Standalone)")
     parser.add_argument("--video", default=None, help="Local video file")
     parser.add_argument("--youtube", default=None, help="YouTube URL (Disabled)")
-    parser.add_argument("--model", default="../models/moon_jellyfish/moon320.vmfb")
+    parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-jellyfish-int8-torq/moon320_int8.vmfb")
     parser.add_argument("--no-audio", action="store_true")
     parser.add_argument("--no-ai", action="store_true", help="Disable MelodyRNN AI accompaniment")
 
