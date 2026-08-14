@@ -23,15 +23,20 @@ gemma_translate
 └── fonts/
 ```
 
-Additionally, code is used from `../utils/` (including `utils/moonshine/` and `utils/gemma/` subpackages). 
+Additionally, code is used from `../app_utils/`. 
 
 ## 🔧 Hardware Setup
 
-Attach a USB microphone to the board. 
+- Attach a USB microphone to the board. 
 
-Connect from a PC using ADB or SSH.
+- Connect from a PC using ADB or SSH.
 
-Optionally connect a display and USB keyboard/mouse and open a terminal directly. 
+- Alternatively, connect a display and USB keyboard/mouse and open a terminal directly. 
+
+**Optional**
+- To enable light patterns during operation - **Adafruit Mini Sparkle Motion (6314)** running WLED firmware over USB-CDC and **Adafruit 48-pixel WS2812B ring (2539)** wired to the Sparkle Motion. Enable with `--use-neopixel`.
+
+---
 
 ## Installation
 
@@ -156,7 +161,6 @@ Use /1-/6 to switch language, /q to quit:
 [Translation] Bonjour, comment allez-vous ?
 → /q
 ```
-
 
 # Citations
 

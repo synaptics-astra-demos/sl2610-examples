@@ -30,12 +30,6 @@ except Exception as e:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "UI"))
 
-try:
-    from app_utils.neopixel import NeopixelAnimator
-    _NEOPIXEL_AVAILABLE = True
-except ImportError:
-    _NEOPIXEL_AVAILABLE = False
-
 # Must be set before importing PyQt6
 os.environ["LC_ALL"] = "C.UTF-8"
 os.environ["LANG"] = "C.UTF-8"
@@ -71,9 +65,9 @@ from gemma_translate.translation import GemmaTranslationService, TranslationResu
 from app_utils.log import configure_logging
 from app_utils.npu import enable_npu_clock
 from app_utils.stats import InferenceStats
-from app_utils.neopixel import NeopixelAnimator
 
 if TYPE_CHECKING:
+    from app_utils.neopixel import NeopixelAnimator
     from app_utils.speech import SpeechRecognizer, SpeechTranscript
 
 
@@ -997,6 +991,11 @@ def add_gui_args(parser: argparse.ArgumentParser):
         action="store_true",
         help="Run in a window instead of fullscreen.",
     )
+    group.add_argument(
+        "--use-neopixel",
+        action="store_true",
+        help="Enable NeoPixel LED animations (requires app_utils.neopixel and hardware).",
+    )
 
 
 def choose_audio_device(device_arg: str | None) -> int | str | None:
@@ -1113,12 +1112,17 @@ def main() -> int:
         ok, message = enable_npu_clock()
         print(f"[NPU] {message}" if ok else f"[NPU] {message}", flush=True)
 
-    if _NEOPIXEL_AVAILABLE:
-        logger.info("NeoPixel: import OK, creating NeopixelAnimator")
-        animator = NeopixelAnimator()
+    animator = None
+    if args.use_neopixel:
+        try:
+            from app_utils.neopixel import NeopixelAnimator
+
+            logger.info("NeoPixel: import OK, creating NeopixelAnimator")
+            animator = NeopixelAnimator()
+        except ImportError:
+            logger.warning("NeoPixel: app_utils.neopixel could not be imported, LED animations disabled")
     else:
-        logger.warning("NeoPixel: app_utils.neopixel could not be imported, LED animations disabled")
-        animator = None
+        logger.info("NeoPixel: disabled (pass --use-neopixel to enable)")
 
     translator = build_translation_service(args)
 
