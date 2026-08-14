@@ -4,7 +4,7 @@ This repository provides AI example applications for the **Synaptics Astra SL261
 
 ## Supported Hardware
 - [Astra Machina SL2619 Development Kit](https://www.synaptics.com/products/embedded-processors/sl2610-product-line#devKit)
-- [Synaptics Coralboard SL2619](https://developers.google.com/coral/products/SL2610-dev-board)
+- [Synaptics Coralboard SL 2GB (SL2619)](https://developers.google.com/coral/products/SL2610-dev-board)
 
 
 ## Learn more about Synaptics Astra by visiting:
@@ -27,16 +27,59 @@ The Torq compiler is based on the MLIR framework and IREE runtime. The examples 
 
 
 ## 🔧 Installation
- 
+
+### Update the Operating System
+
+The applications in this repository were tested with the following version of the Astra SDK (Yocto-Project Linux):
+- **scarthgap_6.12_v2.5.0** - [Relases Page](https://github.com/synaptics-astra/sdk/releases/tag/scarthgap_6.12_v2.5.0)
+
+From the release page, locate the Out of Box Experience (OOBE) Image for your board and follow the update guide. 
+
+- For the Astra Machina SL2610 Kit:
+    - Locate and download the image downloader scrip for **Image for sl2619_oobe_scarthgap**
+
+    - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC on the board. 
+
+
+- For the Coralboard *Limited-Edition* from Google IO 2026: 
+
+    - Locate and download the image downloader scrip for **Image for sl2619_coralboard_oobe_scarthgap**
+
+
+    - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC 
+
+
+- For the Coralboard SL 2GB: 
+    - Locate and download the image downloader scrip for **Image for sl2619_coralboard_oobe_scarthgap**
+
+    - Follow the [Booting from SD Cards Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#booting-from-spi-and-sd-cards) to generate a bootable SD Card image
+
+
 ### Connect to the SL2610 
 
 Power up the SL2610 kit and open a terminal - using ADB or other method. See hardware setup guide for details.    
 
 ### Connect to the network
 
-To enable online example updates and installation of dependencies, it is recommended to connect the kit to the network. See hardware setup guide for details. 
+To enable online example updates and installation of dependencies, it is recommended to connect the kit to the network. See board-specific hardware setup guide for details. 
+
+There are three ways to connect an Astra development kit to the network.
+1. Ethernet (Astra Machina only)
+2. Network Sharing over USB (Astra SDK 2.3 and later) [Read More](https://developers.google.com/coral/products/SL2610-user-guide#connect_to_a_network_over_usb)
+3. WiFi/BT Module (Ampak AP12611_M2 with SYN43711) [Read More](https://developers.google.com/coral/products/SL2610-user-guide#attach_wifibluetooth_module_optional)
 
 ### Clone the Repository
+
+
+Change to the home directory. Always work out of the home directory.
+
+> **⚠️ Warning:** `/home/root` is on a different partition than the root directory (`/`). The root partition has limited space, so cloning the repository or storing models/data outside of `/home/root` can cause the device to run out of space.
+
+```bash
+cd /home/root/
+```
+
+
 
 Clone the repository and its torq-examples submodule using the following command:
 
@@ -52,6 +95,15 @@ cd sl2610-examples
 If you already cloned the repository without submodules, initialize them once:
 
 ```bash
+git submodule update --init --recursive
+```
+
+### Getting Updates
+
+To update an existing clone with the latest changes, including the torq-examples submodule:
+
+```bash
+git pull
 git submodule update --init --recursive
 ```
 

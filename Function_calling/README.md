@@ -48,15 +48,15 @@ A fine-tuned **FunctionGemma 270M** turns natural-language commands into compact
 ## Requirements
 
 **Required**
-- **Synaptics Coralboard (SL2619)** with the Grinn Coral HAT (RGB status LEDs + piezo buzzer)
+- **Synaptics Coralboard (SL2619)** with the Grinn Coralboard Sensor HAT (RGB status LEDs + piezo buzzer)
 - **Astra SDK OOBE image** — ships with `git`, `python3`, `gstreamer`, `gpiod`, and `weston`
 - ~500 MB free disk for the model and Python venv
 - Network access for `setup_demo.py` to fetch model files (or pre-populate `models/` offline)
 
 **Optional**
-- **Adafruit Mini Sparkle Motion (6314)** running WLED firmware over USB-CDC — for the Neopixel ring
-- **Adafruit 48-pixel WS2812B ring (2539)** wired to the Sparkle Motion
+- To enable light patterns during operation - **Adafruit Mini Sparkle Motion (6314)** running WLED firmware over USB-CDC and **Adafruit 48-pixel WS2812B ring (2539)** wired to the Sparkle Motion. Enable with `--wled-port /dev/ttyACM0`.
 - A microphone for voice input — either the HAT's PDM mic (`alsasrc hw:0,0`) or any USB mic
+
 
 ---
 
@@ -410,12 +410,12 @@ v10 trimmed the previous `palette` and `intensity` args off `set_lights` after a
 
 ## Hardware reference
 
-- **Synaptics Coralboard (SL2619)** with the Grinn Coral HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
+- **Synaptics Coralboard (SL2619)** with the Grinn Coralboard Sensor HAT — RGB status LEDs at `/sys/class/leds/{red,green,blue}:status/brightness`, piezo buzzer on `BUZZERn` (binary GPIO).
 - **Optional Adafruit Mini Sparkle Motion (6314)** running WLED firmware, enumerated as `/dev/ttyACM0` over USB-CDC. Drives a 48-pixel WS2812B / SKC6812RV ring (Adafruit 2539).
 
 ### Buzzer wiring note
 
-Despite the schematic name suggesting active-low, `BUZZERn` on the Grinn Coral HAT is electrically wired such that the buzzer **silences on the line being driven HIGH and beeps when LOW**. The kernel device tree marks the line `active-high` — so `gpioset gpiochip0 6=1` drives physical HIGH = silent, `=0` = beep. The chip driver also retains the last-driven value across `gpioset --mode=exit`, so once a value is written the line holds it.
+Despite the schematic name suggesting active-low, `BUZZERn` on the Grinn Coralboard Sensor HAT is electrically wired such that the buzzer **silences on the line being driven HIGH and beeps when LOW**. The kernel device tree marks the line `active-high` — so `gpioset gpiochip0 6=1` drives physical HIGH = silent, `=0` = beep. The chip driver also retains the last-driven value across `gpioset --mode=exit`, so once a value is written the line holds it.
 
 `hardware.py` writes the inverted polarity (`0` to beep, `1` to silence). If you port this code to a board with the polarity wired the other way, flip the `_BUZZER_OFF` / `_BUZZER_ON` constants at the top of `hardware.py`. Verify with `gpioinfo gpiochip0` (look for the line named `"BUZZERn"`).
 
@@ -646,6 +646,10 @@ See [Known model behaviors](#known-model-behaviors) for the specific patterns we
 - [**IREE**](https://iree.dev/) — MLIR-based runtime powering Torq on the SL2619 NPU
 
 ---
+
+## Acknowledgements
+- Special thanks to [Brinq AI](https://brinqai.com/) for developing and contributing this demo application. 
+
 
 ## Contributing and support
 
