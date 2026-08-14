@@ -545,6 +545,9 @@ def run_with_opencv(args, runner, labels):
             elif args.rotate == 270:
                 bgr_frame = cv2.rotate(bgr_frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
+            if args.flip:
+                bgr_frame = cv2.flip(bgr_frame, 0)
+
             # -- preprocess ---------------------------------------------------
             input_data, pad_info, orig_shape = preprocess_frame_cv(bgr_frame)
 
@@ -696,6 +699,7 @@ def main():
     parser.add_argument("--display", action="store_true", help="Display annotated frames live")
     parser.add_argument("--display-sink", default="waylandsink", help="GStreamer video sink for live display")
     parser.add_argument("--rotate", type=int, choices=[0, 90, 180, 270], default=180, help="Rotate camera feed (degrees clockwise)")
+    parser.add_argument("--flip", action="store_true", help="Flip video frames vertically")
     
     # Camera Config Group
     cam_group = parser.add_argument_group("Camera Config")
