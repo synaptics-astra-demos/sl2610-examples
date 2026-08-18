@@ -10,7 +10,7 @@ import time
 import logging
 
 from app_utils.log import configure_logging
-from app_utils.npu import enable_npu_clock
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from app_utils.speech import (
     MoonshineTranscriber,
     SileroSpeechSegmenter,
@@ -56,17 +56,6 @@ def start_audio_thread(recognizer: SpeechRecognizer, stop_event: threading.Event
     running = False
 
 
-#  NPU Clock
-def enable_npu_clock_local():
-    import subprocess
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
-
-
 # ---------------------- CLI / Entry ----------------------
 
 if __name__ == "__main__":
@@ -85,8 +74,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not args.no_npu_clock:
-        ok, message = enable_npu_clock()
-        print(f"[NPU] {message}")
+        setup_npu_for_inference()
 
     audio_device = choose_audio_device(args.audio_device)
 
@@ -123,5 +111,8 @@ if __name__ == "__main__":
         stop_event.set()
         logger.debug("Shutting down...")
         audio_thread.join(timeout=3)
+    finally:
+        if not args.no_npu_clock:
+            cleanup_npu_after_inference()
 
     logger.debug("Live caption closed.")

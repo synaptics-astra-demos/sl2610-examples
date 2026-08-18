@@ -30,7 +30,9 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from detector import Detector
 from tracker import Tracker, TrackedJellyfish
 from music_engine import MusicEngine, NOTE_GRID
@@ -48,17 +50,7 @@ def midi_to_name(midi): return f"{_NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
 
 AI_COLOR = (180, 140, 255)  # Soft purple
 
-#  NPU Clock 
-def enable_npu_clock():
-    """Enable NPU clock via devmem (required before Torq inference)."""
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
-
-#  NeoPixel Control 
+#  NeoPixel Control
 NP_TTY = "/dev/ttyACM0"
 
 def init_neopixels():
@@ -506,7 +498,7 @@ def main():
     os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"
     os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
-    enable_npu_clock()
+    setup_npu_for_inference()
     create_symlink_for_python()
     init_neopixels()
     npxl_ocean()
@@ -856,4 +848,7 @@ def main():
     print("[App] Done.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup_npu_after_inference()

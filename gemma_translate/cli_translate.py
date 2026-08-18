@@ -18,7 +18,7 @@ from gemma_translate.common_args import (
 from gemma_translate.translation import GemmaTranslationService, TranslationResult
 from app_utils.cli import TerminalMode, install_cli_shutdown_handlers
 from app_utils.log import configure_logging
-from app_utils.npu import enable_npu_clock
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from app_utils.stats import Gemma3InferenceStats, MoonshineInferenceStats
 
 if TYPE_CHECKING:
@@ -330,8 +330,7 @@ def main():
 
     try:
         if not args.no_npu_clock:
-            ok, message = enable_npu_clock()
-            printer.status(f"[NPU] {message}" if ok else f"[NPU] {message}")
+            setup_npu_for_inference()
 
         translator = build_translation_service(args)
 
@@ -390,6 +389,8 @@ def main():
         keyboard.stop()
         if recognizer is not None:
             recognizer.source.stop()
+        if not args.no_npu_clock:
+            cleanup_npu_after_inference()
 
 
 if __name__ == "__main__":

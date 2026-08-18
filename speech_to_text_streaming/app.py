@@ -39,7 +39,7 @@ except ImportError:
 
 from app_utils.torq_examples.moonshine_streaming.src.runner import MoonshineStaticStreamingModel, find_asset
 from app_utils.log import add_logging_args, configure_logging
-from app_utils.npu import enable_npu_clock
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from profiling import WorkerProfiler
 from vad import EnergyVAD, SileroVAD
 
@@ -185,9 +185,7 @@ def main(args: argparse.Namespace):
             args.commit_agreement, args.commit_delay,
         )
 
-    ok, message = enable_npu_clock()
-    print(f"[NPU] {message}")
-
+    setup_npu_for_inference()
 
     try:
         model     = MoonshineStaticStreamingModel(model_dir,
@@ -558,4 +556,7 @@ if __name__ == "__main__":
     # index), so it must still work without a model dir.
     if args.model_dir is None and not args.list_devices:
         parser.error("-m/--model-dir is required")
-    main(args)
+    try:
+        main(args)
+    finally:
+        cleanup_npu_after_inference()
