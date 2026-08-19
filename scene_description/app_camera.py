@@ -4,10 +4,10 @@ import threading
 
 import cv2
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                               QLabel, QPushButton, QSizePolicy)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
+from PyQt6.QtGui import QImage, QPixmap
 
 ORIENTATION = "portrait" # or "landscape"
 
@@ -74,8 +74,8 @@ class CameraApp(QWidget):
 
         # Image fills the screen edge-to-edge
         self.image_label = QLabel("Press the shutter button to capture")
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.image_label.setStyleSheet("background-color: #000000; color: #444444; font-size: 15px;")
         layout.addWidget(self.image_label)
 
@@ -90,8 +90,8 @@ class CameraApp(QWidget):
         # Description text — left side, no box, subtle colour
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
-        self.description_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self.description_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.description_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.description_label.setStyleSheet(
             "color: #AAAAAA; font-size: 15px; font-family: 'Segoe UI', sans-serif;"
             "background: transparent;"
@@ -117,7 +117,7 @@ class CameraApp(QWidget):
             }
         """)
         self.capture_btn.clicked.connect(self._on_capture)
-        bottom_layout.addWidget(self.capture_btn, alignment=Qt.AlignVCenter)
+        bottom_layout.addWidget(self.capture_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(bottom_bar)
 
@@ -165,9 +165,9 @@ class CameraApp(QWidget):
     def _show_image(self, bgr_frame):
         h, w = bgr_frame.shape[:2]
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-        qimg = QImage(rgb.data, w, h, rgb.strides[0], QImage.Format_RGB888)
+        qimg = QImage(rgb.data, w, h, rgb.strides[0], QImage.Format.Format_RGB888)
         pix = QPixmap.fromImage(qimg).scaled(
-            self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
         )
         self.image_label.setPixmap(pix)
 
@@ -199,7 +199,7 @@ def main():
     app = QApplication(sys.argv)
     window = CameraApp(camera)
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
