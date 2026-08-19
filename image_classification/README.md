@@ -43,7 +43,7 @@ Download the MobileNetV2 model files from HuggingFace by running this setup scri
 python setup_demo.py
 ```
 
-## Runing the Image Classification Example on an Image File
+## Running the Image Classification Example on an Image File
 
 ```bash
 python3 classification.py --image ../samples/cat.jpg 
@@ -51,7 +51,7 @@ python3 classification.py --image ../samples/cat.jpg
 
 Optionally you can also set the following configurations:
 - `--model`, Path to model (default: ../models/Synaptics/mobilenet_v2-int8-torq/MobileNetv2_int8.vmfb)
-- `--labels`, Path to lables (default: labels.json)
+- `--labels`, Path to labels (default: labels.json)
 - `--device`, Device to run on (default: torq)
 - `--display`, Display annotated image
 

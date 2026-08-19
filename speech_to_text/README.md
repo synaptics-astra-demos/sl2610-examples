@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 Download the Moonshine model files from HuggingFace:
 
-[!WARNING] In mid-june 2026, Synaptics simplified the number of Moonshine model files. If you had previously downloaded the models, we recommend deleting them from `sl2610-examples/models/Synaptics/moonshine-tiny-bf16-torq` before running the next command. Future updates will incldue version control to eliminate the need going forward.
+[!WARNING] In mid-June 2026, Synaptics simplified the number of Moonshine model files. If you had previously downloaded the models, we recommend deleting them from `sl2610-examples/models/Synaptics/moonshine-tiny-bf16-torq` before running the next command. Future updates will include version control to eliminate the need going forward.
 
 ```bash
 python setup_demo.py
