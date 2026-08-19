@@ -2,7 +2,7 @@
 
 **Turn any video stream into ambient music using real-time AI object detection**, running entirely on the [Synaptics Coralboard SL2619](https://coral.ai/products/).
 
-**Jellectronica *Lite*** watches a video source — by default, a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
+**Jellectronica *Lite*** watches a video source — by default, the bundled local `jellyfish.mp4` clip, with an optional switch to a [live jellyfish stream from Monterey Bay Aquarium](https://www.youtube.com/watch?v=7N9-FODmuBA) — detects objects using a YOLOv8 model on the **Torq NPU at 30 FPS**, and maps their positions to a musical grid. As creatures move through the frame, they trigger notes, chords, and arpeggios, turning motion into evolving ambient soundscapes.
 
 An optional **MelodyRNN AI accompaniment** layer listens to the triggered notes and generates real-time generative melodies using a pre-trained Magenta LSTM neural network — all running on-device in pure Python/NumPy.
 
@@ -29,7 +29,7 @@ See [docs/model-conversion.md](docs/model-conversion.md) for how to convert your
 | **Synaptics Astra SL2619** | Coralboard or Machina Kit |
 | **USB Audio** | Any USB speaker or headset |
 | **Display** | Waveshare 7" DSI LCD (optional) |
-| **Network** | For installation and YouTube livestream (optional — local video fallback included) |
+| **Network** | For installation and the optional `--youtube` livestream mode (not needed for the default local video) |
 | **Power** | USB Type C |
 
 ## Installation
@@ -68,7 +68,7 @@ python setup_demo.py
 
 ### 3. Choose Your Display Mode
 
-- Headless - stream to browswer 
+- Headless - stream to browser 
 - Display - If you have a DSI display connected, use that.
 
 
@@ -155,11 +155,12 @@ See [docs/architecture.md](docs/architecture.md) for full technical details.
 
 | Source | Config | Notes |
 |--------|--------|-------|
-| YouTube livestream (default) | `--youtube <URL>` | Requires WiFi + yt-dlp |
-| Local video file | `--video video/jellyfish.mp4` | Bundled fallback, no network needed |
+| Local video file (default) | *(no flag needed)* or `--video samples/jellyfish.mp4` | Bundled, no network needed |
+| YouTube livestream | `--youtube` | Uses the Monterey Bay Aquarium jelly cam. Requires WiFi + yt-dlp |
+| Custom YouTube livestream | `--youtube <URL>` | Any YouTube URL |
 | Any HTTP stream | `--video http://...` | HLS, DASH, MJPEG |
 
-When YouTube is unavailable (no network or yt-dlp not installed), the system automatically falls back to the bundled `video/jellyfish.mp4`. If the stream goes black (e.g. aquarium turns off lights), it also falls back automatically.
+`--youtube` takes priority over `--video` when both are given. When YouTube is unavailable (no network or yt-dlp not installed), the system automatically falls back to the bundled `samples/jellyfish.mp4`. If the stream goes black (e.g. aquarium turns off lights), it also falls back automatically.
 
 ---
 
@@ -167,33 +168,39 @@ When YouTube is unavailable (no network or yt-dlp not installed), the system aut
 
 ### Changing the Video Source
 
-You can point Jellectronica at any video source — a YouTube livestream, a local camera, an IP camera, or a video file.
+By default `server.py` plays the bundled local `samples/jellyfish.mp4` file — no network required. You can switch to the live YouTube feed with `--youtube`, or point at any other local file, IP camera, or stream with `--video`.
 
 **Command line**
 ```bash
-# YouTube livestream
-python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+# Live YouTube stream (Monterey Bay Aquarium jelly cam)
+python3 server.py --youtube
+
+# A different YouTube livestream
+python3 server.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
 
 # IP camera (e.g. Google Nest, RTSP, MJPEG)
 python3 server.py --video rtsp://192.168.1.100:554/stream
 
-# Local video file
+# A different local video file
 python3 server.py --video /path/to/your/video.mp4
 ```
 
 ## Usage Examples
 
 ```bash
-# Display mode (DSI display, fullscreen)
+# Display mode (DSI display, fullscreen) — defaults to local jellyfish.mp4
 python3 app.py
 python3 app.py --video ../samples/jellyfish.mp4
 
-# Server mode (headless, MJPEG stream)
+# Server mode (headless, MJPEG stream) — defaults to local jellyfish.mp4
 python3 server.py
 python3 server.py --video ../samples/jellyfish.mp4 --port 5002
 
+# Switch to the live YouTube feed
+python3 server.py --youtube
+python3 server.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+
 # Custom video source
-python3 server.py --video https://www.youtube.com/watch?v=YOUR_VIDEO_ID
 python3 server.py --video /path/to/your/video.mp4
 
 # Custom detection model
