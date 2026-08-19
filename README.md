@@ -145,7 +145,6 @@ Installer scripts are provided:
 
 | Script | Type | Description | Require Reboot? | 
 |--------|--------|-------------|------|
-| `patch_kernel.sh` | Required | Update the NPU kernel module (`syna_npu.ko`) | Yes | 
 | `install_portaudio.sh` | Required | Install PortAudio shared libraries for microphone demos | No | 
 | `portrait_setup.sh` | Optional | Configure portrait display orientation (recommended if you connect a MIPI DSI display)| No | 
 | `patch_usb_cdc.sh` | Optional | Install USB CDC/serial modules (For Neopixel controller support) | Yes | 
@@ -155,7 +154,6 @@ Run the scripts one at a time:
 Required:
 ```bash
 ./setup/install_portaudio.sh
-./setup/patch_kernel.sh
 ```
 
 Optional:
