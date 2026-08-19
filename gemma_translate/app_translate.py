@@ -66,7 +66,7 @@ from app_utils.log import configure_logging
 from app_utils.npu import enable_npu_clock
 from app_utils.stats import InferenceStats
 
-if TYPE_CHECKING:
+if TYPE_CHECKING: # Does not execute at runtime
     from app_utils.neopixel import NeopixelAnimator
     from app_utils.speech import SpeechRecognizer, SpeechTranscript
 

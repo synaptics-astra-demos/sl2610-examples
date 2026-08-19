@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 # ── Constants ──
-WEIGHTS_PATH = Path(__file__).parent / "../models/moon_jellyfish/" / "basic_rnn_weights.npz"
+WEIGHTS_PATH = Path(__file__).parent / "basic_rnn_weights.npz"
 NUM_CLASSES = 38
 MIDI_MIN = 48     # basic_rnn pitch range
 MIDI_MAX = 83

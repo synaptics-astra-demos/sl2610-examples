@@ -27,7 +27,8 @@ from music_engine import MusicEngine, NOTE_GRID
 GRID_COLS = 8
 GRID_ROWS = 4
 DETECT_INTERVAL_S = 0.1
-DEFAULT_VIDEO = "https://www.youtube.com/watch?v=7N9-FODmuBA"
+DEFAULT_VIDEO = "../samples/jellyfish.mp4"
+DEFAULT_YOUTUBE_VIDEO = "https://www.youtube.com/watch?v=7N9-FODmuBA"
 STREAM_MAX_FPS = 5
 STREAM_JPEG_QUALITY = 25
 STREAM_MAX_HEIGHT = 400
@@ -699,7 +700,10 @@ def main():
     global _music, _physics
 
     parser = argparse.ArgumentParser(description="Jellectronica — Native Server")
-    parser.add_argument("--video", default=DEFAULT_VIDEO, help="Video source (YouTube URL, file, or stream)")
+    parser.add_argument("--video", default=DEFAULT_VIDEO, help="Video source (local file or stream URL). Default: bundled jellyfish.mp4")
+    parser.add_argument("--youtube", nargs="?", const=DEFAULT_YOUTUBE_VIDEO, default=None,
+                         metavar="URL", help="Use a YouTube livestream instead of --video "
+                         "(defaults to the Monterey Bay Aquarium jelly cam if URL is omitted)")
     parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-jellyfish-int8-torq/moon320_int8.vmfb", help="Model path (.vmfb for NPU, .onnx for CPU)")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host")
     parser.add_argument("--port", type=int, default=5002, help="HTTP port")
@@ -710,11 +714,12 @@ def main():
     parser.add_argument("--no-ai", action="store_true", help="Disable MelodyRNN AI accompaniment")
 
     args = parser.parse_args()
+    video_source = args.youtube if args.youtube else args.video
 
     print("╔═══════════════════════════════════════════════════╗")
     print("║  🪼 Jellectronica — Native On-Device AI 🪼        ║")
     print("╚═══════════════════════════════════════════════════╝")
-    print(f"  Video  : {args.video}")
+    print(f"  Video  : {video_source}")
     print(f"  Model  : {args.model}")
     print(f"  HTTP   : http://{args.host}:{args.port}")
     print(f"  WS     : ws://{args.host}:{args.ws_port}")
@@ -755,7 +760,7 @@ def main():
 
     # ── Start inference loop ──
     inf_thread = threading.Thread(
-        target=inference_loop, args=(args.video, args.model), daemon=True)
+        target=inference_loop, args=(video_source, args.model), daemon=True)
     inf_thread.start()
 
     # ── Start Flask HTTP server ──

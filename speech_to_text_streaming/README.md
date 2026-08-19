@@ -160,7 +160,7 @@ For testing against pre-recorded audio instead of a live mic (e.g. a real
 conversation or speech sample), pass `--wav`:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav /path/to/sample.wav
+python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav
 ```
 
 This reads the file with `soundfile` (mixed to mono if stereo, resampled like any
@@ -175,7 +175,7 @@ By default the file is fed as fast as possible (for quick batch testing). Pass
 you can watch the live preview update the way it would from a mic:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav /path/to/sample.wav --realtime
+python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav --realtime
 ```
 
 `--vad-silence` (default `2.5`s) still governs where the file is split into

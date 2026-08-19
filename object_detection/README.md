@@ -103,7 +103,7 @@ python3 object_detection_video.py \
 Optionally you can also set the following configurations:
 - `--flip`, Flip the video input vertically (required depending on the camera orientation)
 - `--model`, Path to model (default: ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb)
-- `--labels`, Path to lables (default: labels.json)
+- `--labels`, Path to labels (default: labels.json)
 - `--device`, Device to run on (default: torq)
 - `--output`, Output video file
 - `--json-results`, Output JSON file for detections

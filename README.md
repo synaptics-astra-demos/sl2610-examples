@@ -36,21 +36,21 @@ The applications in this repository were tested with the following version of th
 From the release page, locate the Out of Box Experience (OOBE) Image for your board and follow the update guide. 
 
 - For the Astra Machina SL2610 Kit:
-    - Locate and download the image downloader scrip for **Image for sl2619_oobe_scarthgap**
+    - Locate and download the image downloader script for **Image for sl2619_oobe_scarthgap**
 
     - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC on the board. 
 
 
 - For the Coralboard *Limited-Edition* from Google IO 2026: 
 
-    - Locate and download the image downloader scrip for **Image for sl2619_coralboard_oobe_scarthgap**
+    - Locate and download the image downloader script for **Image for sl2619_coralboard_oobe_scarthgap**
 
 
     - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC 
 
 
 - For the Coralboard SL 2GB: 
-    - Locate and download the image downloader scrip for **Image for sl2619_coralboard_oobe_scarthgap**
+    - Locate and download the image downloader script for **Image for sl2619_coralboard_oobe_scarthgap**
 
     - Follow the [Booting from SD Cards Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#booting-from-spi-and-sd-cards) to generate a bootable SD Card image
 
@@ -121,7 +121,8 @@ Install dependencies
 ```bash
 pip install --upgrade pip
 
-pip install https://github.com/synaptics-torq/torq-examples/releases/download/torq-runtime-v2.0-alpha/torq_runtime-2.0.0a1-cp312-cp312-manylinux_2_28_aarch64.whl
+pip install https://github.com/synaptics-torq/torq-compiler/releases/download/v2.1.0/torq_runtime-2.1.0-cp312-cp312-manylinux_2_28_aarch64.whl
+   
 
 pip install -r requirements.txt
 ```

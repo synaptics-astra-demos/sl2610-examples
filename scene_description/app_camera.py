@@ -1,13 +1,15 @@
 import os
+import subprocess
 import sys
 import threading
+import time
 
 import cv2
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                               QLabel, QPushButton, QSizePolicy)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
+from PyQt6.QtGui import QImage, QPixmap
 
 ORIENTATION = "portrait" # or "landscape"
 
@@ -19,10 +21,11 @@ else:
     WINDOW_H = 380
 
 DUMMY_DESCRIPTION = "A person sitting at a desk with a laptop and a coffee cup nearby."
+PREVIEW_FPS = 15
+CAPTURE_HOLD_SECONDS = 10
 
 
 def find_camera():
-    import subprocess
     try:
         result = subprocess.run(["v4l2-ctl", "--list-devices"],
                                 capture_output=True, text=True, timeout=2)
@@ -58,10 +61,15 @@ class CameraApp(QWidget):
         super().__init__()
         self.camera = camera
         self.signals = Signals()
+        self._running = True
+        self._frozen = False
         self._init_ui()
         self.signals.update_image.connect(self._show_image)
         self.signals.update_description.connect(self.description_label.setText)
         self.signals.set_button_enabled.connect(self.capture_btn.setEnabled)
+
+        self._preview_thread = threading.Thread(target=self._preview_loop, daemon=True)
+        self._preview_thread.start()
 
     def _init_ui(self):
         self.setWindowTitle("Scene Description — Astra SL2610")
@@ -73,9 +81,9 @@ class CameraApp(QWidget):
         layout.setSpacing(0)
 
         # Image fills the screen edge-to-edge
-        self.image_label = QLabel("Press the shutter button to capture")
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.image_label = QLabel("Starting camera preview...")
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.image_label.setStyleSheet("background-color: #000000; color: #444444; font-size: 15px;")
         layout.addWidget(self.image_label)
 
@@ -90,8 +98,8 @@ class CameraApp(QWidget):
         # Description text — left side, no box, subtle colour
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
-        self.description_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self.description_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.description_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.description_label.setStyleSheet(
             "color: #AAAAAA; font-size: 15px; font-family: 'Segoe UI', sans-serif;"
             "background: transparent;"
@@ -117,22 +125,29 @@ class CameraApp(QWidget):
             }
         """)
         self.capture_btn.clicked.connect(self._on_capture)
-        bottom_layout.addWidget(self.capture_btn, alignment=Qt.AlignVCenter)
+        bottom_layout.addWidget(self.capture_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(bottom_bar)
 
     def _on_capture(self):
+        if self._frozen:
+            return
         self.capture_btn.setEnabled(False)
-        self.signals.update_description.emit("Capturing...")
-        threading.Thread(target=self._capture, daemon=True).start()
+        self._frozen = True
+        self.signals.update_description.emit(DUMMY_DESCRIPTION)
+        threading.Thread(target=self._hold_then_resume, daemon=True).start()
 
-    def _capture(self):
+    def _hold_then_resume(self):
+        time.sleep(CAPTURE_HOLD_SECONDS)
+        self._frozen = False
+        self.signals.update_description.emit("")
+        self.signals.set_button_enabled.emit(True)
+
+    def _preview_loop(self):
         try:
             cam_index = int(self.camera)
         except (ValueError, TypeError):
             cam_index = self.camera
-
-        import subprocess
 
         # Set auto exposure directly via v4l2-ctl before opening the device.
         # OpenCV's CAP_PROP_AUTO_EXPOSURE abstraction is unreliable for OV5647.
@@ -145,29 +160,32 @@ class CameraApp(QWidget):
         cap = cv2.VideoCapture(cam_index, cv2.CAP_V4L2)
         if not cap.isOpened():
             self.signals.update_description.emit(f"Error: cannot open {self.camera}")
-            self.signals.set_button_enabled.emit(True)
             return
 
-        for _ in range(20):  # give AEC time to converge
-            cap.read()
-        ret, frame = cap.read()
-        cap.release()
+        frame_interval = 1.0 / PREVIEW_FPS
+        try:
+            while self._running:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    time.sleep(frame_interval)
+                    continue
+                # Skip updating the display while a captured frame is being held.
+                if not self._frozen:
+                    self.signals.update_image.emit(frame)
+                time.sleep(frame_interval)
+        finally:
+            cap.release()
 
-        if not ret or frame is None:
-            self.signals.update_description.emit("Error: failed to capture frame")
-            self.signals.set_button_enabled.emit(True)
-            return
-
-        self.signals.update_image.emit(frame)
-        self.signals.update_description.emit(DUMMY_DESCRIPTION)
-        self.signals.set_button_enabled.emit(True)
+    def closeEvent(self, event):
+        self._running = False
+        super().closeEvent(event)
 
     def _show_image(self, bgr_frame):
         h, w = bgr_frame.shape[:2]
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-        qimg = QImage(rgb.data, w, h, rgb.strides[0], QImage.Format_RGB888)
+        qimg = QImage(rgb.data, w, h, rgb.strides[0], QImage.Format.Format_RGB888)
         pix = QPixmap.fromImage(qimg).scaled(
-            self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
         )
         self.image_label.setPixmap(pix)
 
@@ -199,7 +217,7 @@ def main():
     app = QApplication(sys.argv)
     window = CameraApp(camera)
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
