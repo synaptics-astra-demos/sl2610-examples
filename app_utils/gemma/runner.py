@@ -238,7 +238,8 @@ def load_gemma(
         model_path: Path to the model file/directory. For torq this is
             the ``.vmfb`` file; for llama this is the ``.gguf`` file.
             When ``None``, the torq backend uses the managed
-            ``model.vmfb.trim`` path.
+            ``transformer.vmfb`` path (sibling ``lm_head.vmfb`` is
+            auto-discovered).
         n_threads: Thread count for inference.
         **kwargs: Forwarded to the chosen backend constructor.
 
@@ -259,17 +260,19 @@ def load_gemma(
         from app_utils.paths import MODELS_DIR
         from app_utils.torq_examples.gemma3.setup_demo import (
             GEMMA3_HF_REPO_MAP,
-            local_gemma3_model_path,
+            download_gemma3,
         )
         from app_utils.torq_examples.utils.download import resolve_repo_id
 
-        model_path = local_gemma3_model_path("instruct", base_dir=MODELS_DIR)
-        if model_path is None:
-            repo_id = resolve_repo_id("instruct", GEMMA3_HF_REPO_MAP)
-            default_path = MODELS_DIR / repo_id / "model.vmfb.trim"
+        repo_id = resolve_repo_id("instruct", GEMMA3_HF_REPO_MAP)
+        model_dir = MODELS_DIR / repo_id
+        model_path = model_dir / "transformer.vmfb"
+        if not model_path.exists():
+            download_gemma3(["instruct"], base_dir=MODELS_DIR)
+        if not model_path.exists():
             raise FileNotFoundError(
-                "Default Gemma model not found at "
-                f"'{default_path}'. Pass --gemma-model to use a different VMFB."
+                f"Default Gemma model not found at '{model_path}'. "
+                "Pass --gemma-model to use a different VMFB."
             )
 
     torq_kw = {
