@@ -295,7 +295,9 @@ def run_text_mode(
             try:
                 result = translator.translate(
                     line,
-                    target_language=language.prompt_name,
+#                    target_language=language.prompt_name,
+                    source_language=language.source_language,
+                    target_language=language.target_language,
                     on_partial=printer.translation_partial,
                 )
                 printer.translation_final(result)

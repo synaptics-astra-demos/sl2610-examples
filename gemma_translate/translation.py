@@ -42,10 +42,15 @@ class GemmaTranslationService:
         self,
         text: str,
         *,
+        source_language: str,
         target_language: str,
         on_partial: PartialCallback | None = None,
     ) -> TranslationResult:
-        prompt = self._build_prompt(text, target_language)
+        prompt = self._build_prompt(
+            text,
+            source_language,
+            target_language
+        )
         final_text = ""
 
         for partial in self.backend.stream_response(prompt):
@@ -68,8 +73,18 @@ class GemmaTranslationService:
         )
 
     @staticmethod
-    def _build_prompt(text: str, target_language: str) -> str:
+    def _build_prompt(
+        text: str,
+        source_language: str,
+        target_language: str,
+    ) -> str:
         return (
-            f"Translate the text in quotes to {target_language}. "
-            f"Output only the translated text.\n\"{text}\"\n"
+#            f"Translate the text in quotes to {target_language}. "
+#            f"Output only the translated text.\n\"{text}\"\n"
+                    f"Translate the following {source_language} text into "
+            f"{target_language}. "
+            f"Output only the translation. "
+            f"Do not explain or add any other text.\n"
+            f'Text: "{text}"\n'
+            f"Translation:"
         )

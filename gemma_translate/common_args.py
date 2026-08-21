@@ -12,13 +12,24 @@ GEMMA_LLAMA_MODEL_PATH = (
 @dataclass(frozen=True)
 class LanguageOption:
     display_name: str
-    prompt_name: str
+    #prompt_name: str
+    source_language: str
+    target_language: str
 
+#Changed to default Korean from Latin languages 
+#LANGUAGES = {
+#    "1": LanguageOption("Spanish", "Spanish"),
+#    "2": LanguageOption("French", "French"),
+#    "3": LanguageOption("German", "German"),
+#}
 
 LANGUAGES = {
-    "1": LanguageOption("Spanish", "Spanish"),
-    "2": LanguageOption("French", "French"),
-    "3": LanguageOption("German", "German"),
+    "1": LanguageOption("Korean -> English", "Korean", "English"),
+    "2": LanguageOption("English -> Korean", "English", "Korean"),
+    "3": LanguageOption("Korean -> Japanese", "Korean", "Japanese"),
+    "4": LanguageOption("Japanese -> Korean", "Japanese", "Korean"),
+    "5": LanguageOption("Korean -> Chinese", "Korean", "Simplified Chinese"),
+    "6": LanguageOption("Chinese -> Korean", "Simplified Chinese", "Korean"),
 }
 
 
@@ -36,7 +47,8 @@ def add_translation_args(parser: argparse.ArgumentParser):
     group.add_argument(
         "--language",
         choices=[language.display_name for language in LANGUAGES.values()],
-        default="Spanish",
+        #default="Spanish", #changed default languge
+        default="Korean",
         help="Initial target language.",
     )
 
