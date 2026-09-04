@@ -63,7 +63,7 @@ from gemma_translate.common_args import (
 )
 from gemma_translate.translation import GemmaTranslationService, TranslationResult
 from app_utils.log import configure_logging
-from app_utils.npu import enable_npu_clock
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from app_utils.stats import InferenceStats
 
 if TYPE_CHECKING: # Does not execute at runtime
@@ -1109,114 +1109,117 @@ def main() -> int:
     configure_logging(args.logging)
 
     if not args.no_npu_clock:
-        ok, message = enable_npu_clock()
-        print(f"[NPU] {message}" if ok else f"[NPU] {message}", flush=True)
+        setup_npu_for_inference()
 
-    animator = None
-    if args.use_neopixel:
-        try:
-            from app_utils.neopixel import NeopixelAnimator
+    try:
+        animator = None
+        if args.use_neopixel:
+            try:
+                from app_utils.neopixel import NeopixelAnimator
 
-            logger.info("NeoPixel: import OK, creating NeopixelAnimator")
-            animator = NeopixelAnimator()
-        except ImportError:
-            logger.warning("NeoPixel: app_utils.neopixel could not be imported, LED animations disabled")
-    else:
-        logger.info("NeoPixel: disabled (pass --use-neopixel to enable)")
-
-    translator = build_translation_service(args)
-
-    if not getattr(args, "test", False):
-        audio_device = choose_audio_device(args.audio_device)
-        recognizer = build_speech_recognizer(args, audio_device=audio_device)
-    else:
-        audio_device = None
-        recognizer = None
-
-    configure_qt_environment()
-    app = QApplication([sys.argv[0]])
-
-    language_state = LanguageState(language_by_display_name(args.language))
-    ensure_language_fonts_loaded(language_state.current)
-    window = ChatWindow(
-        language_state=language_state,
-        max_chat_bubbles=args.max_chat_bubbles,
-        show_stats=not args.hide_stats,
-        verbose_stats=args.verbose_stats,
-    )
-
-    window.set_translator(translator)
-    window.set_animator(animator)
-
-    auto_test = None
-    if getattr(args, "test", False):
-        if args.test_phrases:
-            phrases = [
-                line.strip()
-                for line in Path(args.test_phrases).read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+                logger.info("NeoPixel: import OK, creating NeopixelAnimator")
+                animator = NeopixelAnimator()
+            except ImportError:
+                logger.warning("NeoPixel: app_utils.neopixel could not be imported, LED animations disabled")
         else:
-            phrases = _DEFAULT_TEST_PHRASES
+            logger.info("NeoPixel: disabled (pass --use-neopixel to enable)")
 
-        lang_names = args.test_languages or [lang.display_name for lang in LANGUAGES.values()]
-        lang_map = {lang.display_name: lang for lang in LANGUAGES.values()}
-        test_languages = [lang_map[n] for n in lang_names]
-        for lang in test_languages:
-            ensure_language_fonts_loaded(lang)
+        translator = build_translation_service(args)
 
-        auto_test = AutoTestDriver(
-            window,
-            phrases=phrases,
-            languages=test_languages,
-            delay_s=args.test_delay,
-            count=args.test_count,
-            csv_path=args.test_csv,
-        )
-        logger.info(
-            "AutoTest mode: %d phrases, languages=%s, delay=%.1fs, count=%s",
-            len(phrases), lang_names, args.test_delay, args.test_count or "unlimited",
-        )
+        if not getattr(args, "test", False):
+            audio_device = choose_audio_device(args.audio_device)
+            recognizer = build_speech_recognizer(args, audio_device=audio_device)
+        else:
+            audio_device = None
+            recognizer = None
 
-    if recognizer is not None:
-        worker = TranslationWorker(
-            recognizer=recognizer,
-            translator=translator,
+        configure_qt_environment()
+        app = QApplication([sys.argv[0]])
+
+        language_state = LanguageState(language_by_display_name(args.language))
+        ensure_language_fonts_loaded(language_state.current)
+        window = ChatWindow(
             language_state=language_state,
-            window=window,
-            min_words=args.min_words,
-            partial_update_ms=args.partial_update_ms,
+            max_chat_bubbles=args.max_chat_bubbles,
             show_stats=not args.hide_stats,
-            animator=animator,
+            verbose_stats=args.verbose_stats,
         )
-        window.set_close_handler(worker.stop)
-        app.aboutToQuit.connect(worker.stop)
-        signal.signal(signal.SIGINT, lambda *_: (worker.stop(), app.quit()))
-    else:
-        worker = None
+
+        window.set_translator(translator)
+        window.set_animator(animator)
+
+        auto_test = None
+        if getattr(args, "test", False):
+            if args.test_phrases:
+                phrases = [
+                    line.strip()
+                    for line in Path(args.test_phrases).read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
+            else:
+                phrases = _DEFAULT_TEST_PHRASES
+
+            lang_names = args.test_languages or [lang.display_name for lang in LANGUAGES.values()]
+            lang_map = {lang.display_name: lang for lang in LANGUAGES.values()}
+            test_languages = [lang_map[n] for n in lang_names]
+            for lang in test_languages:
+                ensure_language_fonts_loaded(lang)
+
+            auto_test = AutoTestDriver(
+                window,
+                phrases=phrases,
+                languages=test_languages,
+                delay_s=args.test_delay,
+                count=args.test_count,
+                csv_path=args.test_csv,
+            )
+            logger.info(
+                "AutoTest mode: %d phrases, languages=%s, delay=%.1fs, count=%s",
+                len(phrases), lang_names, args.test_delay, args.test_count or "unlimited",
+            )
+
+        if recognizer is not None:
+            worker = TranslationWorker(
+                recognizer=recognizer,
+                translator=translator,
+                language_state=language_state,
+                window=window,
+                min_words=args.min_words,
+                partial_update_ms=args.partial_update_ms,
+                show_stats=not args.hide_stats,
+                animator=animator,
+            )
+            window.set_close_handler(worker.stop)
+            app.aboutToQuit.connect(worker.stop)
+            signal.signal(signal.SIGINT, lambda *_: (worker.stop(), app.quit()))
+        else:
+            worker = None
+            if auto_test is not None:
+                app.aboutToQuit.connect(auto_test.stop)
+            signal.signal(signal.SIGINT, lambda *_: app.quit())
+
+        if args.windowed:
+            window.show()
+        else:
+            window.showFullScreen()
+
+        if worker is not None:
+            worker.start()
         if auto_test is not None:
-            app.aboutToQuit.connect(auto_test.stop)
-        signal.signal(signal.SIGINT, lambda *_: app.quit())
+            auto_test.start()
 
-    if args.windowed:
-        window.show()
-    else:
-        window.showFullScreen()
+        exit_code = app.exec()
 
-    if worker is not None:
-        worker.start()
-    if auto_test is not None:
-        auto_test.start()
+        if worker is not None:
+            worker.stop()
+            worker.join(timeout=2.0)
+        if auto_test is not None:
+            auto_test.stop()
 
-    exit_code = app.exec()
-
-    if worker is not None:
-        worker.stop()
-        worker.join(timeout=2.0)
-    if auto_test is not None:
-        auto_test.stop()
-
-    return exit_code
+        return exit_code
+    finally:
+        if not args.no_npu_clock:
+            cleanup_npu_after_inference()
 
 
 if __name__ == "__main__":

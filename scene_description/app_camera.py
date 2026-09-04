@@ -1,8 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright © 2026 Synaptics Incorporated.
+
+"""Scene description: capture a photo, then describe it with LiquidAI LFM2-VL-450M on the NPU."""
+
+import argparse
+import gc
 import os
-import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import cv2
 
@@ -11,43 +20,45 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QImage, QPixmap
 
+from app_utils.camera import Camera, CameraError, find_camera_device
+from app_utils.display import enable_wayland_display
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
+
+# The LFM2-VL-450M demo lives under app_utils/torq_examples/LiquidAI/LiquidAI-LFM2-VL-450M/,
+# a directory whose name contains hyphens, so it isn't importable as a regular package.
+# Add its src/ dir (for the runner) and its own dir (for the model-refresh helper) to
+# sys.path directly instead, same as that demo's own src/infer.py does.
+_LFM2VL_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..",
+    "app_utils", "torq_examples", "LiquidAI", "LiquidAI-LFM2-VL-450M",
+)
+sys.path.insert(0, os.path.join(_LFM2VL_DIR, "src"))
+sys.path.insert(0, _LFM2VL_DIR)
+
+from runner import LiquidVLStatic
+from setup_demo import ensure_lfm2vl_models
+
 ORIENTATION = "portrait" # or "landscape"
 
 if ORIENTATION == "portrait":
     WINDOW_W = 480 - 6
     WINDOW_H = 800 - 33
-else:   
+else:
     WINDOW_W = 800
     WINDOW_H = 380
 
-DUMMY_DESCRIPTION = "A person sitting at a desk with a laptop and a coffee cup nearby."
+DEFAULT_MODELS_DIR = "../models/Synaptics/LiquidAI-LFM2-VL-450M/"
+DEFAULT_PROMPT = "Describe this image in two sentences."
+DECODER_FILE = "decoder_nolm.vmfb"
+LM_HEAD_FILE = "lm_head.vmfb"
+VISION_FILE = "vision_encoder_256.vmfb"
+IMAGE_DECODER_PREFIX = "decoder_image_2part_"
+CAPTURE_IMAGE_PATH = "scene_capture.jpg"
+VISION_INPUT_SIZE = 256  # vision_encoder_256.vmfb's one-shot image-prefill path is a static
+                          # 256-patch (16x16) shape, so the source image must be exactly
+                          # 256x256 pixels going in (see LiquidAI-LFM2-VL-450M/README.md).
 PREVIEW_FPS = 15
 CAPTURE_HOLD_SECONDS = 10
-
-
-def find_camera():
-    try:
-        result = subprocess.run(["v4l2-ctl", "--list-devices"],
-                                capture_output=True, text=True, timeout=2)
-        if result.returncode == 0:
-            in_usb = False
-            for line in result.stdout.splitlines():
-                if "usb-" in line.lower():
-                    in_usb = True
-                    continue
-                if in_usb and "/dev/video" in line:
-                    dev = line.strip()
-                    if os.path.exists(dev):
-                        return dev
-                if not line.strip():
-                    in_usb = False
-    except Exception:
-        pass
-    for i in range(10):
-        dev = f"/dev/video{i}"
-        if os.path.exists(dev):
-            return dev
-    return None
 
 
 class Signals(QObject):
@@ -56,13 +67,41 @@ class Signals(QObject):
     set_button_enabled = pyqtSignal(bool)
 
 
+def _center_crop_square(frame):
+    """Crop ``frame`` to a centered square, using the shorter side as edge length."""
+    h, w = frame.shape[:2]
+    side = min(h, w)
+    y0 = (h - side) // 2
+    x0 = (w - side) // 2
+    return frame[y0:y0 + side, x0:x0 + side]
+
+
+def build_vl(models_dir):
+    """Load the LFM2-VL-450M vision encoder + decoder for one-shot image description."""
+    models_dir = Path(models_dir)
+    required = (DECODER_FILE, LM_HEAD_FILE, VISION_FILE)
+    for filename in required:
+        path = models_dir / filename
+        if not path.exists():
+            sys.exit(f"LFM2-VL-450M asset not found: {path}")
+    return LiquidVLStatic(
+        str(models_dir / DECODER_FILE),
+        str(models_dir / VISION_FILE),
+        lmhead_path=str(models_dir / LM_HEAD_FILE),
+        image_decoder_prefix=str(models_dir / IMAGE_DECODER_PREFIX),
+    )
+
+
 class CameraApp(QWidget):
-    def __init__(self, camera):
+    def __init__(self, camera, models_dir, prompt):
         super().__init__()
         self.camera = camera
+        self.models_dir = models_dir
+        self.prompt = prompt
         self.signals = Signals()
         self._running = True
         self._frozen = False
+        self._last_frame = None
         self._init_ui()
         self.signals.update_image.connect(self._show_image)
         self.signals.update_description.connect(self.description_label.setText)
@@ -130,51 +169,51 @@ class CameraApp(QWidget):
         layout.addWidget(bottom_bar)
 
     def _on_capture(self):
-        if self._frozen:
+        if self._frozen or self._last_frame is None:
             return
         self.capture_btn.setEnabled(False)
         self._frozen = True
-        self.signals.update_description.emit(DUMMY_DESCRIPTION)
-        threading.Thread(target=self._hold_then_resume, daemon=True).start()
+        self.signals.update_description.emit("Thinking...")
+        threading.Thread(target=self._describe_then_resume, args=(self._last_frame,), daemon=True).start()
 
-    def _hold_then_resume(self):
+    def _describe_then_resume(self, frame):
+        try:
+            square = _center_crop_square(frame)
+            resized = cv2.resize(square, (VISION_INPUT_SIZE, VISION_INPUT_SIZE), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(CAPTURE_IMAGE_PATH, resized)
+            # The NPU vision encoder and decoder can't be co-resident (the encoder
+            # is freed once the decoder loads), so the vmfb-vision path is one-shot
+            # per LiquidVLStatic instance — rebuild it fresh for every capture.
+            vl = build_vl(self.models_dir)
+            try:
+                description = vl.run(CAPTURE_IMAGE_PATH, self.prompt)
+            finally:
+                del vl
+                gc.collect()
+            self.signals.update_description.emit(description.strip())
+        except Exception as exc:
+            self.signals.update_description.emit(f"Error: {exc}")
         time.sleep(CAPTURE_HOLD_SECONDS)
         self._frozen = False
         self.signals.update_description.emit("")
         self.signals.set_button_enabled.emit(True)
 
     def _preview_loop(self):
-        try:
-            cam_index = int(self.camera)
-        except (ValueError, TypeError):
-            cam_index = self.camera
-
-        # Set auto exposure directly via v4l2-ctl before opening the device.
-        # OpenCV's CAP_PROP_AUTO_EXPOSURE abstraction is unreliable for OV5647.
-        device_path = self.camera if isinstance(self.camera, str) else f"/dev/video{self.camera}"
-        subprocess.run(
-            ["v4l2-ctl", "-d", device_path, "--set-ctrl=auto_exposure=0"],
-            capture_output=True,
-        )
-
-        cap = cv2.VideoCapture(cam_index, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            self.signals.update_description.emit(f"Error: cannot open {self.camera}")
-            return
-
         frame_interval = 1.0 / PREVIEW_FPS
         try:
-            while self._running:
-                ret, frame = cap.read()
-                if not ret or frame is None:
+            # exposure_auto=0: OpenCV's CAP_PROP_AUTO_EXPOSURE abstraction is
+            # unreliable for OV5647, so set it directly via v4l2-ctl on open.
+            with Camera(self.camera, controls={"exposure_auto": 0}) as cam:
+                for frame in cam.stream():
+                    if not self._running:
+                        break
+                    # Skip updating the display while a captured frame is being held.
+                    if not self._frozen:
+                        self._last_frame = frame
+                        self.signals.update_image.emit(frame)
                     time.sleep(frame_interval)
-                    continue
-                # Skip updating the display while a captured frame is being held.
-                if not self._frozen:
-                    self.signals.update_image.emit(frame)
-                time.sleep(frame_interval)
-        finally:
-            cap.release()
+        except CameraError as exc:
+            self.signals.update_description.emit(f"Error: {exc}")
 
     def closeEvent(self, event):
         self._running = False
@@ -189,36 +228,39 @@ class CameraApp(QWidget):
         )
         self.image_label.setPixmap(pix)
 
-#  NPU Clock 
-def enable_npu_clock():
-    """Enable NPU clock via devmem (required before Torq inference)."""
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Capture a photo and describe it with LiquidAI LFM2-VL-450M.")
+    parser.add_argument("--models", default=DEFAULT_MODELS_DIR, help="Directory holding the LFM2-VL-450M assets (default: %(default)s)")
+    parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="Prompt sent to the VLM for each captured photo (default: %(default)s)")
+    parser.add_argument("--no-refresh", action="store_true", help="Skip the model freshness check (offline runs)")
+    return parser.parse_args()
+
 
 def main():
-    camera = find_camera()
+    args = parse_args()
+
+    camera = find_camera_device()
     if camera is None:
         print("ERROR: No camera found")
         sys.exit(1)
     print(f"Camera: {camera}")
 
-    # Set NPU clock
-    enable_npu_clock()
+    ensure_lfm2vl_models(args.models, refresh=not args.no_refresh)
 
-    os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
+    setup_npu_for_inference()
+
+    enable_wayland_display()
     os.environ["WESTON_DISABLE_GBM_MODIFIERS"] = "true"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
     os.environ["QT_QPA_PLATFORM"] = "wayland"
 
     app = QApplication(sys.argv)
-    window = CameraApp(camera)
+    window = CameraApp(camera, args.models, args.prompt)
     window.show()
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup_npu_after_inference()

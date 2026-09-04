@@ -19,6 +19,9 @@ import cv2
 import numpy as np
 from flask import Flask, Response
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from detector import Detector
 from tracker import Tracker, TrackedJellyfish
 from music_engine import MusicEngine, NOTE_GRID
@@ -43,16 +46,6 @@ _NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 
 def midi_to_name(midi: int) -> str:
     return f"{_NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
-
-#  NPU Clock 
-def enable_npu_clock():
-    """Enable NPU clock via devmem (required before Torq inference)."""
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
 
 def find_usb_audio_device():
     """Return the first USB audio ALSA device string (e.g. 'hw:2,0'), or None."""
@@ -725,8 +718,7 @@ def main():
     print(f"  WS     : ws://{args.host}:{args.ws_port}")
 
 
-    # Set NPU clock
-    enable_npu_clock()
+    setup_npu_for_inference()
 
     # ── Initialize audio ──
     if not args.no_audio:
@@ -770,4 +762,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup_npu_after_inference()

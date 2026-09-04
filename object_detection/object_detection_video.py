@@ -8,13 +8,14 @@ from collections import deque
 import json
 import numpy as np
 import os
-import subprocess
 import sys
-import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app_utils.camera import FrameGrabber, resolve_camera_device, set_camera_controls
+from app_utils.display import LiveDisplay
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from app_utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 MAX_DETECTIONS_TO_KEEP = 60
@@ -74,52 +75,6 @@ def draw_ui(canvas, title, stats, video_rect):
         (cw, ch), _ = cv2.getTextSize(count_text, font, 0.7, 2)
         cv2.putText(canvas, count_text, (target_w - cw - 30, y_cursor + 15), 
                     font, 0.7, (0, 255, 100), 2, cv2.LINE_AA)
-
-def configure_camera(device, controls):
-    """Set V4L2 controls for the camera."""
-    if not controls:
-        return
-    
-    # Mapping of logical names to potential V4L2 control names
-    # Drivers vary: UVC uses 'exposure_absolute', CSI often uses 'exposure'
-    NAME_MAPS = {
-        "brightness": ["brightness"],
-        "contrast": ["contrast"],
-        "saturation": ["saturation"],
-        "sharpness": ["sharpness"],
-        "gain": ["gain", "analogue_gain"],
-        "exposure_auto": ["exposure_auto", "auto_exposure"],
-        "exposure_absolute": ["exposure_absolute", "exposure"],
-        "exposure_auto_priority": ["exposure_auto_priority"],
-    }
-
-    for logical_name, val in controls.items():
-        if val is None:
-            continue
-        
-        success = False
-        errors = []
-        for v4l2_name in NAME_MAPS.get(logical_name, [logical_name]):
-            cmd = ["v4l2-ctl", "-d", device, "-c", f"{v4l2_name}={val}"]
-            try:
-                res = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True
-                )
-                if res.returncode == 0:
-                    print(f"[Camera] Success: {' '.join(cmd)}")
-                    success = True
-                    break
-                else:
-                    errors.append(f"{v4l2_name}: {res.stderr.strip()}")
-            except Exception as e:
-                errors.append(f"{v4l2_name}: {str(e)}")
-                continue
-        
-        if not success:
-            err_msg = " | ".join(errors)
-            print(f"[Camera] Warning: Failed to set {logical_name}={val} on {device}. Tried: {err_msg}")
 
 def preprocess_frame_cv(bgr_frame, target_size=(320, 320)):
     """
@@ -264,74 +219,6 @@ def postprocess(outputs, orig_shape, pad_info, labels=None):
 def run_inference_torq(runner, input_data):
     return runner.infer(input_data)
 
-def find_working_camera():
-    try:
-        result = subprocess.run(
-            ["v4l2-ctl", "--list-devices"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0:
-            lines = result.stdout.splitlines()
-            in_usb_device = False
-            for line in lines:
-                if "usb-" in line.lower():
-                    in_usb_device = True
-                    continue
-                if in_usb_device and "/dev/video" in line:
-                    device = line.strip()
-                    if os.path.exists(device):
-                        return device
-                if line.strip() == "":
-                    in_usb_device = False
-    except Exception:
-        pass
-
-    for index in range(10):
-        device = f"/dev/video{index}"
-        if os.path.exists(device):
-            return device
-    return None
-
-
-def resolve_camera_device(camera_device):
-    if camera_device == "auto":
-        resolved = find_working_camera()
-        if resolved is None:
-            raise RuntimeError("No USB camera device found")
-        return resolved
-
-    if not os.path.exists(camera_device):
-        raise RuntimeError(f"Camera device not found: {camera_device}")
-    return camera_device
-
-
-def create_display_pipeline(Gst, width, height, fps, sink_name, disp_width=None, disp_height=None):
-    disp_w = disp_width or width
-    disp_h = disp_height or height
-    pipeline_str = (
-        "appsrc name=display_src format=time is-live=true block=true ! "
-        f"video/x-raw,format=BGRA,width={width},height={height},framerate={fps}/1 ! "
-        "synavideoconvertscale ! "
-        f"video/x-raw,width={disp_w},height={disp_h} ! "
-        f"{sink_name} sync=false"
-    )
-    pipeline = Gst.parse_launch(pipeline_str)
-    appsrc = pipeline.get_by_name("display_src")
-    return pipeline, appsrc
-
-
-def push_display_frame(Gst, appsrc, frame_rgb, frame_index, fps):
-    data = frame_rgb.tobytes()
-    gst_buffer = Gst.Buffer.new_allocate(None, len(data), None)
-    gst_buffer.fill(0, data)
-    if fps > 0:
-        frame_duration = Gst.SECOND // fps
-        gst_buffer.pts = frame_index * frame_duration
-        gst_buffer.duration = frame_duration
-    return appsrc.emit("push-buffer", gst_buffer)
-
 
 class RotatingJsonArrayWriter:
     def __init__(self, path, max_entries):
@@ -388,82 +275,12 @@ class RotatingJsonArrayWriter:
     def close(self):
         self._close_current_file()
 
-class FrameGrabber:
-    """
-    Daemon thread that continuously reads from a VideoCapture and keeps only
-    the most recent frame.  The inference loop calls grabber.read() which
-    returns immediately with the latest frame, so slow inference never
-    accumulates a backlog of stale frames.
-    """
-    def __init__(self, cap):
-        self._cap = cap
-        self._frame = None
-        self._lock = threading.Lock()
-        self._stopped = False
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def _run(self):
-        while not self._stopped:
-            ret, frame = self._cap.read()
-            if not ret:
-                self._stopped = True
-                break
-            with self._lock:
-                self._frame = frame
-
-    def read(self):
-        """Return (ok, frame_copy) — frame_copy is None if no frame yet."""
-        with self._lock:
-            if self._frame is None:
-                return False, None
-            return True, self._frame.copy()
-
-    def stop(self):
-        self._stopped = True
-        self._thread.join(timeout=1.0)
-
-
-def shutdown_display_pipeline(Gst, pipeline, appsrc):
-    if pipeline is None:
-        return
-
-    if appsrc is not None:
-        try:
-            appsrc.emit("end-of-stream")
-        except Exception:
-            pass
-
-    bus = pipeline.get_bus()
-    if bus is not None:
-        bus.timed_pop_filtered(
-            Gst.SECOND,
-            Gst.MessageType.EOS | Gst.MessageType.ERROR,
-        )
-
-    pipeline.set_state(Gst.State.READY)
-    pipeline.get_state(Gst.SECOND)
-    pipeline.set_state(Gst.State.NULL)
-    pipeline.get_state(Gst.SECOND)
-
 
 def run_with_opencv(args, runner, labels):
     """OpenCV capture + preprocess main loop with optional GStreamer display."""
     import cv2
 
-    Gst = None
-    display_pipeline = None
-    display_appsrc = None
-    display_fps = 0
-    if args.display:
-        import gi
-        gi.require_version('Gst', '1.0')
-        from gi.repository import Gst as _Gst
-        _Gst.init(None)
-        Gst = _Gst
-
-    if args.display and Gst is None:
-        raise RuntimeError("Failed to initialize GStreamer display")
+    live = None
 
     # -- open source ----------------------------------------------------------
     if args.rtsp_url:
@@ -501,6 +318,9 @@ def run_with_opencv(args, runner, labels):
 
     orientation = os.environ.get("ORIENTATION", "landscape")
     disp_w, disp_h = (480, 800) if orientation == "portrait" else (800, 480)
+
+    if args.display:
+        live = LiveDisplay(disp_w, disp_h, fps=display_fps, sink_name=args.display_sink)
 
     # -- optional output writer ------------------------------------------------
     out_writer = None
@@ -607,21 +427,10 @@ def run_with_opencv(args, runner, labels):
             json_writer.append(frame_result)
 
             # -- display / write ----------------------------------------------
-            if args.display:
-                assert Gst is not None
-                if display_pipeline is None:
-                    display_pipeline, display_appsrc = create_display_pipeline(
-                        Gst,
-                        disp_w,
-                        disp_h,
-                        display_fps,
-                        args.display_sink,
-                    )
-                    display_pipeline.set_state(Gst.State.PLAYING)
-
+            if live is not None:
                 # Use letterbox_frame to maintain aspect ratio on portrait displays
                 display_frame_bgr, video_rect = letterbox_frame(annotated, (disp_w, disp_h))
-                
+
                 # Add UI elements to the black bars
                 ui_stats = {
                     "fps": fps,
@@ -630,16 +439,7 @@ def run_with_opencv(args, runner, labels):
                 }
                 draw_ui(display_frame_bgr, "Object Detection", ui_stats, video_rect)
 
-                rendered_frame = cv2.cvtColor(display_frame_bgr, cv2.COLOR_BGR2BGRA)
-                ret = push_display_frame(
-                    Gst,
-                    display_appsrc,
-                    rendered_frame,
-                    frame_count,
-                    display_fps,
-                )
-                if ret != Gst.FlowReturn.OK:
-                    print(f"Warning: failed to display frame: {ret}")
+                live.push(display_frame_bgr)
 
             if out_writer is not None:
                 out_writer.write(annotated)
@@ -658,9 +458,8 @@ def run_with_opencv(args, runner, labels):
         cap.release()
         if out_writer is not None:
             out_writer.release()
-        if args.display:
-            assert Gst is not None
-            shutdown_display_pipeline(Gst, display_pipeline, display_appsrc)
+        if live is not None:
+            live.close()
         json_writer.close()
         print(f"Done. Processed {frame_count} frames. Output: {args.output if args.output else 'not saved'}")
         print(
@@ -668,16 +467,6 @@ def run_with_opencv(args, runner, labels):
             f"(previous file: {json_writer.rotated_path if os.path.exists(json_writer.rotated_path) else 'none'})"
         )
         print(f"Kept the last {len(all_detections)} detections in memory.")
-
-#  NPU Clock 
-def enable_npu_clock():
-    """Enable NPU clock via devmem (required before Torq inference)."""
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -714,8 +503,7 @@ def main():
     
     args = parser.parse_args()
 
-    # Set NPU clock
-    enable_npu_clock()
+    setup_npu_for_inference()
 
     # Go ahead and set these
     if args.display:
@@ -734,32 +522,35 @@ def main():
             "exposure_auto": args.exposure_auto,
             "exposure_absolute": args.exposure_absolute,
         }
-        configure_camera(ctrl_device, cam_ctrls)
+        set_camera_controls(ctrl_device, cam_ctrls)
 
-    # 0. Load the model with Torq Runtime
-    runner = SimpleVMFBInferenceRunner(
-        args.model,
-        device_uri=args.device,
-        function="main",
-        load_model_to_mem=True
-    )
-    if args.camera_device:
-        try:
-            args.camera_device = resolve_camera_device(args.camera_device)
-        except RuntimeError as exc:
-            print(f"ERROR: {exc}")
-            sys.exit(1)
+    try:
+        # 0. Load the model with Torq Runtime
+        runner = SimpleVMFBInferenceRunner(
+            args.model,
+            device_uri=args.device,
+            function="main",
+            load_model_to_mem=True
+        )
+        if args.camera_device:
+            try:
+                args.camera_device = resolve_camera_device(args.camera_device)
+            except RuntimeError as exc:
+                print(f"ERROR: {exc}")
+                sys.exit(1)
 
-    labels = {}
-    if args.labels:
-        with open(args.labels) as f:
-            data = json.load(f)
-            if "names" in data:
-                labels = {str(k): v for k, v in data["names"].items()}
-            else:
-                labels = data
+        labels = {}
+        if args.labels:
+            with open(args.labels) as f:
+                data = json.load(f)
+                if "names" in data:
+                    labels = {str(k): v for k, v in data["names"].items()}
+                else:
+                    labels = data
 
-    run_with_opencv(args, runner, labels)
+        run_with_opencv(args, runner, labels)
+    finally:
+        cleanup_npu_after_inference()
 
 if __name__ == "__main__":
     main()

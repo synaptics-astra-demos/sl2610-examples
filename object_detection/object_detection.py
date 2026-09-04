@@ -7,14 +7,13 @@ import argparse
 import json
 import numpy as np
 import os
-import subprocess
-import time
 import sys
-import shutil
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app_utils.display import enable_wayland_display, fit_to_display, show_image
+from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from app_utils.torq_examples.utils.inference import SimpleVMFBInferenceRunner
 
 # ==========================================
@@ -185,16 +184,6 @@ def postprocess(outputs, orig_shape, pad_info, labels=None):
 def run_inference_torq(runner, input_data):
     return runner.infer(input_data)
 
-#  NPU Clock 
-def enable_npu_clock():
-    """Enable NPU clock via devmem (required before Torq inference)."""
-    try:
-        subprocess.run(["devmem", "0xf7e104b0", "32", "0x216"],
-                       capture_output=True, timeout=5)
-        print("[NPU] Clock enabled")
-    except Exception as e:
-        print(f"[NPU] Clock enable failed: {e}")
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb")
@@ -205,202 +194,141 @@ def main():
     parser.add_argument("--display", action="store_true", help="Display annotated frame")
     args = parser.parse_args()
 
-    # Set NPU clock
-    enable_npu_clock()
+    setup_npu_for_inference()
 
     # Go ahead and set these
     if args.display:
-        os.environ["XDG_RUNTIME_DIR"] = "/var/run/user/0"
-        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+        enable_wayland_display()
 
-    # 0. Load the model with Torq Runtime
-    runner = SimpleVMFBInferenceRunner(
-        args.model,
-        device_uri=args.device,
-        function="main",
-        load_model_to_mem=True
-    )
-
-    # 1. Preprocess
-    print("\n[1/4] Preprocessing...")
-    input_data, pad_info, orig_shape = preprocess_image(args.image)
-
-    # 2. Inference
-    print("\n[2/4] Inference...")
     try:
-        raw_out = run_inference_torq(runner, input_data)
-    except Exception as e:
-        print(f"Inference failed: {e}")
-        sys.exit(1)
-    print(f"Time: {runner.infer_time_ms:.3f}ms")
-    
-    # 3. Load Output
-    print("\n[3/4] Processing...")
-    # raw_out is already a numpy array, shape (1, 84, 2100) or similar, dtype=int8
-    if raw_out.shape != (1, 84, 2100):
-        print(f"Warning: Output shape {raw_out.shape} doesn't match expected (1, 84, 2100). Metadata might be needed.")
-    
-    # Must match the models quantization parameters
-    out_scale = 0.004194467328488827
-    out_zp = -128
-    outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
-    
-    # 4. Postprocess
-    labels = {}
-    if args.labels:
-        with open(args.labels) as f:
-            data = json.load(f)
-            if "names" in data:
-                labels = {str(k): v for k, v in data["names"].items()}
-            else:
-                labels = data
-                
-    results = postprocess(outputs, orig_shape, pad_info, labels)
-    
-    print("\n[4/4] Detections:")
-    if not results:
-        print("No objects detected.")
-    
-    for label, conf, box in results:
-        print(f"  {label:<15} Conf: {conf:.4f}  Box: {box.astype(int)}")
+        # 0. Load the model with Torq Runtime
+        runner = SimpleVMFBInferenceRunner(
+            args.model,
+            device_uri=args.device,
+            function="main",
+            load_model_to_mem=True
+        )
 
-    # 5. Save Annotated Image (only if --save-image is set)
-    if (args.save_image or args.display) and results:
-        orientation = os.environ.get("ORIENTATION", "landscape")
-        disp_w = int(os.environ.get("DISPLAY_WIDTH", 800 if orientation == "landscape" else 480))
-        disp_h = int(os.environ.get("DISPLAY_HEIGHT", 480 if orientation == "landscape" else 800))
+        # 1. Preprocess
+        print("\n[1/4] Preprocessing...")
+        input_data, pad_info, orig_shape = preprocess_image(args.image)
 
-        print("\n[5/5] Saving result image...")
+        # 2. Inference
+        print("\n[2/4] Inference...")
         try:
-            img = Image.open(args.image)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            
-            # --- 1. Resize to display dimensions (Letterbox) ---
-            target_w, target_h = disp_w, disp_h
-            w, h = img.size
-            
-            # Calculate scale to fit
-            scale = min(target_w / w, target_h / h)
-            new_w, new_h = int(w * scale), int(h * scale)
-            
-            # Resize source
-            img_resized = img.resize((new_w, new_h), Image.BILINEAR)
-            
-            # Create standard canvas (black)
-            canvas = Image.new("RGB", (target_w, target_h), (0, 0, 0))
-            
-            # Paste centered
-            dx = (target_w - new_w) // 2
-            dy = (target_h - new_h) // 2
-            canvas.paste(img_resized, (dx, dy))
-            
-            img = canvas # Use the 720p canvas
-            print(f"Resized image to {target_w}x{target_h} (letterboxed).")
-            # -----------------------------------------
-
-            draw = ImageDraw.Draw(img)
-            
-            # --- 2. Load Font ---
-            font = None
-            try:
-                font_path = "/usr/share/fonts/ttf/LiberationSans-Regular.ttf"
-                if os.path.exists(font_path):
-                    font = ImageFont.truetype(font_path, 35)
-                else: 
-                     # Fallback check
-                    fallback_paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
-                    for p in fallback_paths:
-                        if os.path.exists(p):
-                            font = ImageFont.truetype(p, 40)
-                            break
-            except Exception:
-                pass
-            
-            if font is None:
-                font = ImageFont.load_default()
-            # --------------------
-
-            for label, conf, box in results:
-                # box is [x, y, w, h] in ORIGINAL coordinates
-                
-                # --- 3. Transform Box Coordinates ---
-                # Apply scaling and shift
-                x1 = box[0] * scale + dx
-                y1 = box[1] * scale + dy
-                w_box = box[2] * scale
-                h_box = box[3] * scale
-                
-                x2 = x1 + w_box
-                y2 = y1 + h_box
-                # ------------------------------------
-                
-                # Draw Box (Red, thicker line for resolution)
-                draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-                
-                # Draw Label (Label ONLY, no score)
-                text = f"{label}" # Just label
-                
-                # Draw Label Background
-                # Draw text slightly above box, or inside if too high
-                text_pos = [x1, y1 - 45]
-                if text_pos[1] < 0: text_pos[1] = y1 + 5 # Move inside if clip top
-                
-                try:
-                    left, top, right, bottom = draw.textbbox((text_pos[0], text_pos[1]), text, font=font)
-                    draw.rectangle((left-5, top-5, right+5, bottom+5), fill="red")
-                except AttributeError:
-                    draw.rectangle((text_pos[0], text_pos[1], text_pos[0] + len(text)*20, text_pos[1]+40), fill="red")
-                
-                draw.text((text_pos[0], text_pos[1]), text, fill="white", font=font)
-            
-            out_img = "output_yolo.jpg"
-            img.save(out_img)
-            print(f"Result image saved to: {out_img}")
-
-            if args.display:
-                # 6. Attempt Display
-                print("Attempting to display image...")
-                
-                # Option A: GStreamer (Wayland/Embedded)
-                # Pipeline: filesrc -> jpegdec -> videoconvert -> imagefreeze -> waylandsink
-                if shutil.which("gst-launch-1.0"):
-                    try:
-                        print("Found gst-launch-1.0. Displaying with waylandsink for 5 seconds...")
-                        
-                        print(f"Using display resolution {disp_w}x{disp_h}")
-
-                        cmd = [
-                            "gst-launch-1.0",
-                            "filesrc", f"location={out_img}", "!",
-                            "jpegdec", "!",
-                            "videoconvert", "!",
-                            "imagefreeze", "!",
-                            "videoscale", "!",
-                            f"video/x-raw,width={disp_w},height={disp_h}", "!",
-                            "waylandsink"
-                        ]
-                        
-                        # Run in background
-                        proc = subprocess.Popen(cmd)
-                        
-                        # Wait 5 seconds or for interrupt
-                        try:
-                            time.sleep(5)
-                        except KeyboardInterrupt:
-                            pass # Handle early exit
-                            
-                        # Clean up
-                        proc.terminate()
-                        proc.wait()
-                        print("Display closed.")
-                        
-                    except Exception as e:
-                        print(f"GStreamer failed: {e}")
-                    
-
+            raw_out = run_inference_torq(runner, input_data)
         except Exception as e:
-            print(f"Failed to save result image: {e}")
+            print(f"Inference failed: {e}")
+            sys.exit(1)
+        print(f"Time: {runner.infer_time_ms:.3f}ms")
+
+        # 3. Load Output
+        print("\n[3/4] Processing...")
+        # raw_out is already a numpy array, shape (1, 84, 2100) or similar, dtype=int8
+        if raw_out.shape != (1, 84, 2100):
+            print(f"Warning: Output shape {raw_out.shape} doesn't match expected (1, 84, 2100). Metadata might be needed.")
+
+        # Must match the models quantization parameters
+        out_scale = 0.004194467328488827
+        out_zp = -128
+        outputs = dequantize_out(raw_out, out_scale, out_zp, int8=True)
+
+        # 4. Postprocess
+        labels = {}
+        if args.labels:
+            with open(args.labels) as f:
+                data = json.load(f)
+                if "names" in data:
+                    labels = {str(k): v for k, v in data["names"].items()}
+                else:
+                    labels = data
+
+        results = postprocess(outputs, orig_shape, pad_info, labels)
+
+        print("\n[4/4] Detections:")
+        if not results:
+            print("No objects detected.")
+
+        for label, conf, box in results:
+            print(f"  {label:<15} Conf: {conf:.4f}  Box: {box.astype(int)}")
+
+        # 5. Save Annotated Image (only if --save-image is set)
+        if (args.save_image or args.display) and results:
+            print("\n[5/5] Saving result image...")
+            try:
+                img = Image.open(args.image)
+
+                # Letterbox onto the display's resolution
+                img, scale, dx, dy = fit_to_display(img)
+                disp_w, disp_h = img.size
+                print(f"Resized image to {disp_w}x{disp_h} (letterboxed).")
+
+                draw = ImageDraw.Draw(img)
+
+                # --- 2. Load Font ---
+                font = None
+                try:
+                    font_path = "/usr/share/fonts/ttf/LiberationSans-Regular.ttf"
+                    if os.path.exists(font_path):
+                        font = ImageFont.truetype(font_path, 35)
+                    else:
+                         # Fallback check
+                        fallback_paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+                        for p in fallback_paths:
+                            if os.path.exists(p):
+                                font = ImageFont.truetype(p, 40)
+                                break
+                except Exception:
+                    pass
+
+                if font is None:
+                    font = ImageFont.load_default()
+                # --------------------
+
+                for label, conf, box in results:
+                    # box is [x, y, w, h] in ORIGINAL coordinates
+
+                    # --- 3. Transform Box Coordinates ---
+                    # Apply scaling and shift
+                    x1 = box[0] * scale + dx
+                    y1 = box[1] * scale + dy
+                    w_box = box[2] * scale
+                    h_box = box[3] * scale
+
+                    x2 = x1 + w_box
+                    y2 = y1 + h_box
+                    # ------------------------------------
+
+                    # Draw Box (Red, thicker line for resolution)
+                    draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
+
+                    # Draw Label (Label ONLY, no score)
+                    text = f"{label}" # Just label
+
+                    # Draw Label Background
+                    # Draw text slightly above box, or inside if too high
+                    text_pos = [x1, y1 - 45]
+                    if text_pos[1] < 0: text_pos[1] = y1 + 5 # Move inside if clip top
+
+                    try:
+                        left, top, right, bottom = draw.textbbox((text_pos[0], text_pos[1]), text, font=font)
+                        draw.rectangle((left-5, top-5, right+5, bottom+5), fill="red")
+                    except AttributeError:
+                        draw.rectangle((text_pos[0], text_pos[1], text_pos[0] + len(text)*20, text_pos[1]+40), fill="red")
+
+                    draw.text((text_pos[0], text_pos[1]), text, fill="white", font=font)
+
+                out_img = "output_yolo.jpg"
+                img.save(out_img)
+                print(f"Result image saved to: {out_img}")
+
+                if args.display:
+                    show_image(out_img, width=disp_w, height=disp_h)
+
+            except Exception as e:
+                print(f"Failed to save result image: {e}")
+    finally:
+        cleanup_npu_after_inference()
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,8 @@
 # Image Capture and Scene Description App
 
 Visual scene description demonstrating image understanding on the **Synaptics Astra SL26xx series**.
-
-> ⚠️ **Warning: This app is not complete!**
+Press the shutter button to capture a photo from the camera; **LiquidAI LFM2-VL-450M** then
+describes it on the Torq NPU, with the vision encoder and decoder both running on-chip in bf16.
 
 ## Hardware Setup
 
@@ -76,10 +76,36 @@ ORIENTATION = "portrait"
 cd scene_description/
 ```
 
+### Download Models
+
+Download the LiquidAI LFM2-VL-450M model files from HuggingFace by running this setup script.
+
+```bash
+python setup_demo.py
+```
+
+Model files are stored to `models/Synaptics/LiquidAI-LFM2-VL-450M/`.
+
 ### Run the app
 
 ```bash
 python3 app_camera.py
 ```
 
-Press the shutter button in the UI to capture an image from the connected camera and generate a scene description.
+Press the shutter button in the UI to capture an image from the connected camera; the captured
+photo and prompt are sent to LFM2-VL-450M on the NPU, and the description is shown once generated.
+
+### Options
+
+- `--prompt`: prompt sent to the VLM for each captured photo, defaults to `"Describe this image in two sentences."`
+- `--models`: directory holding the LFM2-VL-450M assets, defaults to `../models/Synaptics/LiquidAI-LFM2-VL-450M/`
+- `--no-refresh`: skip the Hugging Face freshness check (offline/airgapped runs)
+
+Example, asking a more specific question instead of the default caption prompt:
+
+```bash
+python3 app_camera.py --prompt "What is the main object in this photo, and what color is it?"
+```
+
+This example is built on **LFM2-VL-450M**, a redistribution of a model created by
+**Liquid AI, Inc.**, licensed under the **LFM Open License v1.0**.
