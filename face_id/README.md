@@ -1,0 +1,217 @@
+# FACE ID
+
+Face ID detects faces in a live camera feed and recognizes people whose faces
+have been enrolled. The graphical interface lets you select a face, enter a name,
+and save it for recognition in future sessions.
+
+## Hardware Setup
+
+This example supports the Synaptics Astra SL26xx platform:
+
+- Astra Machina SL2610 Dev Kit. See the [hardware setup guide](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html).
+- Synaptics Coralboard. See the [Coralboard getting started guide](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/get-started).
+- A camera supported by the board, either USB or MIPI CSI.
+
+Use the Astra SDK OOBE image with the Torq runtime, NPU support, and OpenCV with
+GStreamer support available on the board. The Qt application also requires PyQt6;
+the headless CLI does not require Qt or a display. Complete the
+[repository installation](../README.md#installation) before running this example.
+Configure the display using [landscape_setup.sh](../setup/landscape_setup.sh) or
+[portrait_setup.sh](../setup/portrait_setup.sh), then use a shell with the exported
+display variables loaded.
+
+## Setup and Run
+
+After completing the repository installation and activating its virtual
+environment, change to the app directory from the repository root:
+
+```sh
+cd face_id
+```
+
+Run the following commands from this directory. Install the Qt application's
+dependency:
+
+```sh
+python3 -m pip install -r requirements.txt
+```
+
+Run setup once before the first launch. This downloads or refreshes the three
+VMFB files from Hugging Face into the repository-level `models/` directory:
+
+```sh
+python3 setup_demo.py
+```
+
+After setup completes, start the Qt application:
+
+```sh
+python3 run_gui.py
+```
+
+The camera is discovered automatically by default. To request discovery explicitly
+and rotate the feed clockwise, use:
+
+```sh
+python3 run_gui.py --camera-device auto --rotate 90
+```
+
+Use `--camera-device /dev/videoN` to select a specific camera. `--rotate` accepts
+`0` (the default), `90`, `180`, or `270` degrees and is applied before face
+detection, recognition, and display.
+
+Inference defaults to `--tda dmabuf --device-io` for all three models. Inputs use
+device-backed buffers, and outputs are copied to the host for postprocessing.
+To use the CPU allocator with host I/O instead:
+
+```sh
+python3 run_gui.py --tda cpu --no-device-io
+```
+
+`PyQt6` is explicitly listed in the app requirements. OpenCV comes from the board
+image.
+
+### Headless Testing
+
+Run the same detection, keypoint, embedding, and recognition pipeline without a
+Qt window or Wayland session:
+
+```sh
+python3 run_cli.py --camera-device auto
+```
+
+For a bounded test, process 100 frames and exit:
+
+```sh
+python3 run_cli.py --camera-device auto --max-frames 100
+```
+
+The CLI defaults to `--tda dmabuf --device-io`. To test the CPU allocator with
+host I/O instead:
+
+```sh
+python3 run_cli.py --tda cpu --no-device-io --max-frames 100
+```
+
+Status and
+recognized names are printed to the terminal, and detections are logged to JSON.
+The CLI reads the existing face database without enrolling or changing identities.
+Use the Qt application to enroll faces first; without enrolled identities,
+detected faces are labeled `unknown`.
+
+Use `--face-database PATH` and `--json-results PATH` to select the database and
+results location. A frame limit of `0` (the default) runs until `Ctrl+C`. Normal
+completion and interruption close the camera and JSON writer and restore the NPU
+frequency; inference errors propagate with a nonzero exit status.
+
+### Registering faces one at a time
+
+Use this sequence for each person:
+
+1. Make sure the person's face is visible in the camera view.
+2. Click `REGISTER FACES`.
+3. Wait for the visible face cards to appear.
+4. Click `SELECT` on the card for the person you want to enroll.
+5. Enter the person's name in that card's name field.
+6. Click `ENROLL SELECTED FACE`.
+7. Keep that face visible and steady while the application collects the target
+        number of samples.
+8. Wait until the card changes to `ENROLLED`.
+9. To add another person, click `ADD FACE` and repeat the sequence.
+
+Only the selected card is enrolled. Other visible faces do not need names and
+do not block the selected person's enrollment. An enrolled card is locked and
+cannot be enrolled again.
+
+The application prevents re-enrollment when the face embedding already matches
+an identity in the database. It also rejects duplicate names and keeps the
+existing registered identity unchanged.
+
+### Clear Enrolled Faces
+
+Stop any running face_id GUI or CLI instance before deleting the face database.
+From the `face_id` directory, run:
+
+```sh
+rm -- face_embeddings.json
+```
+
+This permanently removes all enrolled identities. Restart the application to
+load an empty database, then enroll faces again through the GUI. If you used
+`--face-database PATH`, delete that file instead. Deleting detection results JSON
+logs does not clear enrolled faces.
+
+## Options
+
+Run commands from the `face_id` directory. Both launchers support the options below.
+Use `--help` to list the command-line options:
+
+```sh
+python3 run_gui.py --help
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--camera-device DEVICE` | `auto` | Discover a camera automatically, or select a device such as `/dev/video0`. |
+| `--rotate {0,90,180,270}` | `0` | Rotate frames clockwise before detection, recognition, and display. |
+| `--tda {cpu,dmabuf}` | `dmabuf` | Select the Torq device allocator. `cpu` selects the allocator, not CPU inference; inference still runs on the NPU. |
+| `--device-io` / `--no-device-io` | Enabled | Enable or disable device-backed inference I/O. Use `--device-io` with `dmabuf`. |
+| `--max-frames COUNT` | `0` | Stop after COUNT frames; `0` runs until interrupted. |
+| `--face-database PATH` | `face_embeddings.json` in the app directory | Select the enrolled face database. |
+| `--json-results PATH` | `face_detection_results.json` | Select the detection results JSON path. |
+| `--logging {DEBUG,INFO,WARNING,ERROR,CRITICAL}` | `INFO` | Set logging verbosity. Overrides `FACE_ID_LOG_LEVEL`; recognition debug mode defaults to `DEBUG` if neither is set. |
+| `--log-file PATH` | Disabled | Also write logs to a rotating file using the shared logging helper. |
+| `-h`, `--help` | N/A | Show help and exit. |
+
+Both launchers use the shared logging setup. For a headless test with debug logs
+saved to a file:
+
+```sh
+python3 run_cli.py --max-frames 100 --logging DEBUG --log-file /tmp/face_id.log
+```
+
+Explicitly select DMA-BUF mode:
+
+```sh
+python3 run_gui.py --tda dmabuf --device-io --camera-device auto
+```
+
+Display sizing is configured through environment variables rather than CLI flags:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ORIENTATION` | `landscape` | Sets the default dimensions: 800 x 480 for landscape, 480 x 800 for portrait. |
+| `DISPLAY_WIDTH` | Based on orientation | Overrides the window width in pixels. |
+| `DISPLAY_HEIGHT` | Based on orientation | Overrides the window height in pixels. |
+
+The window fits these dimensions without a title bar. Panels are stacked
+vertically when the configured height exceeds the width. The application sets up
+the Wayland session through the shared display helper.
+
+## Expected Output
+
+The Qt window shows the camera preview, detected face boxes, and the enrollment
+panel. Unrecognized faces are labeled `unknown`; enrolled identities are labeled
+with their stored names after recognition stabilizes. During enrollment, face
+cards allow name entry and selection, then change to `ENROLLED` when complete.
+
+The terminal reports the selected camera and updates the frame counter, detection
+inference time, face count, and recognition labels. For example (illustrative
+values, not a performance benchmark):
+
+```text
+[INFO    ] face_id.src.infer: Processing /dev/video0 with Torq Python runtime... Press Ctrl+C to stop.
+[INFO    ] face_id.src.infer: 0 (12.345 ms) faces: 0
+[INFO    ] face_id.src.infer: 1 (12.345 ms) faces: 1 unknown
+```
+
+Frame status updates are separate `INFO` log records, written to stderr and to
+the optional log file. Enrolled embeddings are saved to `face_embeddings.json`
+in the app directory; detection results are
+written to JSON logs based on `face_detection_results.json` in the current
+working directory.
+
+## Shutdown
+
+Press `Ctrl+C` in the terminal. The application stops the camera, closes the
+Qt window, restores the NPU frequency, closes the JSON results writer, and exits.
