@@ -14,7 +14,7 @@ The User Interface is based on PyQt6, a set of Python bindings for Qt6.
 ```
 speech_to_text
 ├── setup_demo.py
-├── live_caption.py
+├── run_cli.py
 ├── README.md
 └── requirements.txt
 ```
@@ -76,8 +76,12 @@ python setup_demo.py
 ## Start
 
 ```bash
-python live_caption.py
+python run_cli.py
 ```
+
+By default Moonshine runs with the DMA/dmabuf allocator (`--tda dmabuf`) and
+device-backed I/O. To use the CPU allocator instead, run
+`python run_cli.py --tda cpu`.
 
 
 ## Speak into the microphone! 

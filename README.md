@@ -121,18 +121,9 @@ Install dependencies
 ```bash
 pip install --upgrade pip
 
-pip install https://github.com/synaptics-torq/torq-compiler/releases/download/v2.1.0/torq_runtime-2.1.0-cp312-cp312-manylinux_2_28_aarch64.whl
-   
+pip install torq-runtime 
 
 pip install -r requirements.txt
-```
-
-> [!NOTE]
-> This error message can be safely ignored.
-
-```
-ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
-torq-runtime 2.0.0 requires numpy>2.0.0b1, but you have numpy 1.26.4 which is incompatible.
 ```
 
 ## Device Configuration
@@ -172,8 +163,26 @@ Check out the README.md files in each of the example folders.
 - [speech_to_text](speech_to_text/README.md) - capture speech sentences with Moonshine
 - [speech_to_text_streaming](speech_to_text_streaming/README.md) - capture speech word-by-word with Moonshine V2
 - [gemma_translation](gemma_translate/README.md) - translate text to other languages using Gemma3
+- [scene_description](scene_description/README.md) - describe a camera photo with LiquidAI LFM2-VL
 - [function_calling](Function_calling/README.md) - control a device with natural language
 - [jellectronica](jellectronica/README.md) - turn a video stream into ambient music with Melody RNN
+
+
+## Testing the Examples
+
+`tests/smoke_cli_apps.py` runs each example's command-line version with its default arguments on the board and reports PASS, FAIL, or SETUP (a model or package is missing). Run it from the repository root with the virtual environment active:
+
+```bash
+python tests/smoke_cli_apps.py
+```
+
+For each app it first installs the app's `requirements.txt` and runs its `setup_demo.py` to download the models, so it needs network access and about 1.5 GB of free disk space. Useful options:
+
+- `--only <name> ...` runs only the named apps, `--skip <name> ...` leaves some out, and `--list` shows the names
+- `--skip-install` and `--skip-setup` skip the pip install and model download steps (offline runs, or repeat runs)
+- `--strict` counts SETUP results as failures
+
+Apps that need a microphone, camera, or display (the GUIs) are not covered.
 
 
 ## Auto-start with Systemd (GUI Demos)

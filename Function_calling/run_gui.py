@@ -4,7 +4,7 @@ By default the WLED Neopixel ring is OFF. Pass ``--wled-port /dev/ttyACM0``
 to drive an Adafruit Mini Sparkle Motion over USB-CDC.
 
 Run (after exporting the wayland env vars listed in README.md):
-    python3 app_pyqt.py --wled-port /dev/ttyACM0
+    python3 run_gui.py --wled-port /dev/ttyACM0
 """
 
 from __future__ import annotations
@@ -19,6 +19,17 @@ from pathlib import Path
 
 # Make the shared utils/ package importable from Function_calling/.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
 
 logging.basicConfig(
     level=logging.INFO,

@@ -15,8 +15,8 @@ The User Interface is based on PyQt6, a set of Python bindings for Qt6.
 ## Project Structure
 ```
 gemma_translate
-├── app_translate.py
-├── cli_translate.py
+├── run_gui.py
+├── run_cli.py
 ├── setup_demo.py
 ├── requirements.txt
 ├── README.md
@@ -78,7 +78,7 @@ python setup_demo.py
 No display — use the command line version with voice input:
 
 ```bash
-python cli_translate.py
+python run_cli.py
 ```
 
 It will ask you to select your microphone:
@@ -97,7 +97,7 @@ Enter input device to listen on:
 If you do not have a microphone, run in text mode:
 
 ```bash
-python cli_translate.py --text
+python run_cli.py --text
 ```
 
 ### Display mode
@@ -118,11 +118,26 @@ export DISPLAY_HEIGHT=800
 export DISPLAY_WIDTH=480
 ```
 
-Start the app:
+Start the GUI version of the app:
 
 ```bash
-python app_translate.py
+python run_gui.py
 ```
+
+By default both models use the DMA/dmabuf allocator with device-backed I/O. The
+allocator is set separately for each model, in both `run_gui.py` and `run_cli.py`:
+
+- `--moonshine-tda {cpu,dmabuf}` (default `dmabuf`; Moonshine enables device I/O automatically with `dmabuf`)
+- `--gemma-tda {cpu,dmabuf}` (default `dmabuf`)
+- `--gemma-device-io` / `--no-gemma-device-io` (default enabled)
+
+For example, `python run_gui.py --moonshine-tda cpu --gemma-tda cpu --no-gemma-device-io`
+runs both models with the CPU allocator.
+
+> [!NOTE]
+> Use the same allocator for both models. Mixing them in one process
+> (for example Gemma on `dmabuf` with Moonshine on `cpu`) can fail, and `dmabuf`
+> requires device I/O.
 
 ## Usage
 

@@ -69,15 +69,13 @@ python setup_demo.py
 ### Run the object detection on an image file
 
 ```bash
-python3 object_detection.py --image ../samples/dog_bike_car.jpg
+python3 run_cli.py --image ../samples/dog_bike_car.jpg
 ```
 
 
 ### Run the object detection on USB camera input or video file
 
-**Note:** A second Python script is provided for working with camera or video file input called `object_detection_video.py`.
-
-This script supports both video file and USB camera input, live display for USB, and JSON results output.
+`run_cli.py` also supports video file, USB camera, and RTSP input, with live display and JSON results output. Exactly one input source flag (`--image`, `--video`, `--camera-device`, or `--rtsp-url`) is required.
 
 #### Run with USB camera input
 
@@ -86,14 +84,14 @@ To check available cameras, run the command `v4l2-ctl --list-devices`
 For `--camera-device`, select a video device such as `/dev/video0`, or `auto`.
 
 ```bash
-python3 object_detection_video.py --camera-device auto
+python3 run_cli.py --camera-device auto
 ```
 
 Optionally, you can pass the model, labels, and device. 
 
 ```bash
-python3 object_detection_video.py \
-  --model ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb \
+python3 run_cli.py \
+  --model ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_od.vmfb \
   --camera-device auto \
   --labels labels.json \
   --device torq
@@ -101,8 +99,9 @@ python3 object_detection_video.py \
 
 
 Optionally you can also set the following configurations:
+- `--rotate {0,90,180,270}`, Rotate the camera or video feed clockwise (default: 0, no rotation). If your camera is mounted upside down, use `--rotate 180`
 - `--flip`, Flip the video input vertically (required depending on the camera orientation)
-- `--model`, Path to model (default: ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_8n_2.0.0_npu.vmfb)
+- `--model`, Path to model (default: ../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_od.vmfb)
 - `--labels`, Path to labels (default: labels.json)
 - `--device`, Device to run on (default: torq)
 - `--output`, Output video file
@@ -118,9 +117,10 @@ Optionally you can also set the following configurations:
 This command optimizes the UI for portrait orientation (letterboxing, title, and stats) while ensuring proper hardware exposure control for Arducam modules.
 
 ```bash
-python3 object_detection_video.py \
+python3 run_cli.py \
   --camera-device /dev/video0 \
   --camera-control-device /dev/v4l-subdev2 \
+  --rotate 180 \
   --display \
   --exposure-auto 0
 ```
@@ -128,7 +128,7 @@ python3 object_detection_video.py \
 #### Run with video file input (filesrc)
 
 ```bash
-python3 object_detection_video.py --video <your_video>.mp4
+python3 run_cli.py --video <your_video>.mp4
 ```
 
 #### Run with RTSP stream input
@@ -136,13 +136,13 @@ python3 object_detection_video.py --video <your_video>.mp4
 To stream from an RTSP source (e.g., IP camera, network stream):
 
 ```bash
-python3 object_detection_video.py \
+python3 run_cli.py \
   --rtsp-url rtsp://<camera_ip>:<port>/<stream_path>
 ```
 
 Example with a common IP camera:
 ```bash
-python3 object_detection_video.py \
+python3 run_cli.py \
   --rtsp-url rtsp://admin:123456@10.46.130.109:8554/stream0 \
   --display
 ```
@@ -167,18 +167,17 @@ torq-compile -o yolov8n_full_integer_quant_320_od.vmfb yolov8n_full_integer_quan
   To test it out Yolov8 Small, follow these steps:
   - Manually download a compiled model file (e.g. yolov_8n_2.0.0_npu.vmfb) from [Synaptics/yolov8-od-small-320-int8-torq](https://huggingface.co/Synaptics/yolov8-od-small-320-int8-torq) to the `models` directory.
   
-  - Update the output quantization parameters in `object_detection.py` to the following.
+  - Update the output quantization parameters in `vision.py` to the following (used by both image and video/camera/RTSP mode).
 
 ```python
-    out_scale = 0.0051302798092365265
-    out_zp = -108
-
+OUT_SCALE = 0.0051302798092365265
+OUT_ZP = -108
 ```
 
   - Run the application, passing in the path to the model file.
 
 ```bash
-  python3 object_detection_video.py \
+  python3 run_cli.py \
   --model ../models/yolov_8n_2.0.0_npu.vmfb \
   --camera-device auto \
 ```

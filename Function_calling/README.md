@@ -84,10 +84,10 @@ python setup_demo.py
 
 ```bash
 # CLI version
-python3 demo.py                # CLI REPL (works in any terminal)
+python3 run_cli.py                # CLI REPL (works in any terminal)
 
 # or pyQt app version
-python3 app_pyqt.py
+python3 run_gui.py
 ```
 
 [!WARNING] Please note that different examples require different versions of the Python Torq runtime. If using a shared virtual environment, always re-run installation of example-specific dependencies when switching between examples.
@@ -186,16 +186,16 @@ Run either entrypoint:
 ```bash
 
 # Interactive REPL
-python3 demo.py
+python3 run_cli.py
 
 # One-shot prompt (~5-6 s end-to-end from cold: load + warmup + decode)
-python3 demo.py --prompt "Turn the red light on"
+python3 run_cli.py --prompt "Turn the red light on"
 
 # PyQt UI
-python3 app_pyqt.py
+python3 run_gui.py
 
 # PyQt UI full-screen on the 7" panel
-python3 app_pyqt.py --fullscreen
+python3 run_gui.py --fullscreen
 ```
 
 In the PyQt UI: `Ctrl+P` snapshots the window to `/tmp/`. `Esc` quits.
@@ -238,13 +238,13 @@ The PyQt UI grows a **Mic** button when voice is enabled, and the REPL accepts s
 
 ```bash
 # Validate plumbing with stubbed ASR
-python3 app_pyqt.py --voice stub
+python3 run_gui.py --voice stub
 
 # Real Moonshine ASR on Torq
-python3 app_pyqt.py --voice moonshine
+python3 run_gui.py --voice moonshine
 
 # Pin to the HAT PDM mic explicitly
-python3 app_pyqt.py --voice moonshine --mic 0
+python3 run_gui.py --voice moonshine --mic 0
 ```
 
 `requirements.txt` installs the voice Python dependencies (`sounddevice`, `silero-vad-notorch`, `tokenizers`, `huggingface_hub`, and `torq_runtime`). Silero VAD pulls ONNX Runtime for its backend. `setup_demo.py` downloads the Moonshine artifacts managed by `torq-examples` (encoder + decoder VMFBs, decoder token embeddings, and tokenizer) from `Synaptics/moonshine-tiny-bf16-torq` on HuggingFace. Install `libportaudio.so.2` with `../setup/install_portaudio.sh`; the OOBE image doesn't ship it.
@@ -256,7 +256,7 @@ wget -O ../models/Synaptics/moonshine-tiny-bf16-torq/tokenizer.json \
   https://huggingface.co/UsefulSensors/moonshine-tiny/resolve/main/tokenizer.json
 ```
 
-**REPL caveat:** in `demo.py --voice` you can talk *or* type. Voice transcription completes asynchronously, so if a spoken utterance arrives while you're mid-keystroke at the `>>>` prompt, the readline buffer is dropped and you have to retype. Acceptable for headless smoke tests; the PyQt UI doesn't have this problem.
+**REPL caveat:** in `run_cli.py --voice` you can talk *or* type. Voice transcription completes asynchronously, so if a spoken utterance arrives while you're mid-keystroke at the `>>>` prompt, the readline buffer is dropped and you have to retype. Acceptable for headless smoke tests; the PyQt UI doesn't have this problem.
 
 ---
 
@@ -266,15 +266,15 @@ Plug an Adafruit Mini Sparkle Motion (6314) running WLED firmware + a WS2812B Ne
 
 ```bash
 ls /dev/ttyACM*               # confirm the Sparkle Motion enumerated
-python3 demo.py               # auto-detect handles the rest
-python3 app_pyqt.py --fullscreen
+python3 run_cli.py               # auto-detect handles the rest
+python3 run_gui.py --fullscreen
 ```
 
 To pin a specific device or to disable WLED while one is plugged in:
 
 ```bash
-python3 demo.py --wled-port /dev/ttyACM1   # pin
-python3 demo.py --no-wled                  # force HAT-only
+python3 run_cli.py --wled-port /dev/ttyACM1   # pin
+python3 run_cli.py --no-wled                  # force HAT-only
 ```
 
 Without WLED hardware, `set_lights` calls route to the HAT 3-LED indicators automatically — non-RGB colors are mapped to the closest red/green/blue combo, and effects are approximated on the 3 LEDs. The rest of the demo (buzzer, alarms, system status, chat) works unchanged.
@@ -289,7 +289,7 @@ After the venv has the requirements installed and `setup_demo.py` has downloaded
 bash scripts/install-service.sh
 ```
 
-By default the unit runs `app_pyqt.py --fullscreen`. To pass extra flags at install time, append them — they're baked into the generated `ExecStart=` line:
+By default the unit runs `run_gui.py --fullscreen`. To pass extra flags at install time, append them — they're baked into the generated `ExecStart=` line:
 
 ```bash
 bash scripts/install-service.sh --wled-port /dev/ttyACM0
@@ -323,20 +323,20 @@ bash scripts/uninstall-service.sh         # remove
 
 ## CLI reference
 
-Every runtime knob is a CLI flag — no env vars to remember, no config files to edit. Both `demo.py` and `app_pyqt.py` accept the same flags except where noted.
+Every runtime knob is a CLI flag — no env vars to remember, no config files to edit. Both `run_cli.py` and `run_gui.py` accept the same flags except where noted.
 
 | Flag | Default | Applies to | Purpose |
 |---|---|---|---|
 | `--model PATH` | `../models/functiongemma-physical-ai-v10-Q5_K_M.gguf` | both | GGUF path |
-| `--prompt TEXT` | — | `demo.py` | One-shot prompt, then exit |
+| `--prompt TEXT` | — | `run_cli.py` | One-shot prompt, then exit |
 | `--voice MODE` | `off` | both | `off` / `stub` / `moonshine` |
 | `--mic INDEX_OR_NAME` | system default | both | Sounddevice device index or substring (e.g. `0`, `hw:0,0`, `USB`) |
 | `--moonshine-dir PATH` | `../models/Synaptics/moonshine-tiny-bf16-torq/` | both | Where Moonshine VMFB + tokenizer live |
 | `--wled-port PATH` | auto-detect `/dev/ttyACM*` | both | Pin a specific Mini Sparkle Motion serial device. Omit to use the first `/dev/ttyACM*` found. |
 | `--no-wled` | off | both | Disable WLED entirely, even if a serial device is present |
 | `--wled-baud N` | `115200` | both | WLED serial baud rate |
-| `--screenshot-dir PATH` | `/tmp` | `app_pyqt.py` | Where `Ctrl+P` writes PNGs |
-| `--fullscreen` | off | `app_pyqt.py` | Skip window decorations, fill the 7" panel |
+| `--screenshot-dir PATH` | `/tmp` | `run_gui.py` | Where `Ctrl+P` writes PNGs |
+| `--fullscreen` | off | `run_gui.py` | Skip window decorations, fill the 7" panel |
 
 ---
 
@@ -456,8 +456,8 @@ The optional voice path uses Moonshine VMFB artifacts from a separate HF repo: [
 
 ```
 Function_calling/
-├── app_pyqt.py            # PyQt6 entrypoint (the UI demo)
-├── demo.py                # CLI / REPL entrypoint
+├── run_gui.py            # PyQt6 entrypoint (the UI demo)
+├── run_cli.py                # CLI / REPL entrypoint
 ├── setup_demo.py          # model download/setup check
 ├── chat_window.py         # main UI window
 ├── command_log.py         # scrolling tool-call log widget
@@ -593,8 +593,8 @@ python3 -c "import sounddevice as sd; print(sd.query_devices())"
 The HAT PDM mic enumerates as device 0 (`klamath-asoc, hw:0,0`). Plugging in a USB mic typically bumps it to position 1+ and steals the system default. Pin explicitly:
 
 ```bash
-python3 app_pyqt.py --voice moonshine --mic 0           # HAT PDM
-python3 app_pyqt.py --voice moonshine --mic USB         # USB mic by substring
+python3 run_gui.py --voice moonshine --mic 0           # HAT PDM
+python3 run_gui.py --voice moonshine --mic USB         # USB mic by substring
 ```
 </details>
 

@@ -1,13 +1,13 @@
 
-numpy>=1.24.0,<2.0
+numpy>2.0.0b1
 flask>=3.0
 websockets>=12.0
 
 # YouTube livestream support (optional — falls back to local video)
 yt-dlp
 
-# cv2 - Use headless to avoid X11/XCB dependencies on Wayland/Weston
-opencv-python-headless<4.10
+# cv2 comes from the board image's OpenCV (built with GStreamer, which the camera code needs).
+# Do not add opencv-python-headless here: the PyPI wheel shadows it and has no GStreamer.
 
 # Sound
 pygame

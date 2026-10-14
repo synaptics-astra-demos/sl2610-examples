@@ -100,7 +100,7 @@ class EnergyVAD(_HangoverVAD):
 class SileroVAD(_HangoverVAD):
     """
     Neural VAD using the ``silero-vad-notorch`` package (same one used by
-    speech_to_text/live_caption.py's SileroSpeechSegmenter), which ships the
+    speech_to_text/run_cli.py's SileroSpeechSegmenter), which ships the
     Silero ONNX graph as bundled package data — no network fetch needed. Its
     model only accepts fixed-size windows, so each incoming pipeline chunk is
     split into 512-sample (32 ms) windows, zero-padding a short final window,

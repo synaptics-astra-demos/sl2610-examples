@@ -13,6 +13,17 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
 import argparse
 import logging
 import queue
@@ -39,6 +50,7 @@ except ImportError:
 
 from app_utils.torq_examples.moonshine_streaming.src.runner import MoonshineStaticStreamingModel, find_asset
 from app_utils.log import add_logging_args, configure_logging
+from app_utils.torq_examples.utils.runtime import build_runtime_flags
 from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from profiling import WorkerProfiler
 from vad import EnergyVAD, SileroVAD
@@ -101,6 +113,24 @@ class TerminalListener:
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
+def enable_device_io(runner):
+    """Make ``runner.infer`` upload any host NumPy inputs as device arrays first.
+
+    The dmabuf allocator only accepts device-backed inputs. The streaming
+    decoder keeps its KV caches on device but feeds a few small host arrays
+    (token embedding, position ids, ...) alongside them; the runner lives in the
+    torq_examples submodule, so wrap the instance here instead of editing it.
+    """
+    infer = runner.infer
+
+    def infer_device_io(inputs, *args, **kwargs):
+        inputs = [runner.allocate_device_array(x) if isinstance(x, np.ndarray) else x
+                  for x in inputs]
+        return infer(inputs, *args, **kwargs)
+
+    runner.infer = infer_device_io
+
+
 def resample(audio, orig_sr, target_sr=16000):
     if orig_sr == target_sr:
         return audio
@@ -133,7 +163,7 @@ def choose_audio_device(device_arg: str | None) -> int | str | None:
     """Resolve the --device argument to what sounddevice expects.
 
     If not given on the command line, list the available input devices and
-    prompt for one interactively (mirrors speech_to_text/live_caption.py) —
+    prompt for one interactively (mirrors speech_to_text/run_cli.py) —
     device indices are not stable across boards/OS images, so a hardcoded
     default is liable to point at a non-capture device and fail with a
     PortAudio "Invalid number of channels" error.
@@ -189,7 +219,9 @@ def main(args: argparse.Namespace):
 
     try:
         model     = MoonshineStaticStreamingModel(model_dir,
-                                                   runtime_flags=args.runtime_flags)
+                                                   runtime_flags=build_runtime_flags(args.tda, args.runtime_flags))
+        if args.tda == "dmabuf":
+            enable_device_io(model.decoder)
         tokenizer = Tokenizer.from_file(find_asset(model.model_dir, "tokenizer.json"))
     except Exception as e:
         logger.error("Error initializing models: %s", e)
@@ -541,6 +573,13 @@ if __name__ == "__main__":
     parser.add_argument("--no-refresh",    action="store_true", default=False, help="Skip the Hugging Face check for updated models (offline/airgapped runs)")
     add_logging_args(parser)
     runtime_group = parser.add_argument_group("runtime")
+    runtime_group.add_argument(
+        "--tda",
+        type=str,
+        choices=["cpu", "dmabuf"],
+        default="dmabuf",
+        help="Allocator backing Torq device buffers; device-backed decoder inputs are used with dmabuf (default: %(default)s)",
+    )
     runtime_group.add_argument(
         "--runtime-flags",
         nargs=argparse.REMAINDER,

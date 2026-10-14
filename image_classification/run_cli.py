@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
 """
 Standalone Board Inference Script
-Usage: python3 classification.py --model model.vmfb --image image.jpg [--labels labels.json]
+Usage: python3 run_cli.py --model model.vmfb --image image.jpg [--labels labels.json]
 """
 import argparse
 import json
-import numpy as np
 import os
 import sys
-from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 from app_utils.display import enable_wayland_display, fit_to_display, show_image
 from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
@@ -98,7 +110,8 @@ def main():
             args.model,
             device_uri=args.device,
             function="main",
-            load_model_to_mem=True
+            load_model_to_mem=True,
+            device_io=True,  # the default dmabuf allocator needs device-backed I/O
         )
 
         # 1. Preprocess

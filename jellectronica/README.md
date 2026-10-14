@@ -79,7 +79,7 @@ python setup_demo.py
 Start the app: 
 
  ```bash
- python3 server.py
+ python3 run_cli.py
  ```
 
 Open `http://<board-ip>:5002` in any browser on the same sub-network. 
@@ -106,7 +106,7 @@ export DISPLAY_WIDTH=480
 Start the app: 
 
 ```bash
-python3 app.py
+python3 run_gui.py
 ```
 
 It renders directly to the attached DSI display. 
@@ -168,50 +168,50 @@ See [docs/architecture.md](docs/architecture.md) for full technical details.
 
 ### Changing the Video Source
 
-By default `server.py` plays the bundled local `samples/jellyfish.mp4` file — no network required. You can switch to the live YouTube feed with `--youtube`, or point at any other local file, IP camera, or stream with `--video`.
+By default `run_cli.py` plays the bundled local `samples/jellyfish.mp4` file — no network required. You can switch to the live YouTube feed with `--youtube`, or point at any other local file, IP camera, or stream with `--video`.
 
 **Command line**
 ```bash
 # Live YouTube stream (Monterey Bay Aquarium jelly cam)
-python3 server.py --youtube
+python3 run_cli.py --youtube
 
 # A different YouTube livestream
-python3 server.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+python3 run_cli.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
 
 # IP camera (e.g. Google Nest, RTSP, MJPEG)
-python3 server.py --video rtsp://192.168.1.100:554/stream
+python3 run_cli.py --video rtsp://192.168.1.100:554/stream
 
 # A different local video file
-python3 server.py --video /path/to/your/video.mp4
+python3 run_cli.py --video /path/to/your/video.mp4
 ```
 
 ## Usage Examples
 
 ```bash
 # Display mode (DSI display, fullscreen) — defaults to local jellyfish.mp4
-python3 app.py
-python3 app.py --video ../samples/jellyfish.mp4
+python3 run_gui.py
+python3 run_gui.py --video ../samples/jellyfish.mp4
 
 # Server mode (headless, MJPEG stream) — defaults to local jellyfish.mp4
-python3 server.py
-python3 server.py --video ../samples/jellyfish.mp4 --port 5002
+python3 run_cli.py
+python3 run_cli.py --video ../samples/jellyfish.mp4 --port 5002
 
 # Switch to the live YouTube feed
-python3 server.py --youtube
-python3 server.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+python3 run_cli.py --youtube
+python3 run_cli.py --youtube https://www.youtube.com/watch?v=YOUR_VIDEO_ID
 
 # Custom video source
-python3 server.py --video /path/to/your/video.mp4
+python3 run_cli.py --video /path/to/your/video.mp4
 
 # Custom detection model
-python3 server.py --model model/your_model.vmfb
+python3 run_cli.py --model model/your_model.vmfb
 
 # Audio configuration
-python3 server.py --audio-driver alsa --alsa-device hw:0,0
+python3 run_cli.py --audio-driver alsa --alsa-device hw:0,0
 
 # Disable AI accompaniment
-python3 server.py --no-ai
-python3 app.py --no-ai
+python3 run_cli.py --no-ai
+python3 run_gui.py --no-ai
 
 ```
 
@@ -224,7 +224,7 @@ For a looping application, using standard MP4 files requires the entire applicat
 ffmpeg -i your_video.mp4 -vcodec copy -bsf h264_mp4toannexb your_video.h264
 ```
 
-Then update `DEFAULT_LOCAL_VIDEO` in `app.py` to point to the `.h264` file. GStreamer will continuously loop the raw stream without ever restarting the compositor or dropping a frame.
+Then update `DEFAULT_LOCAL_VIDEO` in `run_gui.py` to point to the `.h264` file. GStreamer will continuously loop the raw stream without ever restarting the compositor or dropping a frame.
 
 
 ### Swapping the Detection Model
@@ -241,7 +241,7 @@ The default model detects jellyfish, but you can swap in any YOLOv8 model to det
    adb push your_model.vmfb /home/root/sl2610-examples/jellectronica/models/
 
    # Run with the new model
-   python3 server.py --model ../models/your_model.vmfb
+   python3 run_cli.py --model ../models/your_model.vmfb
    ```
 
 The musical grid mapping works with any single-class detection model. Multi-class models will work too — all detected objects trigger notes regardless of class.
@@ -253,8 +253,8 @@ The musical grid mapping works with any single-class detection model. Multi-clas
 
 ```
 jellectronica
-├── server.py                 # Headless server (MJPEG + WebSocket)
-├── app.py                    # Standalone DSI/HDMI display
+├── run_cli.py                 # Headless server (MJPEG + WebSocket)
+├── run_gui.py                    # Standalone DSI/HDMI display
 ├── detector.py               # YOLOv8 — Torq NPU
 ├── tracker.py                # Multi-object tracker with grid mapping
 ├── music_engine.py           # Audio engine (5 channels + effects)

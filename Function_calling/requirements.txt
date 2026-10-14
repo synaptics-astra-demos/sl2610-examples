@@ -6,7 +6,7 @@
 # --- Core demo (always required) ---------------------------------------------
 ../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 
-numpy<2.0
+numpy>2.0.0b1
 Pillow
 PyQt6>=6.0
 gpiod>=2.0

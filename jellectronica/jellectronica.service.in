@@ -12,7 +12,7 @@ Environment=WAYLAND_DISPLAY=wayland-1
 Environment=QT_QPA_PLATFORM=wayland
 Environment=WESTON_DISABLE_GBM_MODIFIERS=true
 Environment=PYTHONUNBUFFERED=1
-ExecStart=@ROOT@/.venv/bin/python3 app.py
+ExecStart=@ROOT@/.venv/bin/python3 run_gui.py
 Restart=on-failure
 RestartSec=5
 

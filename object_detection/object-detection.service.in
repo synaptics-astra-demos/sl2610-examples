@@ -12,7 +12,7 @@ Environment=WAYLAND_DISPLAY=wayland-1
 Environment=QT_QPA_PLATFORM=wayland
 Environment=WESTON_DISABLE_GBM_MODIFIERS=true
 Environment=PYTHONUNBUFFERED=1
-ExecStart=@ROOT@/.venv/bin/python3 object_detection_video.py --model ../models/yolov8n_od.vmfb --camera-device auto --labels labels.json --display
+ExecStart=@ROOT@/.venv/bin/python3 run_cli.py --camera-device auto --rotate 180 --labels labels.json --display
 Restart=on-failure
 RestartSec=5
 
