@@ -19,6 +19,9 @@ LANGUAGES = {
     "1": LanguageOption("Spanish", "Spanish"),
     "2": LanguageOption("French", "French"),
     "3": LanguageOption("German", "German"),
+    "4": LanguageOption("Portuguese", "Portuguese"),
+    "5": LanguageOption("Bahasa Indonesia", "Bahasa Indonesia"),
+
 }
 
 
@@ -62,6 +65,32 @@ def add_inference_args(parser: argparse.ArgumentParser):
         type=str,
         default=None,
         help="Path to the Moonshine model directory. Defaults to HF download/discovery.",
+    )
+    group.add_argument(
+        "--moonshine-tda",
+        type=str,
+        choices=["cpu", "dmabuf"],
+        default="dmabuf",
+        help="Allocator backing Torq device buffers for Moonshine (default: %(default)s).",
+    )
+    group.add_argument(
+        "--gemma-tda",
+        type=str,
+        choices=["cpu", "dmabuf"],
+        default="dmabuf",
+        help=(
+            "Allocator backing Torq device buffers for Gemma, torq backend only "
+            "(default: %(default)s)."
+        ),
+    )
+    group.add_argument(
+        "--gemma-device-io",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Preallocate Gemma inputs as device arrays, torq backend only "
+            "(default: %(default)s)."
+        ),
     )
     group.add_argument(
         "--non-instruct-model",

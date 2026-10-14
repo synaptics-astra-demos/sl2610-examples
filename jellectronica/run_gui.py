@@ -26,11 +26,22 @@ import time
 import random
 import re
 
-import cv2
-import numpy as np
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
+import cv2
+import numpy as np
 
 from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 from detector import Detector

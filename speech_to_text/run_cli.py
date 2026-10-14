@@ -4,6 +4,17 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
 import argparse
 import threading
 import time
@@ -70,6 +81,8 @@ if __name__ == "__main__":
     parser.add_argument("--silence-ms", type=int, default=150)
     parser.add_argument("--max-speech-secs", type=float, default=10.0)
     parser.add_argument("--min-segment-secs", type=float, default=0.20)
+    parser.add_argument("--tda", type=str, choices=["cpu", "dmabuf"], default="dmabuf",
+                        help="Allocator backing Torq device buffers (default: %(default)s).")
     parser.add_argument("--no-npu-clock", action="store_true")
     args = parser.parse_args()
 
@@ -78,7 +91,7 @@ if __name__ == "__main__":
 
     audio_device = choose_audio_device(args.audio_device)
 
-    transcriber = MoonshineTranscriber(args.moonshine_model)
+    transcriber = MoonshineTranscriber(args.moonshine_model, tda=args.tda)
     source = SoundDeviceAudioSource(
         device=audio_device,
         sample_rate=SAMPLING_RATE,

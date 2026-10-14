@@ -67,12 +67,14 @@ python setup_demo.py
 
 This downloads the default model files from our HuggingFace repo to: `models/Synaptics/moonshine-streaming-tiny-torq/`
 
+The model is pinned to the `v2.1.0` release on HuggingFace, the newest one published for this model. To use a different release, run `python setup_demo.py --moonshine-models streaming-tiny-en:<version>`.
+
 ## Running
 
 Run the demo from the `speech_to_text_streaming` directory:
 
 ```sh
-python app.py
+python run_cli.py
 ```
 
 **Then start speaking!** 
@@ -87,7 +89,7 @@ Press `Ctrl+C` to exit.
 You can optionally pass in the location to the model file: 
 ```sh
 cd speech_to_text_streaming
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq
 ```
 
 If you don't pass `--device`, the app lists the available audio input devices
@@ -97,7 +99,7 @@ Press Enter to accept the system default device, or pass `--device <N>` (or
 a device name) up front to skip the prompt, e.g. for scripted runs:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --device 1
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --device 1
 ```
 
 The other defaults are tuned for the board (`--vad-silence 2.5`,
@@ -105,7 +107,7 @@ The other defaults are tuned for the board (`--vad-silence 2.5`,
 equivalent to:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq \
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq \
     --vad-silence 2.5 --vad-threshold 0.010 --preview-every 5
 ```
 
@@ -137,7 +139,7 @@ VAD step under [Step by step](#step-by-step) below for the tradeoff), install
 
 ```sh
 pip install -r requirements.txt
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --vad-backend silero
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --vad-backend silero
 ```
 
 This is the same `silero-vad-notorch` package used by the `speech_to_text`
@@ -147,11 +149,11 @@ data, so no network download or separate model directory is needed.
 List audio input devices and pick a different one:
 
 ```sh
-python app.py --list-devices
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --device 3
+python run_cli.py --list-devices
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --device 3
 ```
 
-Run `python app.py -h` to see all available options (VAD thresholds, decode
+Run `python run_cli.py -h` to see all available options (VAD thresholds, decode
 mode, runtime flags, profiling).
 
 ## Transcribing a WAV file
@@ -160,7 +162,7 @@ For testing against pre-recorded audio instead of a live mic (e.g. a real
 conversation or speech sample), pass `--wav`:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav
 ```
 
 This reads the file with `soundfile` (mixed to mono if stereo, resampled like any
@@ -175,7 +177,7 @@ By default the file is fed as fast as possible (for quick batch testing). Pass
 you can watch the live preview update the way it would from a mic:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav --realtime
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav ../samples/sample.wav --realtime
 ```
 
 `--vad-silence` (default `2.5`s) still governs where the file is split into
@@ -197,7 +199,7 @@ with its KV tensors pinned on the NPU, so each preview is cheap.
 | File | Role |
 |------|------|
 | `runner.py` | the **engine**: the model, its pre-allocated state, and the thin VMFB session wrapper. No audio, no UI — "give me audio chunks, I return tokens". |
-| `app.py` | the **app**: microphone capture, VAD, the worker thread, decode triggering, terminal rendering, the CLI, and the profiler. |
+| `run_cli.py` | the **app**: microphone capture, VAD, the worker thread, decode triggering, terminal rendering, the CLI, and the profiler. |
 | `setup_demo.py` | downloads/verifies the model files (reuses `utils/`). |
 
 ### The model (2-split) and its files
@@ -397,7 +399,7 @@ before continuing.
 exit, and dumps the raw arrays as `.npy` files to `profile_results/`; override with `--profile-out`:
 
 ```sh
-python app.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav sample.wav --profile
+python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav sample.wav --profile
 ```
 
 Then turn those dumps into plots with `plot_profile.py`:
@@ -428,6 +430,9 @@ needed for plotting: `pip install matplotlib`.
 - `--profile` records per-chunk worker timing and prints a real-time keep-up
   summary on exit (and shows the VAD calibration line); see
   [Profiling](#profiling) to turn the dumps into plots.
+- `--tda {cpu,dmabuf}` selects the allocator backing Torq buffers. It defaults to
+  `dmabuf` (with device-backed decoder inputs); pass `--tda cpu` to use the CPU
+  allocator instead.
 - `--runtime-flags` forwards flags straight to the Torq runtime and must come
   last, since every remaining argument is passed through (e.g. `--runtime-flags
   --torq_hw_type=sim` for software simulation).

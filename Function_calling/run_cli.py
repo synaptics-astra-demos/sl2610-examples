@@ -3,11 +3,11 @@
 Two modes:
 
     # One-shot
-    python3 demo.py --prompt "Turn the red light on"
+    python3 run_cli.py --prompt "Turn the red light on"
 
     # Interactive REPL (model loads in ~3.3s, warmup ~1.1s, then every
     # turn — including the first — settles to ~1-2s.)
-    python3 demo.py
+    python3 run_cli.py
 
 A connected Adafruit Mini Sparkle Motion + WS2812B ring over USB-CDC is
 auto-detected at ``/dev/ttyACM*``. Pass ``--wled-port`` to override or
@@ -35,6 +35,17 @@ from pathlib import Path
 
 # Make the shared utils/ package importable from Function_calling/.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -281,7 +292,7 @@ def main() -> None:
 
     # WLED auto-detect: --no-wled overrides everything; --wled-port pins a
     # specific device; otherwise probe /dev/ttyACM* and use the first match.
-    # Mirrors app_pyqt.py so both entrypoints behave identically.
+    # Mirrors run_gui.py so both entrypoints behave identically.
     wled: WLEDSerialClient | None = None
     if not args.no_wled:
         wled_port = args.wled_port

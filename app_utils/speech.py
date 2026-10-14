@@ -301,6 +301,7 @@ class MoonshineTranscriber:
         sample_rate: int = SAMPLING_RATE,
         warmup: bool = True,
         suppress_native_logs: bool = True,
+        tda: str = "dmabuf",
     ):
         self.sample_rate = sample_rate
         logger.info(
@@ -310,7 +311,7 @@ class MoonshineTranscriber:
         with suppress_native_stderr(suppress_native_logs):
             from app_utils.moonshine import load_moonshine
 
-            self.runner = load_moonshine(model_dir)
+            self.runner = load_moonshine(model_dir, tda=tda)
         self.model_dir = self.runner.model_dir
         self.tokenizer = self._load_tokenizer()
         if warmup:

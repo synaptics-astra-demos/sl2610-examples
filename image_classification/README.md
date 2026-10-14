@@ -46,7 +46,7 @@ python setup_demo.py
 ## Running the Image Classification Example on an Image File
 
 ```bash
-python3 classification.py --image ../samples/cat.jpg 
+python3 run_cli.py --image ../samples/cat.jpg 
 ```
 
 Optionally you can also set the following configurations:

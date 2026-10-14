@@ -30,6 +30,17 @@ except Exception as e:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "UI"))
 
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(
+        os.path.join(os.path.dirname(__file__), "requirements.txt"),
+        version_map={"torq.runtime": ">=2.0.0a1"},
+    ).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
 # Must be set before importing PyQt6
 os.environ["LC_ALL"] = "C.UTF-8"
 os.environ["LANG"] = "C.UTF-8"
@@ -1023,11 +1034,14 @@ def language_by_display_name(name: str) -> LanguageOption:
 
 def build_translation_service(args: argparse.Namespace) -> GemmaTranslationService:
     from app_utils.gemma import load_gemma
+    from app_utils.torq_examples.utils.runtime import build_runtime_flags
 
     backend = load_gemma(
         use_llama=args.use_llama_gemma,
         model_path=resolve_gemma_model_path(args),
         instruct_model=not args.non_instruct_model,
+        runtime_flags=build_runtime_flags(args.gemma_tda),
+        device_io=args.gemma_device_io,
     )
     return GemmaTranslationService(backend)
 
@@ -1048,6 +1062,7 @@ def build_speech_recognizer(
     transcriber = MoonshineTranscriber(
         args.moonshine_model,
         suppress_native_logs=suppress_native_logs,
+        tda=args.moonshine_tda,
     )
     source = SoundDeviceAudioSource(
         device=audio_device,

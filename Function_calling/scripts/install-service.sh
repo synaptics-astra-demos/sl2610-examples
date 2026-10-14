@@ -3,7 +3,7 @@
 #
 # The unit:
 #   - waits for weston (Wayland compositor) to be up
-#   - runs <repo>/.venv/bin/python3 app_pyqt.py --fullscreen [extras]
+#   - runs <repo>/.venv/bin/python3 run_gui.py --fullscreen [extras]
 #   - sets the Wayland env vars used by the OOBE image's weston
 #   - on stop / crash, drives BUZZERn HIGH so the buzzer can never
 #     latch ON across a service exit
@@ -65,8 +65,8 @@ if [ ! -x "${VENV_PY}" ]; then
     exit 1
 fi
 
-if [ ! -f "${FC_DIR}/app_pyqt.py" ]; then
-    echo "app_pyqt.py not found at ${FC_DIR}/app_pyqt.py" >&2
+if [ ! -f "${FC_DIR}/run_gui.py" ]; then
+    echo "run_gui.py not found at ${FC_DIR}/run_gui.py" >&2
     exit 1
 fi
 
@@ -113,7 +113,7 @@ Environment=WAYLAND_DISPLAY=wayland-1
 Environment=QT_QPA_PLATFORM=wayland
 Environment=WESTON_DISABLE_GBM_MODIFIERS=true
 Environment=PYTHONUNBUFFERED=1
-ExecStart=${VENV_PY} ${FC_DIR}/app_pyqt.py ${EXEC_ARGS}
+ExecStart=${VENV_PY} ${FC_DIR}/run_gui.py ${EXEC_ARGS}
 # Hard-stop safety net: even if the Python process is SIGKILL'd, drive
 # BUZZERn back to silent (1 = silent on this HAT — see hardware.py).
 ExecStopPost=-/bin/sh -c 'gpioset \$(gpiofind BUZZERn)=1 || true'

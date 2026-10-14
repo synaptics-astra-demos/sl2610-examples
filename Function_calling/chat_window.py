@@ -9,7 +9,7 @@ Claude Design handoff for the Coralboard. Visual structure:
     [Input area]           horizontal chip strip + text input + mic + Send
     [Status line]          animated dot + status text
 
-Run via ``app_pyqt.py``, which injects the model + dispatcher.
+Run via ``run_gui.py``, which injects the model + dispatcher.
 """
 
 from __future__ import annotations

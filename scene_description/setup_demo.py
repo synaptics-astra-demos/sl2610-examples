@@ -50,11 +50,12 @@ def setup_scene_description():
         # named by the MODELS env var, so set that to land models in sl2610-examples/models
         # instead of its own default (app_utils/torq_examples/models).
         os.environ.setdefault("MODELS", str(MODELS_DIR))
-        _load_lfm2vl_setup_demo().setup_liquidvl(["default"])
+        _load_lfm2vl_setup_demo().setup_liquidvl_int8(["default"])
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
+        version_map={"torq.runtime": ">=2.0.0a1"},
         demo_name="scene_description",
     )
 

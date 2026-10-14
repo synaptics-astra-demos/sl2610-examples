@@ -4,7 +4,6 @@
 """Scene description: capture a photo, then describe it with LiquidAI LFM2-VL-450M on the NPU."""
 
 import argparse
-import gc
 import os
 import sys
 import threading
@@ -13,20 +12,28 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, MissingRequirementsError
+
+try:
+    DependencyChecker(os.path.join(os.path.dirname(__file__), "requirements.txt")).run()
+except (MissingRequirementsError, IncompatibleVersionError) as e:
+    print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)
+    sys.exit(1)
+
 import cv2
 
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                               QLabel, QPushButton, QSizePolicy)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer
 from PyQt6.QtGui import QImage, QPixmap
 
-from app_utils.camera import Camera, CameraError, find_camera_device
+from app_utils.camera import Camera, CameraError, resolve_camera_device, rotate_frame
 from app_utils.display import enable_wayland_display
 from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
 
 # The LFM2-VL-450M demo lives under app_utils/torq_examples/LiquidAI/LiquidAI-LFM2-VL-450M/,
 # a directory whose name contains hyphens, so it isn't importable as a regular package.
-# Add its src/ dir (for the runner) and its own dir (for the model-refresh helper) to
+# Add its src/ dir (for the LFM2VL engine) and its own dir (for the model-refresh helper) to
 # sys.path directly instead, same as that demo's own src/infer.py does.
 _LFM2VL_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..",
@@ -35,8 +42,8 @@ _LFM2VL_DIR = os.path.join(
 sys.path.insert(0, os.path.join(_LFM2VL_DIR, "src"))
 sys.path.insert(0, _LFM2VL_DIR)
 
-from runner import LiquidVLStatic
-from setup_demo import ensure_lfm2vl_models
+from lfm2vl import LFM2VL
+from setup_demo import ensure_lfm2vl_int8_models
 
 ORIENTATION = "portrait" # or "landscape"
 
@@ -49,15 +56,14 @@ else:
 
 DEFAULT_MODELS_DIR = "../models/Synaptics/LiquidAI-LFM2-VL-450M/"
 DEFAULT_PROMPT = "Describe this image in two sentences."
-DECODER_FILE = "decoder_nolm.vmfb"
-LM_HEAD_FILE = "lm_head.vmfb"
-VISION_FILE = "vision_encoder_256.vmfb"
-IMAGE_DECODER_PREFIX = "decoder_image_2part_"
 CAPTURE_IMAGE_PATH = "scene_capture.jpg"
-VISION_INPUT_SIZE = 256  # vision_encoder_256.vmfb's one-shot image-prefill path is a static
-                          # 256-patch (16x16) shape, so the source image must be exactly
-                          # 256x256 pixels going in (see LiquidAI-LFM2-VL-450M/README.md).
+VISION_INPUT_SIZE = 256  # the vision encoder is a static 256-patch (16x16) shape, so the
+                          # image is center-cropped and resized to 256x256 before encoding
+                          # (see LiquidAI-LFM2-VL-450M/README.md).
 PREVIEW_FPS = 15
+CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS = 640, 480, 30  # an explicit size is required: left
+                                                        # unconstrained, the ISP camera negotiates
+                                                        # 4K and fails to open
 CAPTURE_HOLD_SECONDS = 10
 
 
@@ -65,6 +71,8 @@ class Signals(QObject):
     update_image = pyqtSignal(object)  # BGR numpy frame
     update_description = pyqtSignal(str)
     set_button_enabled = pyqtSignal(bool)
+    update_stage = pyqtSignal(str)      # pipeline stage text for the status line
+    inference_finished = pyqtSignal()   # stop the dot animation, hide the status line
 
 
 def _center_crop_square(frame):
@@ -76,36 +84,38 @@ def _center_crop_square(frame):
     return frame[y0:y0 + side, x0:x0 + side]
 
 
-def build_vl(models_dir):
-    """Load the LFM2-VL-450M vision encoder + decoder for one-shot image description."""
-    models_dir = Path(models_dir)
-    required = (DECODER_FILE, LM_HEAD_FILE, VISION_FILE)
-    for filename in required:
-        path = models_dir / filename
-        if not path.exists():
-            sys.exit(f"LFM2-VL-450M asset not found: {path}")
-    return LiquidVLStatic(
-        str(models_dir / DECODER_FILE),
-        str(models_dir / VISION_FILE),
-        lmhead_path=str(models_dir / LM_HEAD_FILE),
-        image_decoder_prefix=str(models_dir / IMAGE_DECODER_PREFIX),
-    )
+def load_vl(models_dir):
+    """Load the LFM2-VL-450M (W8, all-NPU) model set once; the handle is reused for every capture."""
+    return LFM2VL(str(models_dir))
 
 
 class CameraApp(QWidget):
-    def __init__(self, camera, models_dir, prompt):
+    def __init__(self, camera, models_dir, prompt, rotate=0):
         super().__init__()
         self.camera = camera
+        self.rotate = rotate
         self.models_dir = models_dir
         self.prompt = prompt
         self.signals = Signals()
         self._running = True
+        self._vl = None  # loaded lazily on the first capture, then reused
+        self._vl_lock = threading.Lock()  # the engine is single-flow: one inference at a time
         self._frozen = False
         self._last_frame = None
         self._init_ui()
         self.signals.update_image.connect(self._show_image)
         self.signals.update_description.connect(self.description_label.setText)
         self.signals.set_button_enabled.connect(self.capture_btn.setEnabled)
+        self.signals.update_stage.connect(self._set_stage)
+        self.signals.inference_finished.connect(self._on_inference_finished)
+
+        # Cycling "..." animation for the status line — driven on the GUI thread;
+        # the worker thread only ever moves the stage text via signals.
+        self._stage_text = ""
+        self._dots_phase = 0
+        self._dots_timer = QTimer(self)
+        self._dots_timer.setInterval(350)
+        self._dots_timer.timeout.connect(self._tick_dots)
 
         self._preview_thread = threading.Thread(target=self._preview_loop, daemon=True)
         self._preview_thread.start()
@@ -134,7 +144,21 @@ class CameraApp(QWidget):
         bottom_layout.setContentsMargins(20, 0, 20, 0)
         bottom_layout.setSpacing(12)
 
-        # Description text — left side, no box, subtle colour
+        # Left side — a status line (pipeline stage + animated dots) sits above the
+        # description text and is only visible while a capture is being processed.
+        text_col = QVBoxLayout()
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(4)
+
+        self.status_label = QLabel("")
+        self.status_label.setVisible(False)
+        self.status_label.setStyleSheet(
+            "color: #5A9BD4; font-size: 13px; font-family: 'Segoe UI', sans-serif;"
+            "background: transparent;"
+        )
+        text_col.addWidget(self.status_label)
+
+        # Description text — no box, subtle colour
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
         self.description_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
@@ -143,7 +167,9 @@ class CameraApp(QWidget):
             "color: #AAAAAA; font-size: 15px; font-family: 'Segoe UI', sans-serif;"
             "background: transparent;"
         )
-        bottom_layout.addWidget(self.description_label)
+        text_col.addWidget(self.description_label)
+
+        bottom_layout.addLayout(text_col, stretch=1)
 
         # Circular shutter button — Android-style white ring + white fill
         self.capture_btn = QPushButton()
@@ -173,7 +199,12 @@ class CameraApp(QWidget):
             return
         self.capture_btn.setEnabled(False)
         self._frozen = True
-        self.signals.update_description.emit("Thinking...")
+        self.description_label.setText("")
+        self._stage_text = "Preparing photo"
+        self._dots_phase = 0
+        self.status_label.setText(self._stage_text)
+        self.status_label.setVisible(True)
+        self._dots_timer.start()
         threading.Thread(target=self._describe_then_resume, args=(self._last_frame,), daemon=True).start()
 
     def _describe_then_resume(self, frame):
@@ -181,34 +212,51 @@ class CameraApp(QWidget):
             square = _center_crop_square(frame)
             resized = cv2.resize(square, (VISION_INPUT_SIZE, VISION_INPUT_SIZE), interpolation=cv2.INTER_AREA)
             cv2.imwrite(CAPTURE_IMAGE_PATH, resized)
-            # The NPU vision encoder and decoder can't be co-resident (the encoder
-            # is freed once the decoder loads), so the vmfb-vision path is one-shot
-            # per LiquidVLStatic instance — rebuild it fresh for every capture.
-            vl = build_vl(self.models_dir)
-            try:
-                description = vl.run(CAPTURE_IMAGE_PATH, self.prompt)
-            finally:
-                del vl
-                gc.collect()
-            self.signals.update_description.emit(description.strip())
+            with self._vl_lock:
+                if self._vl is None:
+                    self.signals.update_stage.emit("Loading model")
+                    self._vl = load_vl(self.models_dir)
+                self.signals.update_stage.emit("Looking at the image")
+                self._vl.encode_image(resized)
+                self.signals.update_stage.emit("Writing description")
+                description = ""
+                for chunk in self._vl.infer_stream(self.prompt):
+                    description += chunk
+                    self.signals.update_description.emit(description.strip())
+            self.signals.update_description.emit(description.strip() or "(no description)")
         except Exception as exc:
             self.signals.update_description.emit(f"Error: {exc}")
+        finally:
+            self.signals.inference_finished.emit()
         time.sleep(CAPTURE_HOLD_SECONDS)
         self._frozen = False
         self.signals.update_description.emit("")
         self.signals.set_button_enabled.emit(True)
 
+    def _tick_dots(self):
+        self._dots_phase = (self._dots_phase + 1) % 4
+        dots = "●" * self._dots_phase + "·" * (3 - self._dots_phase)
+        self.status_label.setText(f"{self._stage_text}  {dots}")
+
+    def _set_stage(self, text):
+        self._stage_text = text
+        self.status_label.setText(text)
+
+    def _on_inference_finished(self):
+        self._dots_timer.stop()
+        self.status_label.setVisible(False)
+        self.status_label.setText("")
+
     def _preview_loop(self):
         frame_interval = 1.0 / PREVIEW_FPS
         try:
-            # exposure_auto=0: OpenCV's CAP_PROP_AUTO_EXPOSURE abstraction is
-            # unreliable for OV5647, so set it directly via v4l2-ctl on open.
-            with Camera(self.camera, controls={"exposure_auto": 0}) as cam:
+            with Camera(self.camera, width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS) as cam:
                 for frame in cam.stream():
                     if not self._running:
                         break
                     # Skip updating the display while a captured frame is being held.
                     if not self._frozen:
+                        frame = rotate_frame(frame, self.rotate)
                         self._last_frame = frame
                         self.signals.update_image.emit(frame)
                     time.sleep(frame_interval)
@@ -217,6 +265,14 @@ class CameraApp(QWidget):
 
     def closeEvent(self, event):
         self._running = False
+        # Release the NPU contexts unless an inference is mid-flight (process exit frees them anyway).
+        if self._vl_lock.acquire(blocking=False):
+            try:
+                if self._vl is not None:
+                    self._vl.close()
+                    self._vl = None
+            finally:
+                self._vl_lock.release()
         super().closeEvent(event)
 
     def _show_image(self, bgr_frame):
@@ -232,6 +288,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Capture a photo and describe it with LiquidAI LFM2-VL-450M.")
     parser.add_argument("--models", default=DEFAULT_MODELS_DIR, help="Directory holding the LFM2-VL-450M assets (default: %(default)s)")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="Prompt sent to the VLM for each captured photo (default: %(default)s)")
+    parser.add_argument("--camera-device", default="auto", help="Camera device, e.g. /dev/video0, or 'auto' to pick the first camera found (default: %(default)s)")
+    parser.add_argument("--rotate", type=int, choices=[0, 90, 180, 270], default=0, help="Rotate the camera feed (degrees clockwise, default: %(default)s); use 180 if the camera is mounted upside down")
     parser.add_argument("--no-refresh", action="store_true", help="Skip the model freshness check (offline runs)")
     return parser.parse_args()
 
@@ -239,13 +297,17 @@ def parse_args():
 def main():
     args = parse_args()
 
-    camera = find_camera_device()
-    if camera is None:
-        print("ERROR: No camera found")
+    try:
+        camera = resolve_camera_device(args.camera_device)
+    except CameraError as exc:
+        print(f"ERROR: {exc}")
         sys.exit(1)
     print(f"Camera: {camera}")
 
-    ensure_lfm2vl_models(args.models, refresh=not args.no_refresh)
+    ensure_lfm2vl_int8_models(args.models, refresh=not args.no_refresh)
+    if not (Path(args.models) / "config.json").is_file():
+        print(f"ERROR: LFM2-VL-450M model set not found in {args.models}. Run: python setup_demo.py")
+        sys.exit(1)
 
     setup_npu_for_inference()
 
@@ -254,7 +316,7 @@ def main():
     os.environ["QT_QPA_PLATFORM"] = "wayland"
 
     app = QApplication(sys.argv)
-    window = CameraApp(camera, args.models, args.prompt)
+    window = CameraApp(camera, args.models, args.prompt, args.rotate)
     window.show()
     sys.exit(app.exec())
 

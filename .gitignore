@@ -11,3 +11,9 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# Files the example apps write when they run
+scene_description/scene_capture.jpg
+object_detection/detection_results*.json
+object_detection/output_yolo.jpg
+image_classification/output_classification.jpg

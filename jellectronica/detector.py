@@ -74,6 +74,7 @@ class Detector:
                 device_uri="torq",
                 function="main",
                 load_model_to_mem=True,
+                device_io=True,  # the default dmabuf allocator needs device-backed I/O
             )
             self._backend = "torq"
             print(f"[Detector] ✓ Torq NPU backend: {vmfb_path}")

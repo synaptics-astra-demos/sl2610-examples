@@ -8,11 +8,11 @@ source of truth here rather than a local reimplementation — this module is jus
 ``app_utils`` entry point apps use instead of reaching into ``app_utils.torq_examples`` directly.
 """
 
-from app_utils.torq_examples.utils.npu import configure_npu_userspace_frequency, enable_npu_clock
+from app_utils.torq_examples.utils.npu import configure_npu_userspace_frequency
 from app_utils.torq_examples.utils.runtime import (build_runtime_flags, cleanup_npu_after_inference,
                                                     setup_npu_for_inference)
 
 __all__ = [
     "build_runtime_flags", "cleanup_npu_after_inference", "configure_npu_userspace_frequency",
-    "enable_npu_clock", "setup_npu_for_inference",
+    "setup_npu_for_inference",
 ]

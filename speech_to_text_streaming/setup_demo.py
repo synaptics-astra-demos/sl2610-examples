@@ -21,13 +21,24 @@ from app_utils.torq_examples.moonshine_streaming.setup_demo import download_moon
 
 logger = logging.getLogger("speech_to_text_streaming.setup")
 
+# The streaming model has not been published for the current torq-examples
+# release (v2.2.1); v2.1.0 is the newest tag on Hugging Face. Pin to it so setup
+# works out of the box. An explicit ``name:version`` in --moonshine-models, e.g.
+# ``streaming-tiny-en:v2.2.1``, overrides this. Remove the pin once a tag that
+# matches torq_examples/VERSION is published.
+MOONSHINE_STREAMING_MODEL_VERSION = "v2.1.0"
+
 
 def setup_speech_to_text(
     moonshine_models: list[str] | None = None,
 ):
 
     def _download_models():
-        download_moonshine_streaming(moonshine_models, base_dir=MODELS_DIR)
+        download_moonshine_streaming(
+            moonshine_models,
+            base_dir=MODELS_DIR,
+            model_version=MOONSHINE_STREAMING_MODEL_VERSION,
+        )
 
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(

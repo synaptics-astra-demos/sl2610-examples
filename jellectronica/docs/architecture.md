@@ -135,13 +135,13 @@ When a tracked jellyfish moves from one cell to another, the corresponding note 
 
 ## Display Modes
 
-### Display Mode (`app.py`)
+### Display Mode (`run_gui.py`)
 - Renders to the Waveshare 7" DSI display via GStreamer `waylandsink`
 - OpenCV draws detection overlay, converts to BGRx, pipes to GStreamer
 - AI Accompaniment visualization bar at the bottom of the display
 - Fullscreen, standalone — no laptop needed
 
-### Server Mode (`server.py`)
+### Server Mode (`run_cli.py`)
 - Headless: annotates frames with OpenCV, JPEG-encodes, streams as MJPEG
 - Flask serves a monitoring dashboard at `:5002`
 - WebSocket at `:5003` pushes real-time trigger events and AI note events
