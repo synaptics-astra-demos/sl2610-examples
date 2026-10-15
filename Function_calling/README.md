@@ -99,7 +99,7 @@ To enable voice (Moonshine ASR on the Torq NPU), install the PortAudio system li
 
 `setup_demo.py` is idempotent — re-run it anytime to repair missing model files. 
 
-For offline Python dependency installs, use `pip install --no-index --find-links=../wheelhouse -r requirements.txt`.
+Install the shared dependencies first (top-level `requirements.txt`), then this demo's own with `pip install -r requirements.txt`. Only the `llama_cpp_python` wheel is bundled in `../wheelhouse/`, so the rest needs a network connection.
 
 ---
 
@@ -488,7 +488,7 @@ Function_calling/
 ../utils/speech.py         # mic capture + silero VAD + Moonshine transcriber
 ../setup/                # device/native library installers
 ../library/                # shared native archives (portaudio_libs.tgz, etc.)
-../wheelhouse/             # pre-built aarch64 wheels
+../wheelhouse/             # pre-built aarch64 wheels (shared dependencies + llama_cpp_python)
 ../models/                 # GGUF + Moonshine artifacts (populated by setup_demo.py)
   functiongemma-physical-ai-v10-Q5_K_M.gguf      # core demo
   Synaptics/moonshine-tiny-bf16-torq/            # only with --voice

@@ -1,11 +1,7 @@
 # llama_cpp_python is only needed with --use-llama-gemma
 ../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 
-ml_dtypes>=0.4.0
-tqdm~=4.67.1
-requests==2.33.1
 tokenizers==0.23.1
 silero-vad-notorch==6.2.1.1
 sounddevice==0.5.5
 PyQt6
-huggingface-hub==0.31.4

@@ -1,22 +1,18 @@
-# Local wheel files
-./wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
+# Dependencies shared by all (or most) of the examples.
+# Each example's own requirements.txt lists only what the other examples do not need.
+# The wheelhouse/ folder holds these as aarch64 / Python 3.12 wheels for offline installs.
 
-# Other standard dependencies from PyPI
+torq-runtime
 numpy>2.0.0b1
 Pillow
-PyQt6>=6.0
-gpiod>=2.0
-psutil>=5.9
-pyserial>=3.5
 ml_dtypes>=0.4.0
 packaging
-hf_xet
+
+# Model downloads (every example's setup_demo.py)
 huggingface_hub==0.31.4
+hf_xet
 requests==2.33.1
 tqdm~=4.67.1
-tokenizers==0.23.1
 
-# Voice input
-sounddevice==0.5.5
-silero-vad-notorch==6.2.1.1
-
+# cv2 comes from the board image's OpenCV (built with GStreamer, which the camera code needs).
+# Do not add opencv-python-headless here: the PyPI wheel shadows it and has no GStreamer.
