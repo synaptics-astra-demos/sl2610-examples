@@ -4,7 +4,7 @@ This repository provides AI example applications for the **Synaptics Astra SL261
 
 ## Supported Hardware
 - [Astra Machina SL2619 Development Kit](https://www.synaptics.com/products/embedded-processors/sl2610-product-line#devKit)
-- [Synaptics Coralboard SL 2GB (SL2619)](https://developers.google.com/coral/products/SL2610-dev-board)
+- [Synaptics Coralboard SL 2GB (SL2619)](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/datasheet)
 
 
 ## Learn more about Synaptics Astra by visiting:
@@ -23,7 +23,7 @@ The Torq compiler is based on the MLIR framework and IREE runtime. The examples 
 
 - For the Machina Kit - see the [Setting up the hardware](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html) guide.
 
-- For the Coralboard - see the [Getting Started](https://developers.google.com/coral/products/SL2610-dev-board) guide. 
+- For the Coralboard SL - see the [Getting Started](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/get-started) guide. 
 
 
 ## 🔧 Installation
@@ -31,9 +31,15 @@ The Torq compiler is based on the MLIR framework and IREE runtime. The examples 
 ### Update the Operating System
 
 The applications in this repository were tested with the following version of the Astra SDK (Yocto-Project Linux):
+
+**Coralboard Google I/O Edition & Machina SL2610** (boots from eMMC)
 - **scarthgap_6.12_v2.5.0** - [Relases Page](https://github.com/synaptics-astra/sdk/releases/tag/scarthgap_6.12_v2.5.0)
 
-From the release page, locate the Out of Box Experience (OOBE) Image for your board and follow the update guide. 
+**Coralboard SL** (boots from SD Card)
+- **scarthgap_6.12_v2.6.1** - [Releases Page](https://github.com/synaptics-astra/sdk/releases/tag/scarthgap_6.12_v2.6.1)
+
+
+From the appropriate release page, locate the Out of Box Experience (OOBE) Image for your board and follow the update guide. 
 
 - For the Astra Machina SL2610 Kit:
     - Locate and download the image downloader script for **Image for sl2619_oobe_scarthgap**
@@ -41,18 +47,17 @@ From the release page, locate the Out of Box Experience (OOBE) Image for your bo
     - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC on the board. 
 
 
-- For the Coralboard *Limited-Edition* from Google IO 2026: 
+- For the Coralboard *Google I/O Edition* from Google I/O 2026: 
 
     - Locate and download the image downloader script for **Image for sl2619_coralboard_oobe_scarthgap**
-
 
     - Follow the [Astra Update Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#running-astra-update) to update the eMMC 
 
 
 - For the Coralboard SL 2GB: 
-    - Locate and download the image downloader script for **Image for sl2619_coralboard_oobe_scarthgap**
+    - Locate and download the pre-built SD card image at: **SD card image for sl2619_coralboard_oobe_scarthgap**
 
-    - Follow the [Booting from SD Cards Guide](https://synaptics-astra.github.io/doc/v/latest/linux/index.html#booting-from-spi-and-sd-cards) to generate a bootable SD Card image
+    - Follow the guide at [Updating Astra SDK (Linux) image](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/user-guide#updating-astra-sdk-linux-image) to get a bootable SD Card image
 
 
 ### Connect to the SL2610 
@@ -65,8 +70,8 @@ To enable online example updates and installation of dependencies, it is recomme
 
 There are three ways to connect an Astra development kit to the network.
 1. Ethernet (Astra Machina only)
-2. Network Sharing over USB (Astra SDK 2.3 and later) [Read More](https://developers.google.com/coral/products/SL2610-user-guide#connect_to_a_network_over_usb)
-3. WiFi/BT Module (Ampak AP12611_M2 with SYN43711) [Read More](https://developers.google.com/coral/products/SL2610-user-guide#attach_wifibluetooth_module_optional)
+2. Network Sharing over USB (Astra SDK 2.3 and later) [Read More](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/user-guide#connect-to-a-network-over-usb)
+3. WiFi/BT Module (Ampak AP12611_M2 with SYN43711) [Read More](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/user-guide#attach-wifibluetooth-module-optional)
 
 ### Clone the Repository
 

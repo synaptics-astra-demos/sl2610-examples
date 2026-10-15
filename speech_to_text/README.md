@@ -31,7 +31,7 @@ Machina Dev Kit
 - For setup instructions, see the [Setting up the hardware guide](https://synaptics-astra.github.io/doc/v/latest/quickstart/hw_setup.html)
 
 Coralboard
-- For setup instructions, see the [Synaptics Coralboard Site](https://developers.google.com/coral/products/SL2610-dev-board)
+- For setup instructions, see the [Synaptics Coralboard Site](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/get-started)
 
 ## Example Setup
 
