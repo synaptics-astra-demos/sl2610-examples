@@ -1,28 +1,22 @@
-# Function_calling/requirements.txt — standalone install for the
-# FunctionGemma physical-AI demo. Paths are relative to this file's
-# directory (Function_calling/), and the local wheels/ index is used as
-# a source for the pre-built aarch64 wheels rather than building from source.
+# Function_calling/requirements.txt — what the FunctionGemma physical-AI demo needs
+# in addition to the top-level requirements.txt. Paths are relative to this file's
+# directory (Function_calling/), and the local wheelhouse/ is used as a source for
+# the pre-built aarch64 llama_cpp_python wheel rather than building from source.
 
 # --- Core demo (always required) ---------------------------------------------
 ../wheelhouse/llama_cpp_python-0.3.16-cp312-cp312-linux_aarch64.whl
 
-numpy>2.0.0b1
-Pillow
 PyQt6>=6.0
 gpiod>=2.0
 psutil>=5.9
 pyserial>=3.5
-ml_dtypes>=0.4.0
 
 # --- Voice input (used when --voice {stub,moonshine}) ------------------------
 # Stub mode needs sounddevice + silero-vad-notorch + libportaudio.so.2.
 # silero-vad-notorch pulls ONNX Runtime for its VAD backend.
-# Moonshine mode additionally needs tokenizers, requests, tqdm, soundfile,
-# and the torq_runtime wheel listed above.
+# Moonshine mode additionally needs tokenizers and soundfile (requests, tqdm and
+# torq-runtime come from the top-level requirements.txt).
 sounddevice>=0.4
 silero-vad-notorch
 tokenizers
-requests
-tqdm
 soundfile
-huggingface_hub

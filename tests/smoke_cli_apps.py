@@ -11,9 +11,11 @@ Run from anywhere, with the project venv active, on the target board:
     python tests/smoke_cli_apps.py --only image_classification gemma_translate
     python tests/smoke_cli_apps.py --skip jellectronica --strict
 
-Before each app is tested, its ``requirements.txt`` is installed with pip and
-its ``setup_demo.py`` is run to download or refresh the models (each once per
-app directory; skip with --skip-install / --skip-setup for offline runs).
+Before the apps are tested, the top-level ``requirements.txt`` (the dependencies the
+examples share) is installed once with pip. Before each app, its own ``requirements.txt``
+(only what the other apps do not need) is installed and its ``setup_demo.py`` is run to
+download or refresh the models, each once per app directory. Skip the installs with
+--skip-install and the downloads with --skip-setup for offline runs.
 Each case then runs the app's ``run_cli.py`` from the app's own directory (so
 the relative default model paths resolve) and checks:
 
@@ -104,12 +106,19 @@ class Case:
 
     @property
     def has_requirements(self) -> bool:
-        return (REPO / self.cwd / "requirements.txt").is_file()
+        """True if the app's requirements.txt lists at least one requirement (comments don't count)."""
+        path = REPO / self.cwd / "requirements.txt"
+        if not path.is_file():
+            return False
+        return any(line.strip() and not line.strip().startswith("#") for line in path.read_text().splitlines())
 
     @property
     def has_setup(self) -> bool:
         return (REPO / self.cwd / "setup_demo.py").is_file()
 
+
+# Stand-in for the repository root, used to run the top-level pip install.
+ROOT_CASE = Case(name="top-level", cwd=".", args=[])
 
 CASES = [
     Case(
@@ -332,21 +341,25 @@ def run_case(case: Case, log_dir: Path, prep_state: dict[tuple[str, str], tuple[
         return Result(case, status, reason, time.monotonic() - started, log_path,
                       tail_of(text) if status != "PASS" else "")
 
-    # Prep steps run once per app directory: install requirements, then fetch models.
+    # Prep steps run once per directory: the shared requirements (repo root), then this app's
+    # extra requirements, then the model download.
     steps = []
-    if install_timeout is not None and case.has_requirements:
-        steps.append(("pip install", [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
-                      install_timeout))
+    if install_timeout is not None:
+        pip_install = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
+        steps.append((ROOT_CASE, "pip install", pip_install, install_timeout))
+        if case.has_requirements:
+            steps.append((case, "pip install", pip_install, install_timeout))
     if setup_timeout is not None and case.has_setup:
-        steps.append(("setup_demo.py", [sys.executable, "setup_demo.py"], setup_timeout))
+        steps.append((case, "setup_demo.py", [sys.executable, "setup_demo.py"], setup_timeout))
     setup_failed = ""
     setup_text = ""
-    for label, cmd, timeout in steps:
-        key = (case.cwd, label)
+    for step_case, label, cmd, timeout in steps:
+        key = (step_case.cwd, label)
         if key not in prep_state:
-            print(f"    running {case.cwd}: {label} ...", flush=True)
-            log = log_dir / f"{case.cwd}.{label.split()[0]}.log"
-            prep_state[key] = run_step(cmd, case, log, timeout)
+            where = "top-level" if step_case is ROOT_CASE else step_case.cwd
+            print(f"    running {where}: {label} ...", flush=True)
+            log = log_dir / f"{'top-level' if step_case is ROOT_CASE else step_case.cwd}.{label.split()[0]}.log"
+            prep_state[key] = run_step(cmd, step_case, log, timeout)
         ok, why, out = prep_state[key]
         if not ok and not setup_failed:
             setup_failed, setup_text = f"{label}: {why}", out
@@ -440,7 +453,7 @@ def main() -> int:
     ap.add_argument("--only", nargs="+", choices=names, metavar="NAME", help="run only these cases")
     ap.add_argument("--skip", nargs="+", choices=names, metavar="NAME", default=[], help="skip these cases")
     ap.add_argument("--skip-install", action="store_true",
-                    help="do not pip install each app's requirements.txt first (offline runs)")
+                    help="do not pip install the requirements files first (offline runs)")
     ap.add_argument("--install-timeout", type=int, default=1800,
                     help="seconds allowed for each pip install (default: %(default)s)")
     ap.add_argument("--skip-setup", action="store_true",

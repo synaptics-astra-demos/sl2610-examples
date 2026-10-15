@@ -2,5 +2,3 @@ PyQt6
 tokenizers==0.23.1
 # vision encoder (LiquidAI-LFM2-VL-450M) runs on CPU via onnxruntime
 onnxruntime>=1.20
-# cv2 comes from the board image's OpenCV (built with GStreamer, which the camera code needs).
-# Do not add opencv-python-headless here: the PyPI wheel shadows it and has no GStreamer.

@@ -118,13 +118,21 @@ source .venv/bin/activate
 
 Install dependencies
 
+If **Online**:
+
 ```bash
 pip install --upgrade pip
 
-pip install torq-runtime 
-
 pip install -r requirements.txt
 ```
+
+If **offline** (the `wheelhouse/` folder holds these shared dependencies, so Object Detection and Image Classification work fully offline):
+
+```bash
+pip install --no-index --find-links=./wheelhouse -r requirements.txt
+```
+
+This installs the dependencies shared by the examples. An example that needs more lists them in its own `requirements.txt`, and its README says to install them with `pip install -r requirements.txt` from the example folder. Those extras are not in the wheelhouse, so they need a network connection.
 
 ## Device Configuration
 
@@ -138,6 +146,7 @@ Installer scripts are provided:
 |--------|--------|-------------|------|
 | `install_portaudio.sh` | Required | Install PortAudio shared libraries for microphone demos | No | 
 | `portrait_setup.sh` | Optional | Configure portrait display orientation (recommended if you connect a MIPI DSI display)| No | 
+| `landscape_setup.sh` | Optional | Return the display to landscape orientation (undoes `portrait_setup.sh`) | No | 
 | `patch_usb_cdc.sh` | Optional | Install USB CDC/serial modules (For Neopixel controller support) | Yes | 
 
 Run the scripts one at a time:
@@ -152,6 +161,12 @@ Optional:
 ./setup/portrait_setup.sh
 ./setup/patch_usb_cdc.sh
 ```
+
+To switch the display back to landscape after running `portrait_setup.sh`:
+```bash
+./setup/landscape_setup.sh
+```
+Both display scripts restart the display server and set `ORIENTATION`, `DISPLAY_WIDTH` and `DISPLAY_HEIGHT` in `/etc/profile`, so open a new terminal (or reboot) before launching an app.
 
 
 ## Examples
@@ -176,7 +191,7 @@ Check out the README.md files in each of the example folders.
 python tests/smoke_cli_apps.py
 ```
 
-For each app it first installs the app's `requirements.txt` and runs its `setup_demo.py` to download the models, so it needs network access and about 1.5 GB of free disk space. Useful options:
+It first installs the top-level `requirements.txt` once, then for each app installs the app's own `requirements.txt` (extras only) and runs its `setup_demo.py` to download the models, so it needs network access and about 1.5 GB of free disk space. Useful options:
 
 - `--only <name> ...` runs only the named apps, `--skip <name> ...` leaves some out, and `--list` shows the names
 - `--skip-install` and `--skip-setup` skip the pip install and model download steps (offline runs, or repeat runs)
