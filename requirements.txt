@@ -2,7 +2,7 @@
 # Each example's own requirements.txt lists only what the other examples do not need.
 # The wheelhouse/ folder holds these as aarch64 / Python 3.12 wheels for offline installs.
 
-torq-runtime
+torq-runtime~=2.3.0
 numpy>2.0.0b1
 Pillow
 ml_dtypes>=0.4.0

@@ -14,10 +14,10 @@ This repository provides AI example applications for the **Synaptics Astra SL261
 
 ## Torq Compiler & Runtime
 
-The Torq compiler is based on the MLIR framework and IREE runtime. The examples use the Torq compiler to optimize models to run efficiently on the Torq NPU. See Torq documentation for details.  
+The Torq compiler is based on the MLIR framework and IREE runtime. The examples use the Torq compiler to optimize models to run efficiently on the Torq NPU. [Torq Documentation](https://synaptics-torq.github.io/torq-compiler/v/latest) 
     
-- [Torq Documentation](https://synaptics-torq.github.io/torq-compiler/v/latest)
-
+Tested Torq compiler & runtime in this release: 
+- [Synaptics Torq v2.3.0](https://github.com/synaptics-torq/torq-compiler/releases/tag/v2.3.0) 
 
 ## Setting up your hardware
 
