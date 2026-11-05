@@ -259,16 +259,17 @@ def load_gemma(
     if model_path is None:
         from app_utils.paths import MODELS_DIR
         from app_utils.torq_examples.gemma3.setup_demo import (
+            DEFAULT_MODEL,
             GEMMA3_HF_REPO_MAP,
             download_gemma3,
         )
         from app_utils.torq_examples.utils.download import resolve_repo_id
 
-        repo_id = resolve_repo_id("instruct", GEMMA3_HF_REPO_MAP)
+        repo_id = resolve_repo_id(DEFAULT_MODEL, GEMMA3_HF_REPO_MAP)
         model_dir = MODELS_DIR / repo_id
         model_path = model_dir / "transformer.vmfb"
         if not model_path.exists():
-            download_gemma3(["instruct"], base_dir=MODELS_DIR)
+            download_gemma3([DEFAULT_MODEL], base_dir=MODELS_DIR)
         if not model_path.exists():
             raise FileNotFoundError(
                 f"Default Gemma model not found at '{model_path}'. "

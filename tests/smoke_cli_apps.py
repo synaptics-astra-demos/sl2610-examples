@@ -167,7 +167,7 @@ CASES = [
         cwd="gemma_translate",
         args=["--text"],
         stdin="Hello, how are you today?\n/q\n",
-        requires=["../models/Synaptics/gemma-3-270m-it-torq"],
+        requires=["../models/Synaptics/gemma-3-270-GPTQ-int4-it-torq"],
         expect=[r"\[Translation\]", r"TTFT="],
         timeout=300,
         note="--text feeds a typed phrase instead of the mic, so only Gemma is exercised.",
