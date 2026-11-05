@@ -93,7 +93,7 @@ class BatchEnrollmentSession:
         if removed_count > 0:
             # Mark cache as stale since database enrollment happened
             self._cache_stale = True
-            logger.info(f"[CLEANUP] Removed {removed_count} already registered/enrolled face card(s). Remaining: {len(self.slots)}")
+            logger.debug(f"[CLEANUP] Removed {removed_count} already registered/enrolled face card(s). Remaining: {len(self.slots)}")
 
     def _merge_duplicate_slots(self):
         """Aggressively merge slots with the same face - run this frequently during preview."""
@@ -138,13 +138,13 @@ class BatchEnrollmentSession:
                 if similarity >= 0.50:
                     merged_indices.add(j)
                     slot_j_name = slot_j.get("name", f"face_{slot_j_id}")
-                    logger.info(f"[DEDUP] Removing duplicate: '{slot_j_name}' (ID:{slot_j_id}) = '{slot_i_name}' (ID:{slot_i.get('id')}) sim:{similarity:.4f}")
+                    logger.debug(f"[DEDUP] Removing duplicate: '{slot_j_name}' (ID:{slot_j_id}) = '{slot_i_name}' (ID:{slot_i.get('id')}) sim:{similarity:.4f}")
         
         # Remove merged slots in reverse order to avoid index shifting
         if merged_indices:
             for idx in sorted(merged_indices, reverse=True):
                 removed_slot = self.slots.pop(idx)
-            logger.info(f"[DEDUP] Merged {len(merged_indices)} duplicate(s). Remaining: {len(self.slots)}")
+            logger.debug(f"[DEDUP] Merged {len(merged_indices)} duplicate(s). Remaining: {len(self.slots)}")
 
     def update_faces(self, detections):
         with self._lock:
@@ -322,9 +322,9 @@ class BatchEnrollmentSession:
                 if slot_id not in self._embedding_validated:
                     self._embedding_validated.add(slot_id)
                     if already_registered:
-                        logger.info(f"[VALIDATED] Slot {slot_id}: Already-enrolled face detected: '{matched_name}'")
+                        logger.debug(f"[VALIDATED] Slot {slot_id}: Already-enrolled face detected: '{matched_name}'")
                     else:
-                        logger.info(f"[VALIDATED] Slot {slot_id}: New face - ready to enroll")
+                        logger.debug(f"[VALIDATED] Slot {slot_id}: New face - ready to enroll")
             
             # CRITICAL: Aggressively merge duplicates during preview
             self._merge_duplicate_slots()
@@ -478,6 +478,16 @@ class BatchEnrollmentSession:
             
             logger.info(f"[REFRESH] Complete reset done (session #{self._session_id}). Cache: {len(self._enrolled_names_cache)} enrolled. Ready for fresh detection.")
             return self.snapshot()
+
+    def capture_progress(self):
+        """``(name, frames_captured, frames_needed)`` while a face is being enrolled, else ``None``."""
+        with self._lock:
+            if self.status != "capturing":
+                return None
+            for slot in self.slots:
+                if slot.get("id") == self.active_slot_id:
+                    return slot.get("name", ""), slot.get("count", 0), self.target_frames
+            return None
 
     def snapshot(self):
         with self._lock:
