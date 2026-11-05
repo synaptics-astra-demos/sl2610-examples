@@ -31,6 +31,9 @@ Results:
           Python package is missing). This is not a regression; pass --strict
           to treat it as a failure.
 
+After the run, a METRICS table summarises what each app already reports (inference
+times, FPS, tokens/sec, TTFT, ...), parsed from its output.
+
 Only the Python standard library is used. Full per-case logs are written to
 --log-dir. Exit code is 1 if any case FAILs (or SETUPs with --strict).
 """
@@ -165,9 +168,9 @@ CASES = [
     Case(
         name="gemma_translate",
         cwd="gemma_translate",
-        args=["--text"],
+        args=["--text", "--verbose-stats"],
         stdin="Hello, how are you today?\n/q\n",
-        requires=["../models/Synaptics/gemma-3-270m-it-torq"],
+        requires=["../models/Synaptics/gemma-3-270-GPTQ-int4-it-torq"],
         expect=[r"\[Translation\]", r"TTFT="],
         timeout=300,
         note="--text feeds a typed phrase instead of the mic, so only Gemma is exercised.",
@@ -180,6 +183,15 @@ CASES = [
         expect=[r"\d+ tool calls?"],
         timeout=300,
         note="--prompt runs one turn and exits instead of the interactive REPL.",
+    ),
+    Case(
+        name="speech_to_text_wav",
+        cwd="speech_to_text",
+        args=["--wav", str(SAMPLES / "sample.wav")],
+        requires=["../models/Synaptics/moonshine-tiny-bf16-torq"],
+        expect=[r"Transcript: \S"],
+        timeout=300,
+        note="--wav transcribes a file through the same VAD + Moonshine path as the mic, then exits.",
     ),
     Case(
         name="speech_to_text",
@@ -212,6 +224,7 @@ class Result:
     seconds: float
     log: Path
     tail: str = ""
+    metrics: dict[str, str] = field(default_factory=dict)
 
 
 class Capture:
@@ -254,10 +267,11 @@ def kill_group(proc: subprocess.Popen, sig: int = signal.SIGINT, wait: float = 1
         pass
 
 
-def start(case: Case, log_file) -> tuple[subprocess.Popen, Capture]:
+def start(case: Case, log_file, log_dir: Path) -> tuple[subprocess.Popen, Capture]:
     env = dict(os.environ, PYTHONUNBUFFERED="1")
+    argv = [a.replace("{log_dir}", str(log_dir)) for a in case.args]
     proc = subprocess.Popen(
-        [sys.executable, case.script, *case.args],
+        [sys.executable, case.script, *argv],
         cwd=REPO / case.cwd,
         env=env,
         stdin=subprocess.PIPE if case.stdin is not None else subprocess.DEVNULL,
@@ -339,7 +353,8 @@ def run_case(case: Case, log_dir: Path, prep_state: dict[tuple[str, str], tuple[
 
     def done(status: str, reason: str, text: str = "") -> Result:
         return Result(case, status, reason, time.monotonic() - started, log_path,
-                      tail_of(text) if status != "PASS" else "")
+                      tail_of(text) if status != "PASS" else "",
+                      extract_metrics(case.name, text) if text else {})
 
     # Prep steps run once per directory: the shared requirements (repo root), then this app's
     # extra requirements, then the model download.
@@ -373,7 +388,7 @@ def run_case(case: Case, log_dir: Path, prep_state: dict[tuple[str, str], tuple[
 
     with open(log_path, "w") as log:
         log.write(f"$ cd {case.cwd} && {sys.executable} {case.script} {' '.join(case.args)}\n\n")
-        proc, cap = start(case, log)
+        proc, cap = start(case, log, log_dir)
         text = ""
         try:
             if case.kind == "oneshot":
@@ -446,6 +461,87 @@ def run_case(case: Case, log_dir: Path, prep_state: dict[tuple[str, str], tuple[
             cap.join()
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _stats(vals: list[float]) -> str:
+    return f"mean {sum(vals) / len(vals):.2f} / min {min(vals):.2f} / max {max(vals):.2f}"
+
+
+def extract_metrics(name: str, text: str) -> dict[str, str]:
+    """Pull the timing numbers each app already prints out of its output.
+
+    Best effort: a number that is not found is simply left out.
+    """
+    text = ANSI.sub("", text).replace("\r", "\n")
+    m: dict[str, str] = {}
+
+    def last(pattern: str, flags: int = 0):
+        found = list(re.finditer(pattern, text, flags))
+        return found[-1] if found else None
+
+    if name in ("image_classification", "object_detection"):
+        if g := last(r"^Time: ([\d.]+)ms", re.M):
+            ms = float(g.group(1))
+            m["inference"] = f"{ms:.3f} ms ({1000 / ms:.1f} inf/s)" if ms > 0 else f"{ms:.3f} ms"
+
+    elif name == "object_detection_video":
+        if g := last(r"Processed (\d+) frames"):
+            m["frames"] = g.group(1)
+        # per-frame status lines look like "12 (3.456 ms) person 0.91"
+        times = [float(x) for x in re.findall(r"^\s*\d+ \(([\d.]+) ms\)", text, re.M)]
+        if times:
+            m["inference/frame (ms)"] = _stats(times)
+            m["inference FPS"] = f"{1000 * len(times) / sum(times):.1f} (inference only, excludes decode/draw)"
+
+    elif name == "scene_description":
+        loads = re.findall(r"^Time: (\d+)ms$", text, re.M)
+        if loads:
+            m["model load"] = f"{loads[0]} ms"
+        if g := last(r"Time: vision (\d+)ms, image prefill (\d+)ms, prefix (\d+)ms"):
+            m["vision / image prefill / prefix"] = f"{g.group(1)} / {g.group(2)} / {g.group(3)} ms"
+        if g := last(r"TTFT (\d+)ms \| prompt (\d+) tok, gen (\d+) tok @ ([\d.]+) tok/s"):
+            m["TTFT"] = f"{g.group(1)} ms"
+            m["prompt / generated tokens"] = f"{g.group(2)} / {g.group(3)}"
+            m["decode speed"] = f"{g.group(4)} tok/s"
+
+    elif name == "gemma_translate":
+        # verbose: "(N tok | TTFT=Xms | Y tok/s | prefill=Z tok/s | infer_ms=W)"
+        if g := last(r"\[Translation\].*?\((\d+) tok \| TTFT=(\d+)ms \| ([\d.]+) tok/s"
+                     r"(?: \| prefill=([\d.]+) tok/s)?(?: \| infer_ms=(\d+))?"):
+            m["generated tokens"] = g.group(1)
+            m["TTFT"] = f"{g.group(2)} ms"
+            m["decode speed"] = f"{g.group(3)} tok/s"
+            if g.group(4):
+                m["prefill speed"] = f"{g.group(4)} tok/s"
+            if g.group(5):
+                m["total inference"] = f"{g.group(5)} ms"
+
+    elif name == "speech_to_text_wav":
+        if g := last(r"\(utterances (\d+) \| speech ([\d.]+)s of ([\d.]+)s audio \| inference (\d+)ms \| RTF ([\d.]+)\)"):
+            m["utterances"] = g.group(1)
+            m["speech / audio"] = f"{g.group(2)} s / {g.group(3)} s"
+            m["total inference"] = f"{g.group(4)} ms"
+            m["RTF (inference / speech)"] = f"{g.group(5)} (<1.0 is faster than real time)"
+        if g := last(r"\[1\] .*?(\d+) tok \| ([\d.]+) tok/s"):
+            m["first utterance decode"] = f"{g.group(1)} tok @ {g.group(2)} tok/s"
+
+    elif name == "Function_calling":
+        if g := last(r"\((\d+) tool calls? · (\d+) ms\)"):
+            m["tool calls"] = g.group(1)
+            m["generate latency"] = f"{g.group(2)} ms"
+
+    elif name == "speech_to_text_streaming":
+        if g := last(r"\(utterances (\d+) \| audio ([\d.]+)s \| encode (\d+)ms \| decode (\d+)ms"
+                     r" \| inference (\d+)ms \| RTF ([\d.]+)\)"):
+            m["utterances"] = g.group(1)
+            m["audio"] = f"{g.group(2)} s"
+            m["encode / decode"] = f"{g.group(3)} ms / {g.group(4)} ms"
+            m["total inference"] = f"{g.group(5)} ms"
+            m["RTF (inference / audio)"] = f"{g.group(6)} (<1.0 keeps up with real time)"
+    return m
+
+
 def main() -> int:
     names = [c.name for c in CASES]
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -494,6 +590,8 @@ def main() -> int:
             break
         results.append(res)
         print(f"    {res.status}  {res.reason}  ({res.seconds:.1f}s)")
+        for k, v in res.metrics.items():
+            print(f"      {k}: {v}")
         if res.tail:
             print("    --- last output ---")
             print("\n".join("    " + ln for ln in res.tail.splitlines()))
@@ -502,6 +600,14 @@ def main() -> int:
     print("=" * 72)
     for r in results:
         print(f"{r.status:<6} {r.case.name:<26} {r.seconds:6.1f}s  {r.reason}")
+    with_metrics = [r for r in results if r.metrics]
+    if with_metrics:
+        print("\nMETRICS (as reported by each app; one run, so treat as indicative)")
+        for r in with_metrics:
+            print(f"  {r.case.name}")
+            for k, v in r.metrics.items():
+                print(f"    {k:<32} {v}")
+        print("  (speech_to_text and jellectronica are long-running services and print no timings)")
     counts = {s: sum(r.status == s for r in results) for s in ("PASS", "FAIL", "SETUP")}
     print(f"\n{counts['PASS']} passed, {counts['FAIL']} failed, {counts['SETUP']} need setup")
     print("Not covered (GUI-only, no CLI)")

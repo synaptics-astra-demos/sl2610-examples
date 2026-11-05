@@ -83,6 +83,10 @@ By default Moonshine runs with the DMA/dmabuf allocator (`--tda dmabuf`) and
 device-backed I/O. To use the CPU allocator instead, run
 `python run_cli.py --tda cpu`.
 
+To transcribe a WAV file instead of the microphone (useful for automated tests), run
+`python run_cli.py --wav ../samples/sample.wav`. It runs the file through the same voice
+activity detection and Moonshine path, prints each utterance with its timings, and exits.
+
 
 ## Speak into the microphone! 
 

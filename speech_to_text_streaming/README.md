@@ -154,7 +154,7 @@ python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --device 
 ```
 
 Run `python run_cli.py -h` to see all available options (VAD thresholds, decode
-mode, runtime flags, profiling).
+mode, runtime flags).
 
 ## Transcribing a WAV file
 
@@ -199,7 +199,7 @@ with its KV tensors pinned on the NPU, so each preview is cheap.
 | File | Role |
 |------|------|
 | `runner.py` | the **engine**: the model, its pre-allocated state, and the thin VMFB session wrapper. No audio, no UI — "give me audio chunks, I return tokens". |
-| `run_cli.py` | the **app**: microphone capture, VAD, the worker thread, decode triggering, terminal rendering, the CLI, and the profiler. |
+| `run_cli.py` | the **app**: microphone capture, VAD, the worker thread, decode triggering, terminal rendering, and the CLI. |
 | `setup_demo.py` | downloads/verifies the model files (reuses `utils/`). |
 
 ### The model (2-split) and its files
@@ -296,8 +296,7 @@ quiet) / `silence`.
 
 - `energy` (default, `EnergyVAD`): a self-calibrating RMS energy detector. It
   samples the room for the first ~12 chunks (~1 s) and sets
-  `threshold = max(mean + 4·std, --vad-threshold)`. (The `[VAD Calibration]`
-  line only prints with `--profile`.) Zero extra dependencies, but it can't
+  `threshold = max(mean + 4·std, --vad-threshold)`. Zero extra dependencies, but it can't
   tell speech from any other sound of similar loudness.
 - `silero` (`SileroVAD`): runs [Silero's](https://github.com/snakers4/silero-vad)
   small neural VAD via the `silero-vad-notorch` package (the same one used by
@@ -393,43 +392,22 @@ must start a fresh utterance while you're still mid-sentence, so it locks the
 line, resets state, ticks the counter, and redraws "Listening…" all at once
 before continuing.
 
-## Profiling
+## Timing summary
 
-`--profile` records per-chunk worker timing, prints a real-time keep-up summary on
-exit, and dumps the raw arrays as `.npy` files to `profile_results/`; override with `--profile-out`:
+When the run ends (end of a `--wav` file, or Ctrl+C in microphone mode) the app prints one
+line to stderr with the audio processed and the time spent in inference:
 
-```sh
-python run_cli.py -m ../models/Synaptics/moonshine-streaming-tiny-torq --wav sample.wav --profile
+```
+(utterances 2 | audio 9.6s | encode 310ms | decode 280ms | inference 590ms | RTF 0.06)
 ```
 
-Then turn those dumps into plots with `plot_profile.py`:
-
-```sh
-python plot_profile.py
-```
-
-This reads `profile_results/*.npy` and writes PNGs to `profile_results/plots/`
-(override with `--profile-dir` / `--out-dir`):
-
-| Plot | Shows |
-|------|-------|
-| `chunk_times.png` | per-chunk worker time, cheap vs. with-decode, against the real-time budget line |
-| `encode_times.png` | encoder latency distribution (p50/p95/p99) |
-| `decode_times.png` | decode-call latency distribution (p50/p95/p99) |
-| `decode_steps.png` | decoder forward passes per decode call |
-| `queue_depth.png` | audio queue depth over time, with a linear trend line (sustained growth ⇒ falling behind) |
-| `realtime_factor.png` | running work/audio ratio over the session (>1.0x ⇒ cannot keep up) |
-
-Requires `matplotlib`, which is not in `requirements.txt` since it is only
-needed for plotting: `pip install matplotlib`.
+`inference` is `encode + decode`, and `RTF` is `inference / audio`, so values below 1.0 mean it
+keeps up with real time. The smoke test (`tests/smoke_cli_apps.py`) reports these numbers.
 
 ## Notes
 
 - `--full-decode` restores the baseline re-decode-from-BOS behaviour (instead of
   the default committed-prefix incremental decode).
-- `--profile` records per-chunk worker timing and prints a real-time keep-up
-  summary on exit (and shows the VAD calibration line); see
-  [Profiling](#profiling) to turn the dumps into plots.
 - `--tda {cpu,dmabuf}` selects the allocator backing Torq buffers. It defaults to
   `dmabuf` (with device-backed decoder inputs); pass `--tda cpu` to use the CPU
   allocator instead.
