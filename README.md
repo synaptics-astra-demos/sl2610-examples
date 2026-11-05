@@ -179,6 +179,7 @@ Both display scripts restart the display server and set `ORIENTATION`, `DISPLAY_
 Check out the README.md files in each of the example folders. 
 
 - [object_detection](object_detection/README.md) - detect objects with YoloV8
+- [face_id](face_id/README.md) - Qt face detection, recognition, and enrollment
 - [image_classification](image_classification/README.md) - classify images with MobileNetV2
 - [speech_to_text](speech_to_text/README.md) - capture speech sentences with Moonshine
 - [speech_to_text_streaming](speech_to_text_streaming/README.md) - capture speech word-by-word with Moonshine V2
