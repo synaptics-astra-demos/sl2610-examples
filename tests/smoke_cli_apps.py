@@ -160,7 +160,7 @@ CASES = [
     Case(
         name="speech_to_text_streaming",
         cwd="speech_to_text_streaming",
-        args=["--wav", str(SAMPLES / "sample.wav"), "--profile", "--profile-out", "{log_dir}/stt_streaming_profile"],
+        args=["--wav", str(SAMPLES / "sample.wav")],
         requires=["../models/Synaptics/moonshine-streaming-tiny-torq"],
         expect=[r"Transcribing"],
         timeout=300,
@@ -532,19 +532,13 @@ def extract_metrics(name: str, text: str) -> dict[str, str]:
             m["generate latency"] = f"{g.group(2)} ms"
 
     elif name == "speech_to_text_streaming":
-        if g := last(r"chunks processed: (\d+)"):
-            m["chunks processed"] = g.group(1)
-        if g := last(r"chunk budget: ([\d.]+) ms"):
-            m["chunk budget"] = f"{g.group(1)} ms"
-        if g := last(r"missed real-time: (\d+ \([\d.]+%\))"):
-            m["missed real-time"] = g.group(1)
-        for label, key in (("chunk \\(all\\)", "chunk p50 / p95"), ("encode/chunk", "encode p50 / p95"),
-                           ("decode/call", "decode p50 / p95")):
-            if g := last(label + r"\s+n=\s*\d+\s+p50=\s*([\d.]+)\s+p95=\s*([\d.]+)"):
-                m[key] = f"{g.group(1)} / {g.group(2)} ms"
-        for label in ("total", "encoder", "decoder"):
-            if g := last(rf"^\s*{label}\s+([\d.]+)x real-time", re.M):
-                m[f"{label} real-time factor"] = f"{g.group(1)}x (<1.0 keeps up)"
+        if g := last(r"\(utterances (\d+) \| audio ([\d.]+)s \| encode (\d+)ms \| decode (\d+)ms"
+                     r" \| inference (\d+)ms \| RTF ([\d.]+)\)"):
+            m["utterances"] = g.group(1)
+            m["audio"] = f"{g.group(2)} s"
+            m["encode / decode"] = f"{g.group(3)} ms / {g.group(4)} ms"
+            m["total inference"] = f"{g.group(5)} ms"
+            m["RTF (inference / audio)"] = f"{g.group(6)} (<1.0 keeps up with real time)"
     return m
 
 

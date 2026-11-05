@@ -31,6 +31,7 @@ import re
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -52,7 +53,6 @@ from app_utils.torq_examples.moonshine_streaming.src.runner import MoonshineStat
 from app_utils.log import add_logging_args, configure_logging
 from app_utils.torq_examples.utils.runtime import build_runtime_flags
 from app_utils.npu import cleanup_npu_after_inference, setup_npu_for_inference
-from profiling import WorkerProfiler
 from vad import EnergyVAD, SileroVAD
 
 logger = logging.getLogger("speech_to_text_streaming")
@@ -286,18 +286,23 @@ def main(args: argparse.Namespace):
     if args.vad_backend == "silero":
         logger.info("VAD backend:      silero (%s, threshold %.2f)",
                      args.vad_model or "bundled silero-vad-notorch model", vad_threshold)
-        vad = SileroVAD(args.vad_model, threshold=vad_threshold, silence_duration=args.vad_silence,
-                         report_calibration=args.profile)
+        vad = SileroVAD(args.vad_model, threshold=vad_threshold, silence_duration=args.vad_silence)
     else:
         logger.info("VAD backend:      energy (self-calibrating, floor %.4f)", vad_threshold)
-        vad = EnergyVAD(threshold=vad_threshold, silence_duration=args.vad_silence,
-                         report_calibration=args.profile)
+        vad = EnergyVAD(threshold=vad_threshold, silence_duration=args.vad_silence)
     terminal = TerminalListener()
     state    = model.create_state()
 
-    prof = WorkerProfiler(model.chunk_len / 16000 * 1000) if args.profile else None
-    if prof:
-        logger.info("[profile] enabled — chunk budget %.1f ms", prof.chunk_budget_ms)
+    # Running totals for the one-line summary printed on exit.
+    totals = {"encode_ms": 0.0, "decode_ms": 0.0, "chunks": 0, "utterances": 0}
+
+    @contextmanager
+    def _timed(key):
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            totals[key] += (time.perf_counter() - t0) * 1000
 
     def worker():
         tokens              = []
@@ -315,14 +320,12 @@ def main(args: argparse.Namespace):
         lookback_buffer = deque(maxlen=max(lookback_chunks, 0))
 
         def _decode():
-            if args.full_decode:
-                return model.decode(state)
-            return model.decode_incremental(state, args.commit_delay, args.commit_agreement)
+            with _timed("decode_ms"):
+                if args.full_decode:
+                    return model.decode(state)
+                return model.decode_incremental(state, args.commit_delay, args.commit_agreement)
 
         while running:
-            if prof:
-                prof.queue_depth.append(
-                    (time.perf_counter() - prof.t_start, audio_queue.qsize()))
             try:
                 chunk = audio_queue.get(timeout=0.1)
             except queue.Empty:
@@ -334,13 +337,9 @@ def main(args: argparse.Namespace):
                 # silence for the VAD to have called speech_end itself).
                 if state.cross_kv_fill > 0 or vad.is_speaking:
                     terminal.draw(f"\033[34m◉\033[0m Utterance #{utterance_count}: processing...")
-                    model.encode(state, is_final=True)
-                    if prof:
-                        _t_dec = time.perf_counter()
+                    with _timed("encode_ms"):
+                        model.encode(state, is_final=True)
                     tokens = _decode()
-                    if prof:
-                        prof.decode_ms.append((time.perf_counter() - _t_dec) * 1000)
-                        prof.decode_steps.append(state.last_decode_steps)
                     text = tokenizer.decode(tokens, skip_special_tokens=True)
                     terminal.draw(f"\033[32m✓\033[0m Utterance #{utterance_count}: {text if text else '(empty)'}")
                     terminal.complete_line()
@@ -355,10 +354,7 @@ def main(args: argparse.Namespace):
                 audio_chunk_1280 = resampled_buffer[:chunk_size]
                 resampled_buffer = resampled_buffer[chunk_size:]
 
-                if prof:
-                    _t_chunk    = time.perf_counter()
-                    _had_decode = False
-
+                totals["chunks"] += 1
                 vad_status = vad.process_chunk(audio_chunk_1280)
 
                 if vad_status == "speech_start":
@@ -366,6 +362,7 @@ def main(args: argparse.Namespace):
                     tokens = []
                     chunks_since_decode = 0
                     utterance_count += 1
+                    totals["utterances"] += 1
                     terminal.draw(f"\033[32m●\033[0m Utterance #{utterance_count}: [Listening...]")
 
                     # Replay the buffered pre-speech chunks through the fresh state
@@ -376,21 +373,15 @@ def main(args: argparse.Namespace):
                     # discarded window on real pre-onset audio instead of on the
                     # first spoken syllables.
                     for lb_chunk in lookback_buffer:
-                        if prof:
-                            _t_lb = time.perf_counter()
-                        model.process_audio_chunk(state, lb_chunk)
-                        model.encode(state, is_final=False)
-                        if prof:
-                            prof.encode_ms.append((time.perf_counter() - _t_lb) * 1000)
+                        with _timed("encode_ms"):
+                            model.process_audio_chunk(state, lb_chunk)
+                            model.encode(state, is_final=False)
                     lookback_buffer.clear()
 
                 if vad_status in ("speech", "speech_start"):
-                    if prof:
-                        _t_enc = time.perf_counter()
-                    model.process_audio_chunk(state, audio_chunk_1280)
-                    model.encode(state, is_final=False)
-                    if prof:
-                        prof.encode_ms.append((time.perf_counter() - _t_enc) * 1000)
+                    with _timed("encode_ms"):
+                        model.process_audio_chunk(state, audio_chunk_1280)
+                        model.encode(state, is_final=False)
                     chunks_since_decode += 1
 
                     # Auto-finalize when cross-KV buffer is full
@@ -400,14 +391,9 @@ def main(args: argparse.Namespace):
                             f"\033[31m⚠\033[0m Utterance #{utterance_count}:"
                             f" buffer full ({buf_secs}s limit) — finalizing..."
                         )
-                        model.encode(state, is_final=True)
-                        if prof:
-                            _t_dec = time.perf_counter()
+                        with _timed("encode_ms"):
+                            model.encode(state, is_final=True)
                         tokens = _decode()
-                        if prof:
-                            prof.decode_ms.append((time.perf_counter() - _t_dec) * 1000)
-                            prof.decode_steps.append(state.last_decode_steps)
-                            _had_decode = True
                         text   = tokenizer.decode(tokens, skip_special_tokens=True)
                         terminal.draw(f"\033[32m✓\033[0m Utterance #{utterance_count}: {text if text else '(empty)'}")
                         terminal.complete_line()
@@ -415,20 +401,13 @@ def main(args: argparse.Namespace):
                         tokens = []
                         chunks_since_decode = 0
                         utterance_count += 1
+                        totals["utterances"] += 1
                         terminal.draw(f"\033[32m●\033[0m Utterance #{utterance_count}: [Listening...]")
-                        if prof:
-                            prof.record_chunk((time.perf_counter() - _t_chunk) * 1000, _had_decode)
                         continue
 
                     # Periodic live preview decode
                     if chunks_since_decode >= args.preview_every and state.cross_kv_fill > 0:
-                        if prof:
-                            _t_dec = time.perf_counter()
                         tokens = _decode()
-                        if prof:
-                            prof.decode_ms.append((time.perf_counter() - _t_dec) * 1000)
-                            prof.decode_steps.append(state.last_decode_steps)
-                            _had_decode = True
                         chunks_since_decode = 0
 
                     text = tokenizer.decode(tokens, skip_special_tokens=True) if tokens else ""
@@ -445,15 +424,10 @@ def main(args: argparse.Namespace):
 
                 elif vad_status == "speech_end":
                     terminal.draw(f"\033[34m◉\033[0m Utterance #{utterance_count}: processing...")
-                    model.process_audio_chunk(state, audio_chunk_1280)
-                    model.encode(state, is_final=True)
-                    if prof:
-                        _t_dec = time.perf_counter()
+                    with _timed("encode_ms"):
+                        model.process_audio_chunk(state, audio_chunk_1280)
+                        model.encode(state, is_final=True)
                     tokens = _decode()
-                    if prof:
-                        prof.decode_ms.append((time.perf_counter() - _t_dec) * 1000)
-                        prof.decode_steps.append(state.last_decode_steps)
-                        _had_decode = True
                     text   = tokenizer.decode(tokens, skip_special_tokens=True)
                     terminal.draw(f"\033[32m✓\033[0m Utterance #{utterance_count}: {text if text else '(empty)'}")
                     terminal.complete_line()
@@ -462,20 +436,19 @@ def main(args: argparse.Namespace):
                 elif vad_status == "silence":
                     lookback_buffer.append(audio_chunk_1280.copy())
 
-                if prof:
-                    prof.record_chunk((time.perf_counter() - _t_chunk) * 1000, _had_decode)
-
             audio_queue.task_done()
 
-    def print_profile_summary():
-        if not prof:
-            return
-        out = args.profile_out or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profile_results")
-        try:
-            prof.summary(out_dir=out)
-        except Exception as e:
-            print(f"[profile] summary failed: {e}", file=sys.stderr)
+    def print_summary():
+        """One line: how much audio was processed and how long inference took."""
+        if wav_mode:
+            audio_s = len(wav_audio) / input_sample_rate
+        else:
+            audio_s = totals["chunks"] * model.chunk_len / 16000
+        infer_ms = totals["encode_ms"] + totals["decode_ms"]
+        rtf = infer_ms / 1000 / audio_s if audio_s > 0 else 0.0
+        print(f"\n(utterances {totals['utterances']} | audio {audio_s:.1f}s | "
+              f"encode {totals['encode_ms']:.0f}ms | decode {totals['decode_ms']:.0f}ms | "
+              f"inference {infer_ms:.0f}ms | RTF {rtf:.2f})", file=sys.stderr)
 
     def feed_wav_to_queue():
         """Push the WAV file onto audio_queue in mic-sized blocks, then signal
@@ -517,7 +490,7 @@ def main(args: argparse.Namespace):
                 running = False
                 worker_thread.join(timeout=1.0)
             finally:
-                print_profile_summary()
+                print_summary()
         else:
             if args.vad_backend == "energy":
                 print("\n[VAD] Calibrating noise floor — please remain silent...", file=sys.stderr)
@@ -542,7 +515,7 @@ def main(args: argparse.Namespace):
                 except Exception:
                     pass
                 worker_thread.join(timeout=1.0)
-                print_profile_summary()
+                print_summary()
     finally:
         sys.stdout.write("\033[?25h")
         sys.stdout.flush()
@@ -567,8 +540,6 @@ if __name__ == "__main__":
     parser.add_argument("--commit-agreement", type=int, default=2,             help="LocalAgreement-N: commit a token only if stable across the last N hypotheses (default: 2)")
     parser.add_argument("--commit-delay",  type=float, default=3.0,            help="Only commit tokens at least this many seconds of audio behind the live frontier (default: 3.0)")
     parser.add_argument("--full-decode",   action="store_true",               help="Disable incremental decode; re-decode from BOS each time (baseline behaviour)")
-    parser.add_argument("--profile",       action="store_true",               help="Record per-chunk worker timing, missed-real-time count, decode/encode latency and queue depth; print + dump on exit")
-    parser.add_argument("--profile-out",   type=str,   default=None,           help="Directory for --profile dumps (default: speech_to_text_streaming/profile_results)")
     parser.add_argument("--list-devices",  "-l", action="store_true",         help="List audio devices and exit")
     parser.add_argument("--no-refresh",    action="store_true", default=False, help="Skip the Hugging Face check for updated models (offline/airgapped runs)")
     add_logging_args(parser)
