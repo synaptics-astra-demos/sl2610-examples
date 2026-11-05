@@ -185,6 +185,15 @@ CASES = [
         note="--prompt runs one turn and exits instead of the interactive REPL.",
     ),
     Case(
+        name="speech_to_text_wav",
+        cwd="speech_to_text",
+        args=["--wav", str(SAMPLES / "sample.wav")],
+        requires=["../models/Synaptics/moonshine-tiny-bf16-torq"],
+        expect=[r"Transcript: \S"],
+        timeout=300,
+        note="--wav transcribes a file through the same VAD + Moonshine path as the mic, then exits.",
+    ),
+    Case(
         name="speech_to_text",
         cwd="speech_to_text",
         args=["--audio-device", "default"],
@@ -507,6 +516,15 @@ def extract_metrics(name: str, text: str) -> dict[str, str]:
                 m["prefill speed"] = f"{g.group(4)} tok/s"
             if g.group(5):
                 m["total inference"] = f"{g.group(5)} ms"
+
+    elif name == "speech_to_text_wav":
+        if g := last(r"\(utterances (\d+) \| speech ([\d.]+)s of ([\d.]+)s audio \| inference (\d+)ms \| RTF ([\d.]+)\)"):
+            m["utterances"] = g.group(1)
+            m["speech / audio"] = f"{g.group(2)} s / {g.group(3)} s"
+            m["total inference"] = f"{g.group(4)} ms"
+            m["RTF (inference / speech)"] = f"{g.group(5)} (<1.0 is faster than real time)"
+        if g := last(r"\[1\] .*?(\d+) tok \| ([\d.]+) tok/s"):
+            m["first utterance decode"] = f"{g.group(1)} tok @ {g.group(2)} tok/s"
 
     elif name == "Function_calling":
         if g := last(r"\((\d+) tool calls? · (\d+) ms\)"):
