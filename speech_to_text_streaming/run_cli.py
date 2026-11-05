@@ -18,7 +18,7 @@ from app_utils.demo_utils import DependencyChecker, IncompatibleVersionError, Mi
 try:
     DependencyChecker(
         os.path.join(os.path.dirname(__file__), "requirements.txt"),
-        version_map={"torq.runtime": ">=2.0.0a1"},
+        version_map={"torq.runtime": ">=2.3.0"},
     ).run()
 except (MissingRequirementsError, IncompatibleVersionError) as e:
     print(f"{e}\nRun: python setup_demo.py", file=sys.stderr)

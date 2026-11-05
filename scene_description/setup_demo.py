@@ -55,7 +55,7 @@ def setup_scene_description():
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
-        version_map={"torq.runtime": ">=2.0.0a1"},
+        version_map={"torq.runtime": ">=2.3.0"},
         demo_name="scene_description",
     )
 

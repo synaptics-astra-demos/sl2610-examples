@@ -101,7 +101,7 @@ def setup_jellyfish_detection(
     requirements_txt = Path(__file__).parent / "requirements.txt"
     run_demo_setup_cli(
         _download_models, requirements_txt, logger,
-        version_map={"torq.runtime": ">=2.0.0a1"},
+        version_map={"torq.runtime": ">=2.3.0"},
         demo_name="yolo_v8_nano_moon_jellyfish_detection",
     )
 
