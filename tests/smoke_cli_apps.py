@@ -82,6 +82,10 @@ MIN_FREE_GB = 1.5
 # Noise to hide when printing a failure tail.
 NOISE = re.compile(r"^\s+0x[0-9a-f]+ .*<\?\?\?>")
 
+# Terminal escape sequences (colours, cursor hide/show, erase line) that apps print. Left in
+# the text we echo, they recolour or garble the smoke test's own output.
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
 
 @dataclass
 class Case:
@@ -147,6 +151,15 @@ CASES = [
         args=["--video", str(SAMPLES / "jellyfish_short.mp4")],  # first 5 s (152 frames) of jellyfish.mp4
         requires=["../models/Synaptics/yolov8-od-nano-320-int8-torq/yolo_od.vmfb"],
         timeout=120,
+    ),
+    Case(
+        name="Face_ID",
+        cwd="face_id",
+        args=["--image", str(SAMPLES / "face.jpg")],
+        requires=["../models/Synaptics/face-id-torq/face_detection.vmfb", str(SAMPLES / "face.jpg")],
+        expect=[r"faces: [1-9]\d* user: \S+"],
+        timeout=180,
+        note="Runs on a sample portrait (samples/face.jpg); detection only, recognition needs an enrolled face.",
     ),
     Case(
         name="scene_description",
@@ -308,7 +321,7 @@ HEARTBEAT_SECONDS = 20
 
 def last_line(text: str, width: int = 90) -> str:
     """Most recent non-empty output line (progress bars rewrite with \\r), for the heartbeat."""
-    for chunk in reversed(text.replace("\r", "\n").splitlines()):
+    for chunk in reversed(ANSI.sub("", text).replace("\r", "\n").splitlines()):
         chunk = chunk.strip()
         if chunk and not NOISE.match(chunk):
             return chunk[:width]
@@ -316,7 +329,8 @@ def last_line(text: str, width: int = 90) -> str:
 
 
 def tail_of(text: str, n: int = 14) -> str:
-    lines = [ln for ln in text.splitlines() if ln.strip() and not NOISE.match(ln)]
+    lines = [ln for ln in ANSI.sub("", text).replace("\r", "\n").splitlines()
+             if ln.strip() and not NOISE.match(ln)]
     return "\n".join(lines[-n:])
 
 
@@ -461,8 +475,6 @@ def run_case(case: Case, log_dir: Path, prep_state: dict[tuple[str, str], tuple[
             cap.join()
 
 
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
 
 def _stats(vals: list[float]) -> str:
     return f"mean {sum(vals) / len(vals):.2f} / min {min(vals):.2f} / max {max(vals):.2f}"
@@ -525,6 +537,12 @@ def extract_metrics(name: str, text: str) -> dict[str, str]:
             m["RTF (inference / speech)"] = f"{g.group(5)} (<1.0 is faster than real time)"
         if g := last(r"\[1\] .*?(\d+) tok \| ([\d.]+) tok/s"):
             m["first utterance decode"] = f"{g.group(1)} tok @ {g.group(2)} tok/s"
+
+    elif name == "Face_ID":
+        if g := last(r"\((\d+\.\d+) ms\) faces: (\d+) user: (\S+)"):
+            ms = float(g.group(1))
+            m["detection inference"] = f"{ms:.3f} ms ({1000 / ms:.1f} inf/s)" if ms > 0 else f"{ms:.3f} ms"
+            m["faces / user"] = f"{g.group(2)} / {g.group(3)}"
 
     elif name == "Function_calling":
         if g := last(r"\((\d+) tool calls? · (\d+) ms\)"):

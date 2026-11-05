@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,7 @@ from face_id.src.embedding import decode_embedding, preprocess_embedding
 from face_id.src.recognition import FaceDatabase, RecognitionTracker
 from face_id.src.box_smoother import BoxSmoother
 from face_id.src.batch_enrollment import BatchEnrollmentSession
+from face_id.src.live_status import LiveStatus
 
 
 logger = logging.getLogger(__name__)
@@ -75,6 +77,10 @@ class AppConfig:
     camera_fps: int = 30
     rtsp_url: str | None = None
     video: str | None = None
+    image: str | None = None
+    enroll: str | None = None
+    remove: list[str] | None = None
+    remove_all: bool = False
     tda: str = "dmabuf"
     device_io: bool = True
     device: str = "torq"
@@ -133,6 +139,25 @@ def parse_args(argv=None) -> AppConfig:
         help="Camera device, e.g. /dev/video0, or 'auto' (default: %(default)s)",
     )
     parser.add_argument(
+        "--image", default=None, metavar="PATH",
+        help="Run on this image file instead of the camera, print the result and exit "
+             "(headless run_cli.py only; useful for testing)",
+    )
+    parser.add_argument(
+        "--enroll", default=None, metavar="NAME",
+        help="Register the first face seen (camera or --image) under NAME, then exit "
+             "(headless run_cli.py only)",
+    )
+    parser.add_argument(
+        "--remove", nargs="+", default=None, metavar="NAME",
+        help="Delete the stored embeddings of these enrolled names, then exit "
+             "(headless run_cli.py only)",
+    )
+    parser.add_argument(
+        "--remove-all", action="store_true",
+        help="Delete every enrolled face, then exit (headless run_cli.py only)",
+    )
+    parser.add_argument(
         "--rotate", type=int, choices=[0, 90, 180, 270], default=0,
         help="Rotate camera feed (degrees clockwise, default: %(default)s)",
     )
@@ -151,7 +176,113 @@ def parse_args(argv=None) -> AppConfig:
     args = parser.parse_args(argv)
     if args.max_frames < 0:
         parser.error("--max-frames must be non-negative")
+    if args.enroll is not None and not args.enroll.strip():
+        parser.error("--enroll needs a non-empty name")
+    if args.enroll and (args.remove or args.remove_all):
+        parser.error("--enroll cannot be combined with --remove or --remove-all")
+    if args.remove and args.remove_all:
+        parser.error("use either --remove NAME... or --remove-all, not both")
     return AppConfig(**vars(args))
+
+
+def run_image_inference(args, process_fn):
+    """Run the pipeline on one image file and log the usual status line once."""
+    bgr_frame = cv2.imread(args.image)
+    if bgr_frame is None:
+        logger.error("Could not read image %s", args.image)
+        raise SystemExit(1)
+    bgr_frame = rotate_frame(bgr_frame, args.rotate)
+    logger.info("Processing %s with Torq Python runtime...", args.image)
+    # Recognition only settles after several consistent frames, so feed the same
+    # image enough times for an enrolled face to be acquired.
+    for _ in range(args.acquire_confirm_frames + 1):
+        _annotated, frame_detections, infer_time, log_str = process_fn(bgr_frame)
+    logger.info("%s (%.3f ms) %s", Path(args.image).name, infer_time, log_str)
+    with closing(RotatingJsonArrayWriter(args.json_results, 60)) as json_writer:
+        json_writer.append({"image": args.image, "detections": frame_detections})
+
+
+ENROLL_TIMEOUT_SECONDS = 30
+
+
+def run_remove(args) -> None:
+    """Delete enrolled identities from the face database. Needs no models or camera."""
+    database = FaceDatabase(args.face_database)
+    enrolled = sorted(database.embeddings)
+    names = enrolled if args.remove_all else args.remove
+    missing = [name for name in names if name not in database.embeddings]
+    if missing:
+        logger.error(
+            "Not enrolled: %s. Enrolled names: %s", ", ".join(missing),
+            ", ".join(enrolled) or "(none)",
+        )
+        raise SystemExit(1)
+    if not names:
+        logger.info("[REMOVE] No enrolled faces in %s", database.path)
+        return
+    for name in names:
+        database.remove(name)
+        logger.info("[REMOVE] Removed '%s'", name)
+    logger.info("[REMOVE] %d enrolled identit%s left in %s",
+                len(database.embeddings), "y" if len(database.embeddings) == 1 else "ies", database.path)
+
+
+def _enrollment_frames(args):
+    """Yield BGR frames from --image (repeated) or the camera."""
+    if args.image:
+        bgr_frame = cv2.imread(args.image)
+        if bgr_frame is None:
+            logger.error("Could not read image %s", args.image)
+            raise SystemExit(1)
+        for _ in range(args.enroll_frames * 3):
+            yield rotate_frame(bgr_frame, args.rotate)
+        return
+    with Camera(
+        args.camera_device, width=args.camera_width,
+        height=args.camera_height, fps=args.camera_fps,
+    ) as camera:
+        for bgr_frame in camera.stream():
+            yield rotate_frame(bgr_frame, args.rotate)
+
+
+def run_enrollment(args, process_fn, latest_embeddings, database) -> None:
+    """Register the first face seen as ``args.enroll``: average several frames, save, exit."""
+    name = args.enroll.strip()
+    logger.info("[ENROLLMENT] Looking for a face to register as '%s' (%d frames)...",
+                name, args.enroll_frames)
+    vectors = []
+    deadline = time.monotonic() + ENROLL_TIMEOUT_SECONDS
+    frames = _enrollment_frames(args)
+    try:
+        for bgr_frame in frames:
+            latest_embeddings.clear()
+            process_fn(bgr_frame)
+            if latest_embeddings:
+                if len(latest_embeddings) > 1 and not vectors:
+                    logger.warning("[ENROLLMENT] %d faces in view; using the first one",
+                                   len(latest_embeddings))
+                vectors.append(np.asarray(latest_embeddings[0], dtype=np.float32).reshape(-1))
+                if len(vectors) >= args.enroll_frames:
+                    break
+            if time.monotonic() > deadline:
+                break
+    finally:
+        frames.close()
+
+    if len(vectors) < args.enroll_frames:
+        logger.error("[ENROLLMENT] Only saw a face in %d of the %d frames needed within %ds; nothing saved",
+                     len(vectors), args.enroll_frames, ENROLL_TIMEOUT_SECONDS)
+        raise SystemExit(1)
+
+    matched_name, score = database.match(np.mean(vectors, axis=0))
+    if matched_name is not None and matched_name != name and score >= args.match_threshold:
+        logger.error("[ENROLLMENT] This face is already registered as '%s' (similarity %.2f); nothing saved",
+                     matched_name, score)
+        raise SystemExit(1)
+    updated = name in database.embeddings
+    database.enroll_many(name, vectors)
+    logger.info("[ENROLLMENT] Successfully %s '%s' with %d frames", "updated" if updated else "enrolled",
+                name, len(vectors))
 
 
 def run_camera_inference_loop(args, process_fn):
@@ -160,16 +291,19 @@ def run_camera_inference_loop(args, process_fn):
         height=args.camera_height, fps=args.camera_fps,
     ) as camera, closing(RotatingJsonArrayWriter(args.json_results, 60)) as json_writer:
         logger.info("Processing %s with Torq Python runtime... Press Ctrl+C to stop.", camera.device)
-        try:
-            for frame_count, bgr_frame in enumerate(camera.stream()):
-                bgr_frame = rotate_frame(bgr_frame, args.rotate)
-                _annotated, frame_detections, infer_time, log_str = process_fn(bgr_frame)
-                logger.info("%d (%.3f ms) %s", frame_count, infer_time, log_str)
-                json_writer.append({"frame": frame_count, "detections": frame_detections})
-                if args.max_frames and frame_count + 1 >= args.max_frames:
-                    break
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user.")
+        # One status line, updated in place; enrolment/removal messages still print on their own lines.
+        with LiveStatus(logger) as status:
+            try:
+                for frame_count, bgr_frame in enumerate(camera.stream()):
+                    bgr_frame = rotate_frame(bgr_frame, args.rotate)
+                    _annotated, frame_detections, infer_time, log_str = process_fn(bgr_frame)
+                    status.update(f"{frame_count} ({infer_time:.3f} ms)", log_str)
+                    json_writer.append({"frame": frame_count, "detections": frame_detections})
+                    if args.max_frames and frame_count + 1 >= args.max_frames:
+                        break
+            except KeyboardInterrupt:
+                status.finish()
+                logger.info("Interrupted by user.")
 
 
 def preprocess_frame(
@@ -238,7 +372,7 @@ def run_model(runner, model_input, device_io):
 
 def make_process_fn(
     runner, args, keypoint_runner=None, embedding_runner=None, face_database=None,
-    batch_session=None, qt_ui=None,
+    batch_session=None, qt_ui=None, embedding_sink=None,
 ):
     recognition_tracker = RecognitionTracker(
         args.recognition_window,
@@ -254,6 +388,7 @@ def make_process_fn(
     def process_fn(bgr_frame, raw_yuyv=None):
         recognition_tracker.begin_frame()
         recognized_names = []
+        frame_embeddings = []
         model_input, letterbox_info = preprocess_frame(bgr_frame, raw_yuyv)
         outputs = run_model(runner, model_input, args.device_io)
 
@@ -304,6 +439,7 @@ def make_process_fn(
                         args.embedding_output_scale,
                         args.embedding_output_zero_point,
                     )
+                    frame_embeddings.append(embedding)
                     if batch_session is not None:
                         batch_embeddings.append(embedding)
                     if face_database is not None:
@@ -322,17 +458,32 @@ def make_process_fn(
                 batch_session.submit(batch_embeddings)
         if qt_ui is not None:
             qt_ui.update_source_frame(annotated, frame_detections)
-        log_str = f"faces: {len(detections)}"
-        if recognized_names:
-            log_str += " " + ",".join(recognized_names)
-        return annotated, frame_detections, runner.infer_time_ms, log_str or "no faces"
+        if embedding_sink is not None:
+            embedding_sink(frame_embeddings)
+        if not detections:
+            user = "none"
+        else:
+            user = ",".join(recognized_names) or "unknown"
+        log_str = f"faces: {len(detections)} user: {user}"
+        progress = batch_session.capture_progress() if batch_session is not None else None
+        if progress is not None:
+            name, captured, needed = progress
+            log_str += f" enrolling: {name or '?'} {captured}/{needed}"
+        return annotated, frame_detections, runner.infer_time_ms, log_str
 
     return process_fn
 
 
 def main(*, headless: bool = False) -> None:
     args = parse_args()
+    if (args.image or args.enroll or args.remove or args.remove_all) and not headless:
+        raise SystemExit("--image, --enroll, --remove and --remove-all are only supported by the headless run_cli.py")
     configure_logging(args.logging, args.log_file)
+    if args.remove or args.remove_all:
+        run_remove(args)
+        return
+    if args.enroll and not args.embedding_model:
+        raise SystemExit("--enroll needs the face embedding model")
     ensure_face_models()
     runtime_flags = build_runtime_flags(args.tda, args.runtime_flags)
 
@@ -380,12 +531,18 @@ def main(*, headless: bool = False) -> None:
         qt_ui = QtEnrollmentUI(batch_session)
 
     try:
-        run_camera_inference_loop(
-            args, make_process_fn(
-                runner, args, keypoint_runner, embedding_runner, face_database,
-                batch_session, qt_ui,
-            ),
+        latest_embeddings = []
+        process_fn = make_process_fn(
+            runner, args, keypoint_runner, embedding_runner, face_database,
+            batch_session, qt_ui,
+            embedding_sink=(lambda embeddings: latest_embeddings.extend(embeddings)) if args.enroll else None,
         )
+        if args.enroll:
+            run_enrollment(args, process_fn, latest_embeddings, face_database)
+        elif args.image:
+            run_image_inference(args, process_fn)
+        else:
+            run_camera_inference_loop(args, process_fn)
     finally:
         if qt_ui is not None:
             qt_ui.stop()

@@ -57,6 +57,17 @@ class FaceDatabase:
             raise ValueError("Cannot enroll without embeddings")
         vector = self._normalize(np.mean(vectors, axis=0))
         self.embeddings[name] = vector
+        self._save()
+
+    def remove(self, name):
+        """Delete one enrolled identity and save. Returns False if it was not enrolled."""
+        if name not in self.embeddings:
+            return False
+        del self.embeddings[name]
+        self._save()
+        return True
+
+    def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             json.dumps(
