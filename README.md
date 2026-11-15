@@ -73,12 +73,38 @@ There are three ways to connect an Astra development kit to the network.
 2. Network Sharing over USB (Astra SDK 2.3 and later) [Read More](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/user-guide#connect-to-a-network-over-usb)
 3. WiFi/BT Module (Ampak AP12611_M2 with SYN43711) [Read More](https://developer.synaptics.com/docs/developer-kits/coralboard/sl/user-guide#attach-wifibluetooth-module-optional)
 
+#### Network sharing over USB from a Linux host
+
+The user guide covers Windows and macOS. On a Linux host with NetworkManager, the board's USB link appears as an `enx<mac>` interface that stays at "connecting (getting IP configuration)" until the host shares its connection on it.
+
+On the host, find the interface and share the connection (this applies to the live link only):
+
+```bash
+nmcli -t device status | grep enx
+nmcli device modify <enx-interface> ipv4.method shared ipv6.method ignore
+```
+
+On the board, request an address on `usb0`:
+
+```bash
+udhcpc -i usb0
+```
+
+#### Set the clock
+
+The board boots with a stale clock until time sync completes. If time sync ran before the network was up, `git clone` and `pip install` fail with `SSL certificate problem: certificate is not yet valid`. Restart time sync once the network is connected, and check the date:
+
+```bash
+systemctl restart systemd-timesyncd
+date
+```
+
 ### Clone the Repository
 
 
 Change to the home directory. Always work out of the home directory.
 
-> **⚠️ Warning:** `/home/root` is on a different partition than the root directory (`/`). The root partition has limited space, so cloning the repository or storing models/data outside of `/home/root` can cause the device to run out of space.
+> **⚠️ Warning:** `/home/root` is on a different partition than the root directory (`/`). The root partition has limited space, so cloning the repository or storing models/data outside of `/home/root` can cause the device to run out of space. On the Coralboard SL image (`scarthgap_6.12_v2.6.1`), `/` is about 98% full out of the box, with roughly 30 MB free.
 
 ```bash
 cd /home/root/
